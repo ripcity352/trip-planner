@@ -138,6 +138,83 @@ pnpm dlx supabase db reset    # re-applies all migrations in order
 This is safe because local data is throwaway. If you have local data
 you care about (rare), `pg_dump` it first.
 
+## REST API recipes (for automation that hits CLI limits)
+
+Some operations are awkward via the official CLIs when run from
+non-TTY environments (CI jobs, agents, scripts). For those, the REST
+APIs are more reliable. Both Supabase and Vercel APIs need a personal
+access token in `Authorization: Bearer ...`.
+
+### Re-sync Supabase API keys into Vercel env vars
+
+The Supabase CLI's `projects api-keys` writes to stdout (visible in
+logs); the Vercel CLI's `env add` is interactive in non-TTY contexts.
+The REST-to-REST pipe avoids both problems:
+
+```bash
+SB_REF=bonvqazcqwkrowtkdmuq
+VC_PROJECT_ID=$(jq -r .projectId .vercel/project.json)
+
+# Pull keys (note: User-Agent is REQUIRED — Cloudflare blocks bare
+# requests with a 403 / error 1010)
+KEYS=$(curl -s \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "User-Agent: trip-planner-script/1.0" \
+  "https://api.supabase.com/v1/projects/$SB_REF/api-keys?reveal=true")
+
+ANON=$(echo "$KEYS" | jq -r '.[] | select(.name=="anon") | .api_key')
+SRK=$(echo "$KEYS" | jq -r '.[] | select(.name=="service_role") | .api_key')
+
+# Push to Vercel via REST (upsert handles already-exists)
+push_env() {
+  local name=$1 value=$2 target=$3 type=${4:-encrypted}
+  curl -s -X POST \
+    -H "Authorization: Bearer $VERCEL_TOKEN" \
+    -H "Content-Type: application/json" \
+    "https://api.vercel.com/v10/projects/$VC_PROJECT_ID/env?upsert=true" \
+    -d "{\"key\":\"$name\",\"value\":\"$value\",\"type\":\"$type\",\"target\":[\"$target\"]}"
+}
+
+for env in production preview development; do
+  push_env NEXT_PUBLIC_SUPABASE_ANON_KEY "$ANON" "$env" encrypted
+  push_env SUPABASE_SERVICE_ROLE_KEY     "$SRK"  "$env" sensitive
+done
+```
+
+Get `VERCEL_TOKEN` from <https://vercel.com/account/tokens>. Get
+`SUPABASE_ACCESS_TOKEN` from
+<https://supabase.com/dashboard/account/tokens>.
+
+### Update Supabase auth redirect allowlist
+
+When a new Vercel domain is added (custom domain, new preview pattern):
+
+```bash
+SB_REF=bonvqazcqwkrowtkdmuq
+SITE_URL="https://your-domain.example"
+ALLOW="https://your-domain.example/auth/callback,https://*.vercel.app/auth/callback,http://localhost:3000/auth/callback"
+
+curl -s -X PATCH \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "User-Agent: trip-planner-script/1.0" \
+  "https://api.supabase.com/v1/projects/$SB_REF/config/auth" \
+  -d "{\"site_url\":\"$SITE_URL\",\"uri_allow_list\":\"$ALLOW\"}"
+```
+
+### Gotchas to remember
+
+- **Supabase API requires `User-Agent`** — Cloudflare WAF blocks bare
+  curl requests with `error code 1010` / HTTP 403. Always set a UA
+  string.
+- **Vercel CLI `env add` is non-TTY-broken** as of late 2025 — falls
+  back to printing a `{"next":[...]}` hint instead of completing.
+  Use the REST API for any scripted use.
+- **`?reveal=true` is required** on Supabase's `api-keys` GET to get
+  the actual key values; without it the response masks them.
+- **`upsert=true`** on Vercel's env POST avoids "already exists"
+  errors when re-running the script.
+
 ## Future: Supabase branch DBs
 
 Supabase has a "branch database" feature where each PR gets an
