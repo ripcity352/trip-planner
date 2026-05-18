@@ -5,6 +5,31 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-18 — GitHub free-tier private repo: no branch protection
+
+**Decision:** Skip branch protection, rulesets, and secret scanning on
+the repo for now. These features are paywalled behind GitHub Pro
+($4/mo) for private repos on the free tier.
+
+**Mitigations in place instead:**
+- CI workflow runs on every PR (`/.github/workflows/ci.yml`)
+- Dependabot vulnerability alerts + automated security fixes are enabled
+  (both free)
+- Convention: never push to `main` directly; always go through a PR via
+  `/pr-cycle`
+- `.gitignore` covers `.env*.local` and the supabase service-role key
+  never appears in committed code
+
+**When to revisit:** if open-sourcing happens (Goal 8) we get all features
+free. Otherwise, upgrade to Pro when collaborators are added or when
+shipping anything that handles user PII.
+
+**Alternative considered:** make the repo public from day one. Rejected
+because the MVP includes real bachelor-party attendee data once Goal 6
+ships.
+
+---
+
 ## 2026-05-18 — Testing: Vitest + Playwright
 
 **Decision:** Unit tests via **Vitest** (colocated `*.test.ts` files,
