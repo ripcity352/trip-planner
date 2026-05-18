@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install --with-deps"
+    "test:e2e:install": "playwright install --with-deps",
+    "types:gen": "pnpm dlx supabase gen types typescript --linked > lib/db/database.types.ts && prettier --write lib/db/database.types.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

@@ -120,7 +120,8 @@ to repro a "works locally, fails on staging" bug.
 | Need | Command |
 |---|---|
 | Reset local DB to clean state | `pnpm dlx supabase db reset` |
-| Generate TS types from local schema | `pnpm dlx supabase gen types typescript --local > lib/db/types.ts` |
+| Regenerate TS types from staging | `pnpm types:gen` (writes `lib/db/database.types.ts`; needs `SUPABASE_ACCESS_TOKEN`) |
+| Regenerate TS types from local Supabase | `pnpm dlx supabase gen types typescript --local > lib/db/database.types.ts` |
 | See what migrations have been applied where | `pnpm dlx supabase migration list` (per-env) |
 | Inspect local data | <http://127.0.0.1:54323> (Studio) |
 | Pull a snapshot of staging data to local | `pnpm dlx supabase db dump --data-only --linked` then restore |
@@ -137,6 +138,25 @@ pnpm dlx supabase db reset    # re-applies all migrations in order
 
 This is safe because local data is throwaway. If you have local data
 you care about (rare), `pg_dump` it first.
+
+## Types policy
+
+The data layer in `lib/db/` uses hand-rolled types in
+[`lib/db/types.ts`](../lib/db/types.ts) as the source of truth for app
+code. They were written from `supabase/migrations/0001_init.sql` and
+are kept in sync by convention: anyone adding a migration also updates
+`lib/db/types.ts` in the same PR.
+
+To verify the hand-rolled types against the live schema, run
+`pnpm types:gen` (requires `SUPABASE_ACCESS_TOKEN` in env). That writes
+the full Supabase-generated `Database` type to `lib/db/database.types.ts`,
+which is **not imported by app code** — it's a verification reference. If
+the two diverge, the migration changed and `types.ts` needs an update.
+
+We may switch to generated types as the primary source later (when
+schema churn slows or the diff between hand-rolled vs generated proves
+costly). For now hand-rolled wins on readability + zero-dependency
+build.
 
 ## REST API recipes (for automation that hits CLI limits)
 
