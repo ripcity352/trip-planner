@@ -3,3 +3,10 @@ allowBuilds:
   unrs-resolver: true
   "@tailwindcss/oxide": true
   msw: true
+
+# Force-resolve transitive deps with known issues. Add a comment per
+# entry so future maintainers know what's holding them.
+overrides:
+  # CVE: postcss < 8.5.10 has an XSS via unescaped </style> in stringify.
+  # Flagged by Dependabot. Bumps every transitive consumer to safe.
+  postcss@<8.5.10: ">=8.5.10"
