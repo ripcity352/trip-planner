@@ -20,7 +20,7 @@ jobs:
         with:
           version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           # pnpm 11 requires Node >= 22.13 (uses node:sqlite builtin).
           node-version: 22
