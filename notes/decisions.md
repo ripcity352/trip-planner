@@ -13,7 +13,8 @@ follow as their own ADRs below; this one captures the overall shape.
 **Shape of the collaboration:**
 - Both devs work in Claude Code on separate machines, branching off
   `main`, opening PRs, requesting review from each other.
-- `main` is protected once both devs have GitHub Pro (see next ADR).
+- `main` is protected via free public-repo branch protection (see ADR
+  below). Pro is no longer required.
 - Database, secrets, and deploy infra are documented in
   `notes/database-workflow.md` and `notes/collaboration.md` so the
   second dev can onboard from the repo alone.
@@ -34,7 +35,68 @@ spending the first week re-explaining the project.
 
 ---
 
+## 2026-05-18 — Repo goes public; branch protection is free, interaction-limited to collaborators
+
+**Decision:** Flip `ripcity352/trip-planner` from private to **public**.
+Branch protection is free on public repos, so the owner doesn't need
+GitHub Pro for the merge gate. To compensate for "anyone can fork and
+PR", we stack three controls:
+
+1. **Repo-level interaction limit** set to `collaborators_only`,
+   expires in 6 months (renewable). Blocks non-collab issues, PRs, and
+   comments at the GitHub level.
+2. **`.github/workflows/close-external-prs.yml`** — defense-in-depth.
+   If a PR is opened from a fork by a non-collaborator (e.g. if the
+   interaction limit lapses), the workflow auto-closes it with a
+   polite comment.
+3. **Branch protection** with required status checks, linear history,
+   no force-push, no deletion — same set we would have applied behind
+   Pro on private.
+
+**What we tried that didn't work:** disabling forking on the repo.
+GitHub's API rejects this on personal-account public repos —
+"`Allow forks setting can only be changed on org-owned private
+repositories`." Interaction limits + the auto-close workflow cover the
+gap in practice.
+
+**Rationale:**
+- $0/mo vs $48/yr (Pro). For a hobby/MVP project this is meaningful.
+- Free **secret scanning + push protection** unlock automatically on
+  public repos. The audit had flagged secret scanning as a gap that
+  would only be filled if we went public OR paid. Solved for free.
+- Nothing sensitive lives in source (data is in Supabase with RLS,
+  secrets are env vars on Vercel). The bachelor-party content the
+  audit's risk #3 worried about is runtime data, not code.
+- If the project commercializes later, we can flip back to private OR
+  move to an Org — both reversible.
+
+**Trade-offs accepted:**
+- The Supabase **project URL is now technically discoverable** by anyone
+  reading the source (it's a `NEXT_PUBLIC_*` value bundled to the
+  browser anyway). RLS is the gate.
+- Anyone can fork the repo. They cannot merge anything, and
+  Interaction Limits + the auto-close workflow stop them from even
+  opening PRs.
+- Vulnerability advisories are still private to maintainers (Dependabot
+  alerts don't become public unless a Security Advisory is published).
+
+**Renewal cadence:** Interaction Limit expires
+2026-11-18 — set a calendar reminder to renew. The auto-close
+workflow doesn't expire.
+
+**Supersedes:** the "GitHub: owner upgrades to Pro on personal account"
+ADR below — that decision is reversed. No Pro upgrade required.
+
+---
+
 ## 2026-05-18 — GitHub: owner upgrades to Pro on personal account (not Org)
+
+> **Superseded** by the "Repo goes public; branch protection is free"
+> ADR above. Going public unlocked the same feature for free. Kept
+> here as history; the user did briefly upgrade to Pro before this
+> reversal landed.
+
+
 
 **Decision:** The repo owner (`ripcity352`) upgrades their personal
 GitHub account to Pro ($4/mo). The repo stays under

@@ -1,0 +1,59 @@
+name: Close external PRs
+
+# Defense-in-depth alongside the repo-level Interaction Limit
+# ("only collaborators"). Interaction limits auto-expire every 6 months;
+# this workflow also stops slipping the limit if someone forgets to
+# renew it.
+#
+# Closes any PR whose author is NOT a repo collaborator with a polite
+# comment. Uses pull_request_target (runs against the base ref, can see
+# secrets, but doesn't execute fork code).
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  gatekeep:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    steps:
+      - name: Check collaborator status
+        id: collab
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: { permission } } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.pull_request.user.login,
+            }).catch(() => ({ data: { permission: 'none' } }));
+            const ok = ['admin', 'maintain', 'write'].includes(permission);
+            core.setOutput('is_collaborator', ok ? 'yes' : 'no');
+
+      - name: Close PR with comment
+        if: steps.collab.outputs.is_collaborator == 'no'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: [
+                "Thanks for the interest — this is a private side project that ",
+                "isn't accepting external contributions right now. Source is ",
+                "public mainly so branch protection works on the free tier; ",
+                "see [notes/collaboration.md](https://github.com/ripcity352/trip-planner/blob/main/notes/collaboration.md) ",
+                "for the actual workflow.",
+              ].join(""),
+            });
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              state: 'closed',
+            });
