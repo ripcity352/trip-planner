@@ -8,53 +8,102 @@ co-develop this project. Decisions behind these choices live in
 
 Each dev needs:
 
-1. **GitHub Pro account** with access to
-   <https://github.com/ripcity352/trip-planner>. Owner adds the
-   collaborator via `gh api -X PUT
-   repos/ripcity352/trip-planner/collaborators/<handle>` or the
-   GitHub web UI (Settings → Collaborators).
-2. **Vercel team membership** — owner invites collaborator from
-   Vercel team settings. Free tier supports two-person teams.
-3. **Supabase organization membership** — owner invites collaborator
-   from the Supabase dashboard org settings. The collaborator gets
-   access to staging (and later prod) via the same org.
+1. **GitHub repo access** to
+   <https://github.com/ripcity352/trip-planner>. The repo is public
+   and branch-protected; the owner adds collaborators via
+   `gh api -X PUT repos/ripcity352/trip-planner/collaborators/<handle>`
+   (or GitHub web UI → Settings → Collaborators). GitHub Pro is **not**
+   required for the collaborator — branch protection gates on the
+   owner's tier only.
+2. **Supabase organization membership** — owner invites collaborator
+   from the Supabase dashboard org settings. Free. Gives the
+   collaborator access to staging (and later prod) keys via the
+   dashboard.
+3. **Vercel: owner only.** Vercel Hobby plan limits teams to a single
+   member; multi-member teams require Pro ($20/mo) which we don't
+   pay for. The collaborator does NOT join the Vercel team; they get
+   what they need (env vars from Supabase, preview URLs from GitHub
+   PR comments) without it. See "Secrets" below.
 
 Each dev uses their own:
 - Claude Code installation (per-machine)
 - `~/.claude/` config (not shared)
 - Local Supabase stack (per-machine via Docker)
-- Vercel CLI auth (`pnpm dlx vercel login` once)
+- Local Supabase CLI auth (`pnpm dlx supabase login --token <PAT>` or
+  `SUPABASE_ACCESS_TOKEN` env var; each dev generates their own PAT
+  at <https://supabase.com/dashboard/account/tokens>)
 
-## First-time onboarding (collaborator side)
+## Secrets
+
+| Secret | How owner gets it | How collaborator gets it |
+|---|---|---|
+| Supabase URL + anon + service-role | `pnpm dlx vercel env pull .env.local` | Copy from Supabase dashboard → Settings → API (one-time, then keep in `.env.local`) |
+| Future non-Supabase secrets (Resend, Sentry, Stripe…) | `vercel env pull` | Manual share via 1Password shared vault (preferred) or per-secret bootstrap doc |
+
+When keys rotate (e.g., Supabase service-role compromised), the rotator
+posts an issue or PR with `security` label so the other dev knows to
+re-pull. Owner re-pulls via `vercel env pull`; collaborator re-copies
+from Supabase dashboard.
+
+Never share secrets via chat / email / iMessage. Screenshots cache
+forever.
+
+## First-time onboarding
+
+Both devs share most of the bootstrap. Step 3 (env vars) differs by role.
 
 ```bash
-# 1. Clone
+# 1. Clone + install
 git clone https://github.com/ripcity352/trip-planner.git
 cd trip-planner
-
-# 2. Install
 pnpm install
 pnpm dlx playwright install --with-deps   # for E2E
+```
 
-# 3. Link Vercel + pull secrets
+### Step 3 — Get the staging env vars
+
+**Owner path** (sole Vercel team member):
+
+```bash
 pnpm dlx vercel login
 pnpm dlx vercel link            # select the trip-planner project
 pnpm dlx vercel env pull .env.local
+```
 
-# 4. Start local Supabase (needs Docker Desktop running)
+**Collaborator path** (no Vercel team access; reads from Supabase):
+
+```bash
+# Create .env.local by hand from the Supabase dashboard:
+# https://supabase.com/dashboard/project/bonvqazcqwkrowtkdmuq/settings/api
+#
+# .env.local contents:
+#   NEXT_PUBLIC_SUPABASE_URL=https://bonvqazcqwkrowtkdmuq.supabase.co
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<copy from dashboard>
+#   SUPABASE_SERVICE_ROLE_KEY=<copy from dashboard, click "Reveal">
+#   NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
+
+Or, with a Supabase PAT in `SUPABASE_ACCESS_TOKEN`, run the curl
+recipe in [`notes/database-workflow.md`](./database-workflow.md)
+("Re-sync Supabase API keys") writing to `.env.local` instead of
+piping to Vercel.
+
+### Step 4 — Start local Supabase + run
+
+```bash
+# Start local Supabase (needs Docker Desktop running)
 pnpm dlx supabase start
 pnpm dlx supabase db reset      # applies all migrations
 
-# 5. Override Supabase env vars in .env.local with the local values
-#    that `supabase start` printed (URL, anon key, service-role key).
-#    See notes/database-workflow.md.
+# Override the Supabase env vars in .env.local with the LOCAL values
+# that `supabase start` printed. Keep the staging values around in a
+# comment block for quick swap-back. See notes/database-workflow.md.
 
-# 6. Run
+# Run
 pnpm dev
 ```
 
-That's it. Open Claude Code in the repo and it picks up `CLAUDE.md`
-automatically.
+Open Claude Code in the repo and it picks up `CLAUDE.md` automatically.
 
 ## Day-to-day workflow
 

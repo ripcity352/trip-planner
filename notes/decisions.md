@@ -180,32 +180,66 @@ created only when Goal 6 ships to real attendees.
 
 ---
 
-## 2026-05-18 — Secrets: managed via Vercel env pull, not 1Password or chat
+## 2026-05-18 — Secrets sharing: owner uses Vercel env pull, collaborator reads Supabase dashboard
 
-**Decision:** All shared secrets (Supabase URL/anon key/service-role
-key, future Resend API key, etc.) live in the Vercel project's
-environment variables. Each dev runs `pnpm dlx vercel link` once, then
-`pnpm dlx vercel env pull .env.local` to sync. Secrets are NEVER passed
-via Slack/email/iMessage.
+**Decision:** Two-tier path because Vercel Hobby plan limits teams to
+**one** member; adding a second dev requires Pro ($20/mo) which we're
+not paying for.
 
-**Rationale:**
-- Vercel team membership is already required for deploys; reusing it
-  for secret distribution adds zero new accounts.
-- `vercel env pull` works per-environment (development / preview /
-  production), so each dev gets the right values for the right context
-  without manual selection.
-- Rotation is one place: edit in Vercel UI, both devs re-pull. No
-  "wait, which Slack message had the new key?".
-- Free tier of Vercel includes this.
+- **Owner** (`ripcity352`, sole Vercel team member): `pnpm dlx vercel
+  link` once, then `pnpm dlx vercel env pull .env.local` to sync.
+- **Collaborator** (`wchang236` and any future devs): get Supabase
+  staging keys directly from the Supabase dashboard (Settings → API).
+  Once added to the Supabase org, this is a one-time copy-paste into
+  their own `.env.local`. For automation, the curl recipe in
+  `notes/database-workflow.md` ("Re-sync Supabase API keys") pulls
+  the same values via the Supabase REST API given a personal access
+  token.
 
-**Alternatives considered:**
-- *1Password shared vault:* adds a paid subscription requirement
-  ($2.99/user/mo Families plan minimum) without unique benefit for our
-  use case.
-- *Doppler / Infisical:* better for many-env many-app organizations;
-  overkill for one app + three environments.
-- *Chat-message sharing:* explicitly rejected — secrets in chat get
-  cached forever and leak via screenshots.
+For **future non-Supabase secrets** (Resend in Goal 4, Sentry in
+Goal 6, Stripe-Connect in some far-off goal): each gets its own
+sharing decision in this log. Default channel: 1Password shared vault
+($2.99/user/mo Families). Don't share secrets in chat/email/iMessage —
+screenshots cache forever.
+
+**Why not pay for Vercel Pro:**
+- $20/mo vs $0 — meaningful for a hobby project.
+- The collaborator gets 90% of what `vercel env pull` would have given
+  them by reading Supabase keys directly from the source-of-truth
+  dashboard, and the only thing they lose (per-environment auto-
+  swapping) is something they don't need — `wchang236` works against
+  local Supabase + occasional staging, both of which are environment
+  variables they paste manually.
+- Vercel's GitHub integration covers preview URLs + deploy status in
+  PR comments without team membership.
+
+**Trade-offs accepted:**
+- When Supabase keys rotate, both devs update manually rather than one
+  central `vercel env update` propagating. Mitigation: post an issue
+  with `security` label on rotation so the other dev sees it.
+- When non-Supabase secrets land, we'll need to introduce 1Password
+  (or similar). Plan for that ADR when we get there.
+- Collaborator's first-time setup has an extra copy-paste step
+  (documented in `notes/collaboration.md`).
+
+**Supersedes:** the prior "Secrets: managed via Vercel env pull, not
+1Password or chat" decision — that decision was based on my incorrect
+claim that Vercel team membership was free. It isn't, for multi-user
+teams. Kept as history below.
+
+**Original ADR (superseded):**
+
+> All shared secrets live in the Vercel project's environment
+> variables. Each dev runs `pnpm dlx vercel link` once, then
+> `pnpm dlx vercel env pull .env.local` to sync.
+>
+> Rationale at the time: "Vercel team membership is already required
+> for deploys; reusing it for secret distribution adds zero new
+> accounts. Free tier of Vercel includes this."
+>
+> What turned out to be wrong: Vercel Hobby plan caps team membership
+> at 1 user. Adding a second user requires Pro. The "free tier"
+> rationale was incorrect.
 
 ---
 

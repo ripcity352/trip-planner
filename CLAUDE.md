@@ -142,7 +142,8 @@ in a group chat. Desktop should work but is not the priority.
 - Don't add tests for trivial things; do add them for data-layer functions
   in `/lib/db` and for any non-obvious business logic.
 - Don't commit `.env.local` or anything in `.env*` except `.env.example`.
-- Don't share secrets in chat/email — use `vercel env pull`.
+- Don't share secrets in chat/email/iMessage — see "Sharing secrets"
+  below for the role-based path.
 
 ## Environment variables
 
@@ -152,10 +153,20 @@ See `.env.example` for the full list. The three that matter most:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — anon key, safe for browser
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only, never expose to client
 
-**Sharing secrets between devs:** secrets are managed in the Vercel
-project. Run `pnpm dlx vercel link` once, then `pnpm dlx vercel env pull
-.env.local` to sync. Do NOT pass keys over Slack / email / chat. If you
-rotate a key, rotate it in Vercel and tell the other dev to re-pull.
+**Sharing secrets between devs:** path depends on role (Vercel Hobby
+caps teams at 1 member, so the collaborator isn't on the Vercel team).
+
+- **Owner (`ripcity352`)**: `pnpm dlx vercel link` once, then
+  `pnpm dlx vercel env pull .env.local` to sync.
+- **Collaborator**: copy Supabase URL + anon key + service-role key
+  from the Supabase dashboard → Settings → API into their own
+  `.env.local`. One-time setup; refresh manually when keys rotate.
+
+When you rotate a key, open an Issue with the `security` label so the
+other dev sees it and re-pulls / re-copies. Full details in
+`notes/collaboration.md`. Decision context: `notes/decisions.md` →
+"Secrets sharing: owner uses Vercel env pull, collaborator reads
+Supabase dashboard."
 
 **Local Supabase:** when running `pnpm dlx supabase start` locally, the
 local URL + anon key go in a separate `.env.local` block — the Supabase
