@@ -10,47 +10,47 @@ Mobile-first.
 
 **Goal 1 — Foundation deployed.** See [`notes/roadmap.md`](./notes/roadmap.md).
 
-## Local setup
+## Onboarding a new developer
+
+> Adding a second (or third) dev? Read
+> [`notes/collaboration.md`](./notes/collaboration.md) first — it covers
+> GitHub access, Vercel team, Supabase org, and the day-to-day PR
+> workflow. The steps below are the bootstrap on a fresh machine.
 
 ### Prereqs
 
-- Node 20+
-- pnpm 11+ (`npm install -g pnpm` or `corepack enable`)
-- A Supabase project (free tier is fine)
-- A Vercel account for deploys
+- Node 22+ (pnpm 11 needs `node:sqlite`, added in 22.13) and pnpm 11+
+  (`npm install -g pnpm`)
+- [Docker Desktop](https://docs.docker.com/desktop/) running (for local Supabase)
+- Access to: the GitHub repo, the Vercel team, the Supabase organization
+  (owner invites you)
 
-### Install
+### Bootstrap
 
 ```bash
+# 1. Clone + install
+git clone https://github.com/ripcity352/trip-planner.git
+cd trip-planner
 pnpm install
-```
 
-### Configure
+# 2. Pull secrets from Vercel (one-time link, then re-pull anytime)
+pnpm dlx vercel login
+pnpm dlx vercel link            # select the trip-planner project
+pnpm dlx vercel env pull .env.local
 
-```bash
-cp .env.example .env.local
-# Fill in NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-# and SUPABASE_SERVICE_ROLE_KEY from the Supabase dashboard.
-```
+# 3. Start local Supabase
+pnpm dlx supabase start
+pnpm dlx supabase db reset      # applies all migrations
 
-### Apply the initial migration
+# 4. Override the Supabase env vars in .env.local with the LOCAL values
+#    printed by `supabase start` (the staging values pulled from Vercel
+#    are kept around for repro work). See notes/database-workflow.md.
 
-Open the Supabase SQL editor, paste the contents of
-`supabase/migrations/0001_init.sql`, and run it. Or with the CLI:
-
-```bash
-pnpm dlx supabase login
-pnpm dlx supabase link --project-ref <your-ref>
-pnpm dlx supabase db push
-```
-
-### Run
-
-```bash
+# 5. Run
 pnpm dev
 ```
 
-Visit http://localhost:3000.
+Visit <http://localhost:3000>.
 
 ## Scripts
 
@@ -66,6 +66,9 @@ Visit http://localhost:3000.
 | `pnpm test` | Run Vitest unit tests once |
 | `pnpm test:watch` | Vitest in watch mode |
 | `pnpm test:e2e` | Run Playwright E2E (requires `pnpm test:e2e:install` once first) |
+| `pnpm dlx supabase start` | Spin up local Supabase (needs Docker) |
+| `pnpm dlx supabase db reset` | Re-apply all migrations to local DB |
+| `pnpm dlx vercel env pull .env.local` | Refresh secrets from Vercel |
 
 ## Project layout
 
@@ -79,17 +82,19 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full conventions. High level:
 /lib/db             typed query functions, one file per table
 /lib/utils.ts       cn() helper
 /supabase/migrations  SQL migrations, timestamped
+/supabase/config.toml local Supabase service ports + config
 /notes              roadmap, decisions, research, design notes
 /tests/unit         Vitest unit tests
 /e2e                Playwright E2E tests
-/.github            CI, issue/PR templates, Dependabot config
+/.github            CI, issue/PR templates, CODEOWNERS, Dependabot config
 ```
 
 ## Working with Claude Code
 
 The repo has a [`CLAUDE.md`](./CLAUDE.md) at the root that defines
 conventions. Open Claude Code in this directory and it will read it
-automatically.
+automatically. Each dev's `.claude/` config is local; project context
+lives in `CLAUDE.md` + `/notes/`.
 
 Workflow skills installed:
 
@@ -99,16 +104,23 @@ Workflow skills installed:
 - `/implement-phase <issue#>` — TDD-driven implementation of an issue
 - `/pr-cycle` — open PR, review, fix, merge, clean up
 
-See [`notes/research/`](./notes/research/) for the foundation research
-(audience, feature gaps, label taxonomy, audit) that shaped the roadmap.
+Foundation research that shaped the roadmap and infra:
+
+- [`notes/research/`](./notes/research/) — audience, feature gaps, label
+  taxonomy, audit
+- [`notes/decisions.md`](./notes/decisions.md) — ADRs
+- [`notes/collaboration.md`](./notes/collaboration.md) — multi-dev
+  workflow
+- [`notes/database-workflow.md`](./notes/database-workflow.md) — local /
+  staging / prod Supabase split + migration discipline
 
 ## Deploy
 
-1. Push to GitHub (already wired).
-2. Import the repo into Vercel.
-3. Set the env vars from `.env.local` in Vercel project settings.
-4. In Supabase **Authentication → URL Configuration**, add the Vercel
-   preview/production URL to the allowed redirect URLs.
+Pushes to `main` deploy to the staging Vercel project. Prod deploys are
+manual until Goal 6.
+
+Per-PR preview URLs are wired automatically by Vercel and use the
+staging Supabase project.
 
 ## License
 

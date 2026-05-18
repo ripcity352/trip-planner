@@ -1,0 +1,18 @@
+# CODEOWNERS — drives automatic review-request routing on PRs.
+# Syntax: <pattern> <github-username...>
+# Later patterns override earlier ones.
+
+# Default: both devs review everything.
+*                            @ripcity352 @wchang236
+
+# Schema and the data layer — extra scrutiny. RLS bugs are silent.
+/supabase/migrations/        @ripcity352 @wchang236
+/lib/db/                     @ripcity352 @wchang236
+
+# Decision records — both devs must agree.
+/notes/decisions.md          @ripcity352 @wchang236
+/notes/roadmap.md            @ripcity352 @wchang236
+/CLAUDE.md                   @ripcity352 @wchang236
+
+# CI / infra changes — both devs review.
+/.github/                    @ripcity352 @wchang236

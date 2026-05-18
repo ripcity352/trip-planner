@@ -5,7 +5,216 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-18 — Collaboration: invite a second Claude Code dev on a separate machine
+
+**Decision:** Add a second developer to this project. Three sub-decisions
+follow as their own ADRs below; this one captures the overall shape.
+
+**Shape of the collaboration:**
+- Both devs work in Claude Code on separate machines, branching off
+  `main`, opening PRs, requesting review from each other.
+- `main` is protected via free public-repo branch protection (see ADR
+  below). Pro is no longer required.
+- Database, secrets, and deploy infra are documented in
+  `notes/database-workflow.md` and `notes/collaboration.md` so the
+  second dev can onboard from the repo alone.
+- Each dev's Claude Code memory (`.claude/memory/`) is local and not
+  shared — project context lives in `CLAUDE.md` + `/notes/`.
+
+**Rationale:** Two devs roughly doubles MVP velocity for Goals 2–6
+(audit + roadmap suggest these as multi-week each at solo pace). The
+research-driven foundation already established (RLS conventions, label
+taxonomy, decisions log) is what makes a second dev viable without
+spending the first week re-explaining the project.
+
+**Alternatives considered:**
+- *Stay solo until Goal 6 ships:* simpler but slower. The MVP has a real
+  deadline (the actual bachelor party); two devs is a hedge.
+- *Hire/contract a third party:* not the relationship here; trusted
+  collaborator is already identified.
+
+---
+
+## 2026-05-18 — Repo goes public; branch protection is free, interaction-limited to collaborators
+
+**Decision:** Flip `ripcity352/trip-planner` from private to **public**.
+Branch protection is free on public repos, so the owner doesn't need
+GitHub Pro for the merge gate. To compensate for "anyone can fork and
+PR", we stack three controls:
+
+1. **Repo-level interaction limit** set to `collaborators_only`,
+   expires in 6 months (renewable). Blocks non-collab issues, PRs, and
+   comments at the GitHub level.
+2. **`.github/workflows/close-external-prs.yml`** — defense-in-depth.
+   If a PR is opened from a fork by a non-collaborator (e.g. if the
+   interaction limit lapses), the workflow auto-closes it with a
+   polite comment.
+3. **Branch protection** with required status checks, linear history,
+   no force-push, no deletion — same set we would have applied behind
+   Pro on private.
+
+**What we tried that didn't work:** disabling forking on the repo.
+GitHub's API rejects this on personal-account public repos —
+"`Allow forks setting can only be changed on org-owned private
+repositories`." Interaction limits + the auto-close workflow cover the
+gap in practice.
+
+**Rationale:**
+- $0/mo vs $48/yr (Pro). For a hobby/MVP project this is meaningful.
+- Free **secret scanning + push protection** unlock automatically on
+  public repos. The audit had flagged secret scanning as a gap that
+  would only be filled if we went public OR paid. Solved for free.
+- Nothing sensitive lives in source (data is in Supabase with RLS,
+  secrets are env vars on Vercel). The bachelor-party content the
+  audit's risk #3 worried about is runtime data, not code.
+- If the project commercializes later, we can flip back to private OR
+  move to an Org — both reversible.
+
+**Trade-offs accepted:**
+- The Supabase **project URL is now technically discoverable** by anyone
+  reading the source (it's a `NEXT_PUBLIC_*` value bundled to the
+  browser anyway). RLS is the gate.
+- Anyone can fork the repo. They cannot merge anything, and
+  Interaction Limits + the auto-close workflow stop them from even
+  opening PRs.
+- Vulnerability advisories are still private to maintainers (Dependabot
+  alerts don't become public unless a Security Advisory is published).
+
+**Renewal cadence:** Interaction Limit expires
+2026-11-18 — set a calendar reminder to renew. The auto-close
+workflow doesn't expire.
+
+**Supersedes:** the "GitHub: owner upgrades to Pro on personal account"
+ADR below — that decision is reversed. No Pro upgrade required.
+
+---
+
+## 2026-05-18 — GitHub: owner upgrades to Pro on personal account (not Org)
+
+> **Superseded** by the "Repo goes public; branch protection is free"
+> ADR above. Going public unlocked the same feature for free. Kept
+> here as history; the user did briefly upgrade to Pro before this
+> reversal landed.
+
+
+
+**Decision:** The repo owner (`ripcity352`) upgrades their personal
+GitHub account to Pro ($4/mo). The repo stays under
+`ripcity352/trip-planner` with the second dev added as a collaborator.
+**The collaborator does NOT need Pro** to participate — branch
+protection on a private repo gates on the owner's tier only.
+
+**Rationale:**
+- Branch protection on private repos requires Pro on the owner's
+  account; once enabled, the rules bind everyone with push access,
+  regardless of their own plan tier.
+- A free GitHub Organization works for unlimited collaborators but
+  *also* doesn't have branch protection — Org + Team is $4/user/mo, no
+  cheaper than personal Pro and adds migration pain.
+- Personal account avoids the migration pain of moving the repo to an
+  Org, which would invalidate the current URL and force everyone to
+  re-clone.
+- Future-proofing for a third collaborator: if/when we add more devs,
+  we'll move to a free Org (with no branch protection) or pay for Team.
+  Two-person team doesn't justify the move yet.
+
+**Cost:** $4/mo total (owner only). Earlier draft of this ADR said
+$8/mo "both on Pro" — that was incorrect; collaborators don't need
+their own Pro for this repo. They may upgrade independently for *their
+own* repos / features, which is unrelated.
+
+**Alternatives considered:**
+- *Move to a free GitHub Org:* no branch protection, same friction as
+  staying free.
+- *Move to a Team Org:* same monthly cost but more migration work.
+- *Stay free + rely on convention:* explicitly rejected by the previous
+  ADR (now superseded — see below).
+
+**Supersedes:** the 2026-05-18 "GitHub free-tier private repo: no
+branch protection" entry below. That ADR's "when to revisit" trigger
+("collaborators added") has fired.
+
+---
+
+## 2026-05-18 — Database: local Supabase per dev + shared staging project
+
+**Decision:** Each developer runs Supabase locally via `pnpm dlx supabase
+start` for day-to-day work. A single shared **staging** Supabase project
+backs the `main`-branch Vercel deploy (and the Vercel preview URLs for
+PRs). Production is a separate shared **prod** Supabase project,
+created only when Goal 6 ships to real attendees.
+
+**Why three environments:**
+- **Local** = isolated, throwaway, fast iteration. Resets are free.
+- **Staging** = single source of truth between the two devs. Catches
+  "works locally but not after a migration" before prod sees it.
+- **Prod** = real attendee data, no migrations on Fridays, backups
+  enabled.
+
+**Migration discipline:**
+- Every schema change is a new timestamped file in
+  `/supabase/migrations/`. Never edit a migration that's been applied
+  anywhere.
+- RLS policies for new tables go in the same migration. No PR is
+  mergeable that adds a table without RLS.
+- Migrations are applied in this order: local (during the PR) →
+  staging (when PR merges to `main`) → prod (manually, after the
+  staging deploy is observed for ≥24h).
+- The `staging.deployed_migrations` (Supabase tracks this automatically
+  via `supabase migration list`) is the audit trail.
+
+**Rationale:**
+- Local-per-dev avoids the "Alice deleted Bob's seed data" failure
+  mode that a shared dev project would have.
+- Shared staging catches integration bugs that local can't (e.g., RLS
+  function name collisions, search_path mistakes).
+- Prod is separate from staging so that staging can be torn down and
+  reseeded freely.
+
+**Alternatives considered:**
+- *Single shared Supabase dev project:* ruled out (data collisions).
+- *Local-only, no staging:* ruled out — every PR's preview deploy
+  needs *some* database, and pointing previews at prod is too risky.
+- *Branch databases (Supabase's branch DB feature):* worth revisiting
+  when out of beta and pricing is known; defers to that future ADR.
+
+---
+
+## 2026-05-18 — Secrets: managed via Vercel env pull, not 1Password or chat
+
+**Decision:** All shared secrets (Supabase URL/anon key/service-role
+key, future Resend API key, etc.) live in the Vercel project's
+environment variables. Each dev runs `pnpm dlx vercel link` once, then
+`pnpm dlx vercel env pull .env.local` to sync. Secrets are NEVER passed
+via Slack/email/iMessage.
+
+**Rationale:**
+- Vercel team membership is already required for deploys; reusing it
+  for secret distribution adds zero new accounts.
+- `vercel env pull` works per-environment (development / preview /
+  production), so each dev gets the right values for the right context
+  without manual selection.
+- Rotation is one place: edit in Vercel UI, both devs re-pull. No
+  "wait, which Slack message had the new key?".
+- Free tier of Vercel includes this.
+
+**Alternatives considered:**
+- *1Password shared vault:* adds a paid subscription requirement
+  ($2.99/user/mo Families plan minimum) without unique benefit for our
+  use case.
+- *Doppler / Infisical:* better for many-env many-app organizations;
+  overkill for one app + three environments.
+- *Chat-message sharing:* explicitly rejected — secrets in chat get
+  cached forever and leak via screenshots.
+
+---
+
 ## 2026-05-18 — GitHub free-tier private repo: no branch protection
+
+> **Superseded** later the same day by the "GitHub: both devs upgrade to
+> Pro" ADR above. The "collaborators added" trigger fired. Branch
+> protection landed once both Pro upgrades completed. Kept here as
+> history.
 
 **Decision:** Skip branch protection, rulesets, and secret scanning on
 the repo for now. These features are paywalled behind GitHub Pro
