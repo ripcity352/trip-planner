@@ -1,8 +1,6 @@
 # CODEOWNERS — drives automatic review-request routing on PRs.
 # Syntax: <pattern> <github-username...>
 # Later patterns override earlier ones.
-#
-# TODO: replace @wchang236 with the second dev's GitHub handle once known.
 
 # Default: both devs review everything.
 *                            @ripcity352 @wchang236
