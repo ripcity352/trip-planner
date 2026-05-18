@@ -2,19 +2,19 @@
 # Syntax: <pattern> <github-username...>
 # Later patterns override earlier ones.
 #
-# TODO: replace @COLLABORATOR with the second dev's GitHub handle once known.
+# TODO: replace @wchang236 with the second dev's GitHub handle once known.
 
 # Default: both devs review everything.
-*                            @ripcity352 @COLLABORATOR
+*                            @ripcity352 @wchang236
 
 # Schema and the data layer — extra scrutiny. RLS bugs are silent.
-/supabase/migrations/        @ripcity352 @COLLABORATOR
-/lib/db/                     @ripcity352 @COLLABORATOR
+/supabase/migrations/        @ripcity352 @wchang236
+/lib/db/                     @ripcity352 @wchang236
 
 # Decision records — both devs must agree.
-/notes/decisions.md          @ripcity352 @COLLABORATOR
-/notes/roadmap.md            @ripcity352 @COLLABORATOR
-/CLAUDE.md                   @ripcity352 @COLLABORATOR
+/notes/decisions.md          @ripcity352 @wchang236
+/notes/roadmap.md            @ripcity352 @wchang236
+/CLAUDE.md                   @ripcity352 @wchang236
 
 # CI / infra changes — both devs review.
-/.github/                    @ripcity352 @COLLABORATOR
+/.github/                    @ripcity352 @wchang236
