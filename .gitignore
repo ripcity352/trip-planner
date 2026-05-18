@@ -56,3 +56,7 @@ supabase/.temp
 
 # claude code — keep settings.json (shared), drop local overrides
 .claude/settings.local.json
+
+# generated Supabase types (verification only; lib/db/types.ts is the
+# committed source of truth — see notes/database-workflow.md)
+lib/db/database.types.ts
