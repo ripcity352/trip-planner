@@ -100,19 +100,39 @@ in a group chat. Desktop should work but is not the priority.
 ## When working on a task
 
 1. **Read this file and any relevant `/notes/*.md` first.**
-2. If the task involves the database, look at existing migrations in
+2. **All work goes through a PR.** Never push directly to `main`. Create a
+   feature branch (`feat/<short-name>`, `fix/<short-name>`,
+   `chore/<short-name>`) → push → open PR → CI must pass → merge.
+   See [`notes/collaboration.md`](./notes/collaboration.md) for the full
+   workflow.
+3. If the task involves the database, look at existing migrations in
    `/supabase/migrations` to understand current schema before changing it.
-3. If the task involves UI, check if a shadcn component already exists for
+   See [`notes/database-workflow.md`](./notes/database-workflow.md) for
+   migration discipline and the local/staging/prod environment split.
+4. If the task involves UI, check if a shadcn component already exists for
    what you need before building from scratch.
-4. After making changes, run:
+5. After making changes, run:
    - `pnpm typecheck`
    - `pnpm lint`
+   - `pnpm test`
    - `pnpm build` (for non-trivial changes)
-5. For schema changes, create a new timestamped migration file — never edit
-   an existing one that's been applied.
+6. For schema changes:
+   - Create a new timestamped migration file — never edit an existing one
+     that's been applied
+   - RLS policies for new tables go in the **same** migration
+   - Test the migration locally against `pnpm dlx supabase db reset`
+     before opening the PR
+7. Conflicts in `/lib/db/`, `/supabase/migrations/`, or
+   `/notes/decisions.md` get **resolved by conversation in the PR**, not
+   by silent merging. Tag the other dev for review.
 
 ## What NOT to do
 
+- Don't push directly to `main`. Open a PR. (Branch protection enforces
+  this, but the rule predates the protection.)
+- Don't merge your own PR without the other dev's review unless it's a
+  trivial fix you've explicitly flagged as "self-merge OK" in the PR
+  body.
 - Don't add new dependencies without flagging it in the response.
 - Don't bypass RLS by using the service role key in app code (service role
   is only for migrations and admin scripts).
@@ -122,6 +142,7 @@ in a group chat. Desktop should work but is not the priority.
 - Don't add tests for trivial things; do add them for data-layer functions
   in `/lib/db` and for any non-obvious business logic.
 - Don't commit `.env.local` or anything in `.env*` except `.env.example`.
+- Don't share secrets in chat/email — use `vercel env pull`.
 
 ## Environment variables
 
@@ -130,6 +151,15 @@ See `.env.example` for the full list. The three that matter most:
 - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — anon key, safe for browser
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only, never expose to client
+
+**Sharing secrets between devs:** secrets are managed in the Vercel
+project. Run `pnpm dlx vercel link` once, then `pnpm dlx vercel env pull
+.env.local` to sync. Do NOT pass keys over Slack / email / chat. If you
+rotate a key, rotate it in Vercel and tell the other dev to re-pull.
+
+**Local Supabase:** when running `pnpm dlx supabase start` locally, the
+local URL + anon key go in a separate `.env.local` block — the Supabase
+CLI prints them at startup. See `notes/database-workflow.md`.
 
 ## Current phase
 
