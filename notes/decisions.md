@@ -34,25 +34,32 @@ spending the first week re-explaining the project.
 
 ---
 
-## 2026-05-18 — GitHub: both devs upgrade to Pro on personal accounts (not Org)
+## 2026-05-18 — GitHub: owner upgrades to Pro on personal account (not Org)
 
-**Decision:** Each dev upgrades their personal GitHub account to Pro
-($4/mo each, $8/mo total). The repo stays under
+**Decision:** The repo owner (`ripcity352`) upgrades their personal
+GitHub account to Pro ($4/mo). The repo stays under
 `ripcity352/trip-planner` with the second dev added as a collaborator.
+**The collaborator does NOT need Pro** to participate — branch
+protection on a private repo gates on the owner's tier only.
 
 **Rationale:**
 - Branch protection on private repos requires Pro on the owner's
-  account; without it, the "convention: don't push to main" mitigation
-  becomes load-bearing in a bad way.
+  account; once enabled, the rules bind everyone with push access,
+  regardless of their own plan tier.
 - A free GitHub Organization works for unlimited collaborators but
   *also* doesn't have branch protection — Org + Team is $4/user/mo, no
-  cheaper than personal Pro.
+  cheaper than personal Pro and adds migration pain.
 - Personal account avoids the migration pain of moving the repo to an
   Org, which would invalidate the current URL and force everyone to
   re-clone.
 - Future-proofing for a third collaborator: if/when we add more devs,
   we'll move to a free Org (with no branch protection) or pay for Team.
   Two-person team doesn't justify the move yet.
+
+**Cost:** $4/mo total (owner only). Earlier draft of this ADR said
+$8/mo "both on Pro" — that was incorrect; collaborators don't need
+their own Pro for this repo. They may upgrade independently for *their
+own* repos / features, which is unrelated.
 
 **Alternatives considered:**
 - *Move to a free GitHub Org:* no branch protection, same friction as
