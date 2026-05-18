@@ -19,7 +19,8 @@ Mobile-first.
 
 ### Prereqs
 
-- Node 20+ and pnpm 11+ (`npm install -g pnpm`)
+- Node 22+ (pnpm 11 needs `node:sqlite`, added in 22.13) and pnpm 11+
+  (`npm install -g pnpm`)
 - [Docker Desktop](https://docs.docker.com/desktop/) running (for local Supabase)
 - Access to: the GitHub repo, the Vercel team, the Supabase organization
   (owner invites you)
