@@ -1,0 +1,52 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      next:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+          - "@next/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      supabase:
+        patterns:
+          - "@supabase/*"
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitejs/*"
+          - "@testing-library/*"
+          - "@playwright/*"
+          - "jsdom"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "tailwind-merge"
+          - "prettier-plugin-tailwindcss"
+      lint-format:
+        patterns:
+          - "eslint*"
+          - "prettier*"
+    ignore:
+      # Hold majors on framework boundaries until the user manually triages.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

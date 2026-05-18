@@ -1,0 +1,23 @@
+name: Research / spike
+description: Investigation whose output is a written decision, not code
+title: "research: <topic>"
+labels: ["type:research", "status:needs-plan"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question to answer
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / out of scope
+      description: What is in vs. out. Hard timebox if possible.
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: Deliverable
+      placeholder: "e.g. a `notes/decisions.md` entry, or a `notes/research/<topic>.md`."
+    validations:
+      required: true

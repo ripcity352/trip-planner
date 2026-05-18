@@ -1,0 +1,54 @@
+name: Feature
+description: New user-facing capability or improvement
+title: "feat: <short description>"
+labels: ["type:feature", "status:needs-plan"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for new features. The `status:needs-plan` label gets
+        cleared once `/create-issue` produces a written plan (see
+        `notes/roadmap.md`).
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What user need or roadmap goal does this serve?
+      placeholder: "Roadmap Goal 2: an organizer should be able to..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Bulleted list of "done" conditions.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / open questions
+      description: Anything to flag for the implementer.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - "area:auth"
+        - "area:trips"
+        - "area:rsvp"
+        - "area:invites"
+        - "area:availability"
+        - "area:itinerary"
+        - "area:announcements"
+        - "area:expenses"
+        - "area:photos"
+        - "area:realtime"
+        - "area:notifications"
+        - "area:rls"
+        - "area:ui"
+        - "area:infra"
