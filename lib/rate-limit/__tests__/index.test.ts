@@ -36,6 +36,17 @@ describe("module import safety", () => {
   });
 });
 
+describe("RATE_LIMIT_SCOPES (catalogue)", () => {
+  it("includes the authMagicLink scope used by /login (PR #102)", () => {
+    // Lock in the contract that `app/login/actions.ts` depends on:
+    // rate-limiting magic-link issuance via this exact scope value.
+    // If this scope ever gets renamed, the login action breaks closed
+    // (rate-limit throws at runtime), which we want this test to flag
+    // at CI time instead.
+    expect(RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK).toBe("authMagicLink");
+  });
+});
+
 describe("getClientId", () => {
   it("prefers x-forwarded-for and returns the first hop", () => {
     const req = makeReq("http://localhost/trips", {
