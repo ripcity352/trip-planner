@@ -97,8 +97,20 @@ Rules (also in `CLAUDE.md`):
 - The audit trail is the merge commit on `main`.
 - The migration history table on staging stays consistent with `main`.
 
-(The CI step doesn't exist yet — it lands when staging is provisioned.
-Track in an Issue when ready.)
+The CI step is the `migrate-staging` job in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It runs only
+on push to `main` (not on PRs), gates on the existing `verify` job so a
+broken main never pushes migrations, and no-ops when the
+`SUPABASE_ACCESS_TOKEN` repo secret is absent. Wired up in #16.
+
+Required repo secrets (provisioned once by `ripcity352`):
+- `SUPABASE_ACCESS_TOKEN` — PAT scoped to the staging project, from
+  <https://supabase.com/dashboard/account/tokens>
+- `SUPABASE_PROJECT_REF` — `bonvqazcqwkrowtkdmuq`
+
+If a migration fails after merge, main is ahead of staging — write a
+hotfix migration that resolves the divergence and merge it; the next
+push to main re-runs the job.
 
 ## What goes in `.env.local`
 

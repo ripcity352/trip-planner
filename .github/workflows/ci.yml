@@ -43,3 +43,66 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
         run: pnpm build
+
+  # Tiny gate job whose only purpose is to expose "is the staging-migration
+  # secret set?" as an output. GitHub Actions does NOT allow `secrets.*` in
+  # job-level `if:` expressions — only in steps and `env:` — so we evaluate
+  # presence in a step and surface the result as a job output that the
+  # downstream job can gate on.
+  check-staging-secrets:
+    name: check staging migration secrets
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      has-token: ${{ steps.check.outputs.has-token }}
+    steps:
+      - id: check
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "has-token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-token=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUPABASE_ACCESS_TOKEN not set — skipping migrate-staging job. See issue #16."
+          fi
+
+  migrate-staging:
+    name: push migrations → staging supabase
+    # Runs only on push to main, only after verify passes, and only when the
+    # access token secret is provisioned. The has-token gate means the
+    # workflow no-ops cleanly until ripcity352 sets SUPABASE_ACCESS_TOKEN +
+    # SUPABASE_PROJECT_REF (see issue #16).
+    needs: [verify, check-staging-secrets]
+    if: needs.check-staging-secrets.outputs.has-token == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+        # No explicit version — picks up from package.json#packageManager.
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to staging project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Push migrations
+        # No `continue-on-error`: a failed migration must block, not silently
+        # leave main ahead of staging. Recovery path is a hotfix migration —
+        # see notes/database-workflow.md.
+        run: supabase db push --linked
