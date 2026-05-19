@@ -154,23 +154,36 @@ the full voice guide + sample strings.
 ## When working on a task
 
 1. **Read this file and any relevant `/notes/*.md` first.**
-2. **All work goes through a PR.** Never push directly to `main`. Create a
+2. **Name the gap before patching the symptom.** When a bug, regression,
+   or design discrepancy surfaces, your first move is to ask: *what
+   does this issue reveal about the spec?* Don't write code until you've
+   named the underlying gap in `notes/design-system.md` (for UI),
+   `notes/decisions.md` (for architecture), or `notes/database-workflow.md`
+   (for schema). Then propose the *smallest change that closes the gap*
+   — usually a missing axis in a spec or a missing token, not a patch to
+   the one component that exhibited the bug. Concrete bugs almost always
+   trace back to a missing axis in the spec; closing the spec gap
+   prevents the same bug class from recurring.
+3. **All work goes through a PR.** Never push directly to `main`. Create a
    feature branch (`feat/<short-name>`, `fix/<short-name>`,
    `chore/<short-name>`) → push → open PR → CI must pass → merge.
    See [`notes/collaboration.md`](./notes/collaboration.md) for the full
    workflow.
-3. If the task involves the database, look at existing migrations in
+4. If the task involves the database, look at existing migrations in
    `/supabase/migrations` to understand current schema before changing it.
    See [`notes/database-workflow.md`](./notes/database-workflow.md) for
    migration discipline and the local/staging/prod environment split.
-4. If the task involves UI, check if a shadcn component already exists for
-   what you need before building from scratch.
-5. After making changes, run:
+5. If the task involves UI, check if a shadcn component already exists for
+   what you need before building from scratch. Confirm the change passes
+   the design-system PR checklist (issue #65) — microcopy voice test,
+   focus ring, reduced-motion, hairline guardrail, vibecoded-bans audit,
+   copy-palette sourcing.
+6. After making changes, run:
    - `pnpm typecheck`
    - `pnpm lint`
    - `pnpm test`
    - `pnpm build` (for non-trivial changes)
-6. For schema changes:
+7. For schema changes:
    - Create a new timestamped migration file — never edit an existing one
      that's been applied
    - RLS policies for new tables go in the **same** migration
