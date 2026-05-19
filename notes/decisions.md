@@ -5,6 +5,501 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-19 — Multi-perspective review: prune + restructure
+
+**Decision:** Replace the Goal 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 / 6 / 6.5 / 7 / 8
+sequence with five milestones (M1–M5). Aggressively prune MVP scope per
+six parallel agent reviews (architect, groom persona, best-man persona,
+edge-attendees personas, mobile-UX critic, product strategy). Ten issues
+closed; eight new ones created. See `notes/killed-and-deferred.md` for the
+canonical kill log.
+
+**Rationale:** The original 51-issue roadmap conflated "post-trip earned"
+features with "MVP load-bearing" features, and several "delight" items
+(Hot Seat, Drumroll, Lock-In Day, Fear List swipe) carried tone or trust
+risk that one bad screenshot would crater. The five-bucket structure makes
+the **M4 stop-here line** a bright threshold instead of a creeping Goal 6.
+
+**Milestone structure (replaces Goal 1–8):**
+- **M1 — Foundation + Schema** — infra + schema primitives + copy palettes
+- **M2 — Trip is real** — auth, trip creation, RSVP, bach-specific date poll, logged-out invite preview
+- **M3 — Trip is useful** — itinerary first, then announcements + realtime; per-item RSVP UI; "what's happening now" card
+- **M4 — Trip is shippable** — domain, microcopy review, a11y pass, ToS stub, send to real attendees. **STOP HERE.**
+- **M5 — Earned post-trip** — money pool, expenses, photos, retention loops, multi-tenant pivot. Gated on real-trip retrospective.
+
+**Alternatives considered:**
+- Keep the 8-goal sequence — rejected; the goal-numbering hid the stop-here
+  line and treated post-trip features as continuous with MVP.
+- Two milestones (MVP / post-MVP) — rejected; too coarse to make progress
+  visible.
+
+---
+
+## 2026-05-19 — Synthetic PK on `trip_members`; feature FKs target `trip_member_id`
+
+**Decision:** Add `trip_members.id uuid primary key default gen_random_uuid()`.
+Drop the existing composite PK `(trip_id, user_id)`. Add partial uniques:
+`(trip_id, user_id) where user_id is not null`,
+`(trip_id, lower(email)) where email is not null`,
+`(trip_id, phone_e164) where phone_e164 is not null`.
+Every feature table that currently FKs `(trip_id, user_id)` retargets to
+`trip_member_id`.
+
+**Rationale:** The accountless-attendee path (`user_id` nullable) silently
+breaks `(trip_id, user_id)` as a PK. Without retargeting feature FKs to
+`trip_member_id`, accountless attendees can't be referenced by
+`expense_splits`, `lodging_assignments`, `travel_legs`, `availability`,
+`itinerary_item_rsvps`. Architect flagged as the single biggest miss in
+the original Goal 1.6 plan — the silent retrofit pain the round-2 audit
+was already half-baked-in for.
+
+**Implications:**
+- `citext` extension on `trip_members.email` for case-insensitive
+  magic-link claim matching
+- Convention documented in `notes/database-workflow.md`: any feature
+  table referencing an attendee uses `trip_member_id`, not `user_id`
+
+**Alternatives considered:**
+- Keep composite PK, make `user_id` non-nullable, use a sentinel "shadow"
+  user — rejected; auth.users sentinel rows are an anti-pattern and break
+  Supabase Auth assumptions.
+
+---
+
+## 2026-05-19 — Defer `audit_log` and `content_visibility_grants` from M1
+
+**Decision:** Pull both out of the foundation migration.
+- `audit_log` deferred to M5 (Money Pool). Re-design when revived —
+  current single-table polymorphic JSONB before/after is wrong (no FK
+  from `row_id`, no useful indexes, JSONB diffs are awkward to query).
+  Consider per-table `*_history` tables scoped narrowly to money.
+- `content_visibility_grants` deferred until the first `custom` audience
+  consumer ships. Land the `trip_visibility` enum now; design the join
+  (polymorphic by `content_type, content_id` vs per-type tables) under
+  real requirements.
+
+**Rationale:** Both are YAGNI for MVP. Worse, both have unresolved design
+questions (polymorphic vs typed for grants; single-table vs per-table for
+audit) where the wrong call retrofits expensively. Better to defer than
+guess.
+
+**Alternatives considered:**
+- Ship the polymorphic versions now — rejected; the "join across UNION
+  of content types with no FK integrity" RLS pattern is exactly what we
+  want to avoid.
+
+---
+
+## 2026-05-19 — Idempotency unique-index scope is per-table, not uniform
+
+**Decision:** Document in `notes/database-workflow.md` that idempotency
+unique-index scope depends on the mutation's actor model.
+- Organizer-acting-on-behalf tables (`announcements`, `money_pool_entries`):
+  `(trip_id, idempotency_key)`
+- Strictly user-scoped mutations (RSVP, availability, per-item RSVP):
+  `(trip_id, user_id, idempotency_key)`
+
+**Rationale:** Organizers commonly mutate on behalf of others (posting
+announcements, marking someone paid). A `(trip_id, user_id, idempotency_key)`
+unique would let two different organizers' replays both succeed because
+their `user_id` differs — defeating the point of the key. Per-table
+scoping is the only correct shape.
+
+---
+
+## 2026-05-19 — Schema-enforced "going broadcasts, declining whispers"
+
+**Decision:** Three coordinated changes.
+1. **Declined-RSVP per-name visibility default = `organizers_only`** —
+   enforced via a helper view `trip_members_visible_rsvp(viewer_id)`.
+   Non-organizers see aggregate counts only; per-name decline data is
+   organizer-only.
+2. **Pulse Poll aggregate-only by default** — per-name "going/declining"
+   visibility is opt-in *by the voter*, not opt-out.
+3. **Dietary as per-item private flag** (`itinerary_item_member_flags`),
+   not a profile column on `trip_members`. The original
+   `trip_members.dietary_notes` plan stamps an edge attendee's situation
+   on their member row, visible across the trip.
+4. **Money-Front badge is organizer-private by default** — never
+   "passively visible to the group." Organizer can choose to share with
+   a one-tap action.
+
+**Rationale:** Principle #7 ("Going broadcasts, declining whispers") and
+edge-attendees research flagged these as the wedge that decides whether
+marginal attendees use the app or quietly opt out of the trip. Enforcing
+asymmetry at the schema layer (not aspirationally) is the only durable
+move — UI-layer enforcement gets bypassed the first time someone adds a
+debug view.
+
+**Alternatives considered:**
+- UI-only convention — rejected; will drift the first time a new screen
+  is added.
+
+---
+
+## 2026-05-19 — Trip-date selection is celebrant-weighted (bachelor kind)
+
+**Decision:** For `trip.kind = 'bachelor'`, the trip-date selection flow
+is asymmetric: organizer proposes 2–4 candidate windows → celebrant marks
+each as `works | works-with-effort | no-go` → other members vote only on
+windows the celebrant didn't veto. Generic symmetric polling (every voter
+counts equally) lives elsewhere.
+
+**Rationale:** For a bach party the celebrant's availability is the
+*constraint*, not one vote among many. Standard equal-vote polling
+mis-models this — the celebrant could be outvoted on a weekend that
+doesn't work for him. Other trip kinds may add symmetric polling at
+multi-template pivot (M5); bachelor is the wedge case.
+
+**Alternatives considered:**
+- Symmetric equal-vote polling — rejected; mis-models the celebrant role.
+- Organizer picks dates alone — rejected; loses the "we're picking
+  together" social affordance.
+
+---
+
+## 2026-05-18 PM — Research wave: roadmap reshape
+
+A second research wave dispatched 8 subagents (personas, UX design,
+architect audit, integration feasibility, party/delight, tooling/skills)
+plus an initial bachelor-trip-norms research agent. Findings live in
+`notes/research/*` (see `notes/research/INDEX.md`). Synthesis +
+roadmap-update proposal lives in `notes/synthesis-2026-05-18.md`.
+
+The 15 ADRs that follow are the concrete decisions extracted from that
+synthesis. Each is its own entry for archaeology, but they share the
+synthesis doc as common context — read it before reading these.
+
+---
+
+## 2026-05-18 PM — Don't encode a default
+
+**Decision:** When designing any user-facing data primitive — RSVP,
+expense splits, dietary, dress code, visibility — default to
+**per-item granular**, not "uniform attendee assumed and exceptions
+opt out." Non-default attendees opt **into** participation, not out
+of assumptions.
+
+**Rationale:** Across all six edge-case attendee personas
+(`notes/research/persona-edge-attendees.md`) the failure mode is
+identical — the app assumes a uniform attendee (fully-funded,
+fully-available, fully-typical-diet, drinking, present-for-all-days,
+of-the-tribe) and forces anyone who diverges to *self-identify the
+divergence*, usually in front of the group. The fix isn't six
+special-case features; it's making the primitives granular by
+default so every attendee is configuring their own trip from the
+same neutral form.
+
+**Implications:**
+- Per-item RSVP (not just per-day)
+- Per-line itemized money pool (not equal-split-everything)
+- Per-event dress code, dietary check, activity tag
+- No "budget mode" toggle, no "sober" badge — the granular primitives
+  do the work without labeling anyone
+
+**Alternatives considered:**
+- Special-case features (sober badge, broke mode, dietary alert) —
+  rejected; they segregate the people they're meant to help.
+
+---
+
+## 2026-05-18 PM — Generic `visibility` enum across user-content tables
+
+**Decision:** Every new user-content table (`itinerary_items`,
+`announcements`, `polls`, `expenses`, `pins`, `photos`) ships with a
+`visibility trip_visibility not null default 'everyone'` column.
+Enum values: `everyone | organizers_only | hide_from_celebrant |
+custom`. Custom audiences via a `content_visibility_grants` join.
+
+**Rationale:** Per-field surprise visibility is the killer
+differentiator from the bach-trip research (every existing tool
+assumes one shared view). Sprinkling `visible_to_groom boolean`
+across five tables is the retrofit-painful path. One enum +
+one column per table = clean RLS clauses like
+`using (visibility <> 'hide_from_celebrant' or not is_celebrant)`.
+
+**Alternatives considered:**
+- Polymorphic `visibility_rules` table — over-engineered for MVP.
+- Boolean column per table — retrofit pain.
+
+---
+
+## 2026-05-18 PM — `is_celebrant` flag on `trip_members` from day one
+
+**Decision:** Add `trip_members.is_celebrant boolean not null
+default false` plus a partial unique index
+(`where is_celebrant`) capping at one per trip. Ships in the same
+migration as the visibility enum above.
+
+**Rationale:** The celebrant (groom / bride / birthday-haver) is
+the only attendee that matters for surprise filtering. Without
+this column, every visibility RLS policy needs rewriting once
+"hide from the celebrant" becomes a feature. One column now =
+no rewrite later. For trip kinds with no celebrant (e.g., a ski
+trip), `false` for everyone is fine — the flag is opt-in per
+trip kind.
+
+**Alternatives considered:**
+- Encode celebrant as a `trip_role` enum value — collapses
+  `organizer + celebrant` ambiguity (e.g., the groom is also
+  the trip creator). Two columns is right.
+
+---
+
+## 2026-05-18 PM — `trip_kind` enum on `trips` from day one
+
+**Decision:** Add `trips.kind trip_kind not null default 'bachelor'`
+plus `trips.is_template boolean default false`. The enum starts
+with `bachelor` only; `bachelorette`, `ski`, `wedding_weekend`,
+`generic` are added as Goal 8 templates ship.
+
+**Rationale:** Every later filter, default-itinerary seed,
+theming hook, and analytics cut depends on the kind column
+existing. Adding it post-launch is trivial; backfilling
+untyped trips with heuristics is not. The
+`/lib/templates/<kind>.ts` config files (palette, copy, default
+tags) read from this enum.
+
+**Alternatives considered:**
+- Defer to Goal 8 — column is load-bearing for templates;
+  adding it later means every existing trip needs a backfill
+  + a heuristic for "is this a bach party?".
+
+---
+
+## 2026-05-18 PM — Accountless attendees: decouple `trip_members.user_id` from `auth.users`
+
+**Decision:** Make `trip_members.user_id uuid nullable` and add
+`display_name text`, `phone_e164 text`, `email text` columns.
+A member can exist on a trip *without* an auth.users row;
+they "claim" the membership on first magic-link login.
+
+**Rationale:** The "guy who won't download anything" is real
+(per audience research). Splid's wedge ("host has account,
+attendees don't") is gated by this decoupling. Refactor
+post-launch is one of the worst in social-app history —
+every RLS policy, every FK, every `/lib/db/` query function
+touched. Pay the cost now or pay 10× later.
+
+**RLS implications:** Policies that currently key on
+`auth.uid() = user_id` get a second clause for the
+shadow-attendee path. Documented as part of the migration.
+
+**Alternatives considered:**
+- Separate `shadow_profiles` table — more tables, more JOINs,
+  harder RLS. Nullable `user_id` is simpler.
+
+---
+
+## 2026-05-18 PM — Idempotency keys on mutation-heavy tables
+
+**Decision:** Every mutation-heavy table
+(`money_pool_entries`, `expenses`, `announcements`, future
+`pins`, `polls`) ships with `idempotency_key uuid` + partial
+unique index. Server actions accept a client-generated key per
+invocation; double-submit = no-op.
+
+**Rationale:** The actual use case is drunk-user-on-bad-cell-
+signal double-tapping "mark paid." Without idempotency, this
+creates two rows and a support nightmare. One column + one
+index per table.
+
+**Alternatives considered:**
+- Database-level dedup via constraints on `(user_id,
+  amount_cents, created_at-bucket)` — fragile and surprising.
+- App-level dedup with timestamp windows — same fragility.
+
+---
+
+## 2026-05-18 PM — Currency-aware money fields from day one
+
+**Decision:** Every money column ships with a
+`currency char(3) not null default 'USD'` sibling. Applies to
+`expenses`, future `money_pool_entries`, future tip/fee
+columns.
+
+**Rationale:** `amount_cents` assumes USD implicitly. The
+destination-wedding-in-Mexico use case breaks this. One
+column now = no migration pain at the first
+international trip. Cost: 3 bytes per row, no code change at
+MVP since everything reads `default 'USD'`.
+
+**Alternatives considered:**
+- Defer to "internationalization sprint" — there is no such
+  sprint planned; gets retrofitted on demand under pressure.
+
+---
+
+## 2026-05-18 PM — Photo storage is Supabase Storage, not Google Photos
+
+**Decision:** Goal 7 photo wall stores photos in Supabase
+Storage. Google Photos integration is link-out only (organizer
+pastes a shared-album URL, we render a tile).
+
+**Rationale:** Google killed the
+`photoslibrary.sharing` / `photoslibrary` / `photoslibrary.readonly`
+scopes on **March 31, 2025**. `sharedAlbums.share/.join/.leave`
+all return `403 PERMISSION_DENIED`. We can technically upload via
+`photoslibrary.appendonly` but only our app can see those albums —
+useless for sharing with a roster.
+
+**Trade-offs accepted:** We host the storage cost. Mitigated by
+photo expiry default (90d) and per-trip storage cap (both already
+in Goal 7 DoD).
+
+**Reference:** `notes/research/integration-feasibility.md` §3.
+
+---
+
+## 2026-05-18 PM — Splitwise = deep-link prefill, not bidirectional sync
+
+**Decision:** When/if Splitwise integration ships, it's a
+deep-link prefill flow (open Splitwise with the expense pre-filled,
+user taps save). NOT bidirectional create-expense-from-our-app.
+
+**Rationale:** Splitwise's free tier caps users at **3 expenses
+per day** as of 2024, with a 10-second cooldown and ads. Any flow
+that creates expenses via API burns the user's free-tier quota and
+makes our app look broken. Deep-link prefill respects whatever
+plan the user is on.
+
+**Reference:** `notes/research/integration-feasibility.md` §1.
+
+---
+
+## 2026-05-18 PM — Stripe Connect language: "deposit + delayed payout," never "escrow"
+
+**Decision:** All copy + decisions.md + docs use "deposit and
+delayed payout" (Stripe's actual product) not "escrow" (which
+Stripe does NOT offer). The mechanic for the bachelor party: charge
+attendees → hold in platform balance → delayed payout to organizer
+up to 90 days max (Custom/Express only). Goal 6.5 stays
+informational/Venmo-deep-link; real Stripe is a separate decision
+at Goal 7+.
+
+**Rationale:** "Escrow" is a regulated term implying funds held by
+a neutral third party with statutory protections. Stripe Connect is
+not that. Using the wrong word in copy or contracts is a
+legal-precision issue. Per Stripe support and
+[connect/manual-payouts](https://docs.stripe.com/connect/manual-payouts),
+delayed payout ≤90 days is the available behavior.
+
+**Reference:** `notes/research/integration-feasibility.md` §2.
+
+---
+
+## 2026-05-18 PM — No SMS at MVP; email-first for transactional
+
+**Decision:** Magic-link auth and all transactional notifications
+ship via email (Resend at Goal 4). SMS via Twilio is deferred
+until users explicitly ask.
+
+**Rationale:** US **A2P 10DLC** registration is mandatory for SMS
+sending (~$19 one-time + $4/mo per campaign + $0.003/msg + carrier
+fees). Group MMS to >10 recipients is filtered aggressively. There
+is no programmatic iMessage send for third parties. Email beats
+SMS in 2026 for "trip created" / "you have an invite" / "RSVP
+cliff approaching" — same delivery rate, no carrier compliance.
+
+**Trade-offs accepted:** The friend without an inbox-checking
+habit may miss the magic link. Magic-link email is short-lived;
+the invite link itself remains shareable in iMessage.
+
+**Reference:** `notes/research/integration-feasibility.md` §10.
+
+---
+
+## 2026-05-18 PM — Notification outbox + dispatcher seam from Goal 4
+
+**Decision:** Even though Goal 4 ships only realtime broadcasts (no
+email/SMS yet), introduce a `notifications` outbox table + single
+dispatcher function from the start. Every server action that needs
+to notify writes to the outbox; the dispatcher fans out to channels
+(realtime now, email later, push later).
+
+**Rationale:** Resend / Sentry / push will each be tempting as
+ad-hoc calls from server actions. Once one lands, every later
+channel becomes a parallel ad-hoc call, and there's no single
+place to apply per-user mute, batching, retry, or
+delivery-receipt logic. Build the seam at Goal 4 even with one
+channel; add channels as needed.
+
+**Alternatives considered:**
+- Wait until 2 channels exist — by then the cleanup is rework.
+
+---
+
+## 2026-05-18 PM — Tooling defaults: Supabase MCP + Vercel MCP authenticated; disable noise plugins
+
+**Decision:** Authenticate the Supabase MCP server and the
+Vercel MCP server in this project. Disable the following
+plugins (re-enable on demand for a specific session):
+`voltagent-core-dev`, `figma`, `shopify`, `shopify-ai-toolkit`,
+`feature-dev`, `claude-md-management`.
+
+**Rationale:** Supabase MCP exposes `execute_sql` (iterate on
+schema in-session without writing migration history),
+`get_advisors` (RLS lint), and `search_docs` (current docs) —
+single highest-ROI MCP for our stack. Vercel MCP is read-only
+deployment / log inspection for "why did the preview fail?".
+The disabled plugins either cover the wrong domain
+(`shopify`, `figma`) or duplicate global agents the
+performance.md rules already select for (`voltagent-core-dev`,
+`feature-dev`).
+
+**Reference:** `notes/research/tooling-and-skills.md` §3, §7.
+
+---
+
+## 2026-05-18 PM — App voice/personality is load-bearing
+
+**Decision:** Every UI string ships under a one-question voice
+test: *"Would you say this out loud at a pre-trip dinner?"*. If
+yes, ship. If it sounds like a SaaS onboarding email, rewrite.
+This becomes a PR-template checklist item for any UI-touching
+PR.
+
+**Style boundary conditions:**
+- RIGHT: warm, irreverent, self-aware, specific to the occasion
+  (Partiful invite copy, Cash App confirmations, the best-man
+  speech that lands without cringe)
+- WRONG: corporate enthusiasm, hollow hype, frat-coded,
+  passive-aggressive, gender-assuming, penis-coded
+
+**Rationale:** Three personas independently flagged voice as
+load-bearing — the groom (anti-cringe), the best man
+(system-as-shield not nag), the +1 bridge (warm not
+performative). Bad voice is the #1 reversible feature that
+turns the app from "celebration tool" into "Asana for
+friends."
+
+**Reference:**
+`notes/research/ux-design-principles.md` Personality & Voice.
+
+---
+
+## 2026-05-18 PM — Roles add micro-affordances, not gates
+
+**Decision:** Role differences (celebrant, organizer,
+co-organizer, member, +1) surface as **UI micro-affordances**
+(a private drawer, a badge graphic, one bespoke string per
+phase) not as access-denied messages. Celebrant doesn't see
+"you can't edit the itinerary"; celebrant sees *"Dave's got
+this. Here's what they're cooking up."*
+
+**Rationale:** Per `notes/research/fun-and-delight.md` "roles
+as personality" — same DB column, different UI treatment per
+role. The +1 explicitly does NOT want a "newcomer" badge
+(`persona-edge-attendees.md`). The co-organizer's spend cap
+reads as a perk ("trusted lieutenant"), not a limit. The
+celebrant's hidden-content view is a blurred card, not a
+missing slot.
+
+**Implementation principle:** roles map to columns in the DB
+schema; UI never references the column name directly.
+
+---
+
 ## 2026-05-18 — Collaboration: invite a second Claude Code dev on a separate machine
 
 **Decision:** Add a second developer to this project. Three sub-decisions

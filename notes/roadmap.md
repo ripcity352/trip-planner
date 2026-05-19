@@ -1,191 +1,252 @@
 # Roadmap
 
-Each goal is sized to be one focused Claude Code `/goals` session. Each goal
-must end with something deployed to Vercel and viewable on a phone.
+> Source of truth for the shipping plan. Public surface
+> [`ROADMAP.md`](../ROADMAP.md) regenerates from this file.
+>
+> Restructured 2026-05-19 after a multi-perspective review (architect +
+> 3 personas + mobile-UX + product strategy). Pre-2026-05-19 history:
+> the original Goal 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 / 6 / 6.5 / 7 / 8
+> sequence is preserved in git; the synthesis that produced it is
+> [`synthesis-2026-05-18.md`](./synthesis-2026-05-18.md). Cuts and
+> deferrals from the 2026-05-19 review live in
+> [`killed-and-deferred.md`](./killed-and-deferred.md).
 
-Goal 2/6 DoDs and the inserted Goal 1.5 / mini-goal between 6 and 7 reflect
-audit recommendations from `/notes/research/audit.md` (2026-05-18).
+The MVP target is **one real bachelor party.** Ship M1 → M4. **Stop at M4.**
+Use it for the trip. Come back to M5 only after a real-trip retro.
 
 ---
 
-## Goal 1 — Foundation deployed [ ]
+## M1 — Foundation + Schema
+
+Infrastructure + the schema primitives that every later milestone keys
+off. PWA / Sentry / rate-limiting are infra, not polish, so they land here.
 
 **Definition of done:**
-- Next.js 15 app with TypeScript strict mode created with pnpm
+- Next.js 16 app with strict TypeScript, deployed to Vercel preview
 - Tailwind + shadcn/ui initialized
-- Supabase project created (manually by user), env vars wired in
-  `.env.local` and in Vercel
-- Supabase server + browser clients in `/lib/supabase/`
-- Middleware for session refresh in place
-- Deployed to Vercel with a real preview URL
-- A placeholder home page at `/` that shows "Bachelor Party Planner" and
-  confirms env vars loaded (e.g. shows whether a session exists)
-- `/lib/utils.ts` with `cn()` helper
+- Supabase server + browser clients in `/lib/supabase/`, session refresh
+  in middleware
 - ESLint + Prettier configured
-- Initial migration applied (the one in `/supabase/migrations/0001_init.sql`)
+- `.github/` hygiene: issue templates, PR template (with microcopy
+  review checklist), Dependabot, CI workflow (typecheck + lint + test)
+- Branch protection on `main`; secret scanning + push protection
+- Vitest + Playwright with one example each
+- PWA manifest + apple-touch-icon
+- Sentry installed (server + browser, source maps)
+- Vercel Analytics enabled
+- Rate-limiting middleware seam (Upstash or Supabase) — applied to
+  `createTrip`, `acceptInvite` initially
+- `/lib/copy/empty-states.ts` and `/lib/copy/errors.ts` written upfront
+  in the app voice
+- **Foundation migration** applied, containing:
+  - `trip_kind` enum (single value `bachelor` for MVP)
+  - `is_template`, `deleted_at`, `archived_at` on `trips`
+  - `is_celebrant` on `trip_members` + partial unique index
+  - **Synthetic PK** on `trip_members.id` + FK retargeting convention
+    (feature tables reference `trip_member_id`, not `user_id`)
+  - `user_id` nullable on `trip_members` + `display_name` / `phone_e164` /
+    `email` (using `citext`) columns
+  - `trip_visibility` enum + RLS helper `can_see_content(trip_id,
+    visibility, content_id)`
+  - `trip_members_visible_rsvp(viewer_id)` view — schema-enforced
+    "declining whispers"
+  - `trip_member_days` table + auto-seed on RSVP=going
+  - `vibe_tags text[]` on `trips`
+  - `currency char(3) default 'USD'` on money columns (per-table as money
+    tables ship in M5)
+  - Idempotency-key convention documented (`notes/database-workflow.md`)
+    — scope is per-table, not uniform
 
-**Out of scope:** auth UI, trip creation, anything user-facing beyond the
-placeholder.
+**Out of scope (deferred to M5):** `audit_log`, `content_visibility_grants`,
+`display_name_override`.
+
+**Reading list:** `notes/research/audit-round-2.md` §1–6, architect review
+from 2026-05-19 (in git history if needed).
 
 ---
 
-## Goal 1.5 — Repo hygiene [ ] *(new, from audit)*
+## M2 — Trip is real
+
+Login, trip creation, invites, RSVP, bach-specific date selection,
+logged-out invite preview. Stripped Goal 2 — Fear List swipe / Crew Cards
+/ OG cards / dietary notes column are killed or moved (see
+`killed-and-deferred.md`).
 
 **Definition of done:**
-- `.github/ISSUE_TEMPLATE/` with `feature.yml`, `bug.yml`, `research.yml`
-- `.github/pull_request_template.md` requires: linked issue, test plan,
-  screenshot on iOS Safari for UI changes
-- `.github/dependabot.yml` — weekly, grouped, npm + github-actions
-- `.github/workflows/ci.yml` — pnpm typecheck + lint + test on PR
-- Branch protection on `main`: require CI green, no force-push, no deletion
-- Repo settings: secret scanning + push protection + private vulnerability
-  reporting enabled
-- Vitest installed + configured + 1 example unit test for `cn()`
-- Playwright installed + configured + 1 example E2E for "home page loads"
-- Audit-recommended labels live in repo (see `notes/research/audit.md`)
+- Magic-link auth at `/login` + `/auth/callback`
+- `/trips/new` creates a trip with `kind = 'bachelor'`; creator is
+  organizer, not celebrant
+- `/invite/[token]` shows a **logged-out preview** (trip name + dates +
+  host name + attendee count) before forcing login. Invite acceptance
+  decrements `uses_left` via SECURITY DEFINER function.
+- Trip dashboard shows trip name, dates, invite link, glanceable
+  confirmed-count ("3 going, 1 maybe, 4 invited" — never per-name for
+  declines per M1 RLS)
+- 3-state RSVP UI (going / maybe / declined) on dashboard
+- Co-organizer role: `co_organizer` enum value; `is_trip_organizer()`
+  returns true for both. **No spend cap yet** (deferred to M5).
+- **Trip date selection — celebrant-weighted** for bach kind. Organizer
+  proposes 2–4 candidate windows → celebrant marks works /
+  works-with-effort / no-go → other members vote only on windows the
+  celebrant didn't veto.
+- Reusable `<PulsePoll>` component (Supabase Realtime) — **aggregate-only
+  by default**; per-name vote visibility is voter opt-in.
+- Header with avatar + sign-out
+- Every UI string sourced from the M1 copy palettes; PR template
+  enforces microcopy review
 
-**Why before Goal 2:** Goal 2 produces the first real PRs (auth, trip
-creation) and the templates/CI need to exist to make those PRs useful.
+**Out of scope:** Fear List swipe (#29 killed), Crew Cards (#31 killed),
+dietary as a profile column (moved to M3 as per-item flag), OG cards (M5).
 
 ---
 
-## Goal 2 — Auth + Trip creation [ ] *(DoD expanded from audit)*
+## M3 — Trip is useful
+
+Itinerary first (swapped before announcements per product review — the
+itinerary is what attendees open the app *for*). Then announcements +
+realtime.
 
 **Definition of done:**
-- `/login` page: enter email, get magic link
-- `/auth/callback` route handles redirect and creates a session
-- `/trips/new` page: logged-in users can create a trip (name, dates,
-  location, description)
-- On creation, the creator is added to `trip_members` as `organizer`
-- `/trips/[tripId]` shows a minimal dashboard with trip name, dates, and a
-  shareable invite link (`/invite/[token]`)
-- `/invite/[token]` route: if logged in, adds user to trip and redirects;
-  if not, prompts login first
-  - **Honors `invites.uses_left` and `expires_at` (schema already supports)**
-  - **Decrement `uses_left` on accept via SECURITY DEFINER function**
-- **RSVP UI: 3-state control (going / maybe / declined) wired to existing
-  `trip_members.rsvp_status` column**
-- **Dietary / sober / allergy free-text field on member profile (new column
-  on `trip_members.dietary_notes`)**
-- **Per-day attendance: new table `trip_member_days (trip_id, user_id, date,
-  status)` so a member can opt into a subset of trip days**
-- **Co-organizer role: `alter type trip_role add value 'co_organizer'` and
-  update `is_trip_organizer()` to include both**
-- RLS policies for `trips`, `trip_members`, `invites`, `trip_member_days`
-- Header with user avatar + logout
-- **Open Graph card for `/invite/[token]` and `/trips/[slug]` (trip name,
-  dates, host avatar, attendee count)**
+- **Itinerary**
+  - Day-by-day view auto-generated from start/end dates
+  - `itinerary_items` with `kind` enum (event / lodging / transport /
+    meal / activity), `activity_tag` (multi), `dress_code` text
+  - Items inherit `visibility` enum (so `hide_from_celebrant` works
+    end-to-end)
+  - Add / edit / delete via server actions (idempotency keys)
+  - Click address → opens Maps deep link
+  - Mobile-first vertical timeline at 375px
+- **"What's happening right now / next" home card** — single answer in
+  <1s glance: next item title, time, location. Pre-trip shows
+  countdown + first item.
+- **Editable trip-level FAQ / notes field** (`trips.notes text`) —
+  freeform markdown, organizer-edit, member-read
+- **Per-item RSVP** — schema + one-tap silent opt-out chip per item.
+  Default state: going for any item on a day the member RSVPd going.
+  Opt-out is silent (no notification, no peer visibility).
+- **Per-item dietary / participation flag** (`itinerary_item_member_flags`) —
+  generic mechanism, organizer-visible only. Replaces profile-column
+  dietary notes.
+- **Lodging assignments** — `lodging_assignments (item_id,
+  trip_member_id, room_label)`
+- **Travel legs / arrivals manifest** — `travel_legs (trip_id,
+  trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code,
+  notes)`. Freeform — no flight parser.
+- **vCard mass-download** + **"Copy all numbers"** — for iMessage
+  group-chat creation friction
+- **Announcements** — organizer-write, member-read; visibility enum
+  respected; Supabase Realtime subscription on dashboard. Idempotency
+  scope `(trip_id, idempotency_key)`. **No outbox/dispatcher seam**
+  (killed as #33).
+- **No chat / replies** — use group text (decision preserved from
+  pre-2026-05-19 synthesis)
+
+**Out of scope:** Pin Drops (#32 killed), ICS export (#41 killed),
+balance-audit nudges, notification-outbox seam (#33 killed).
 
 ---
 
-## Goal 3 — Availability poll [ ]
+## M4 — Trip is shippable
 
-**Definition of done:**
-- Organizer can propose candidate date ranges on the trip
-- Each member sees a list of dates, picks yes/no/maybe per date
-- Persists to `availability` table via server action
-- Aggregated view shows count per date with member names on hover/tap
-- Mobile-optimized: usable with thumbs while standing on a subway
-
----
-
-## Goal 4 — Announcements + realtime [ ]
-
-**Definition of done:**
-- `announcements` table populated via server action (organizer-write,
-  member-read per RLS)
-- Organizer can post; everyone can read
-- Supabase Realtime subscription so new announcements appear without refresh
-- Optional: pinned announcement shows at top of trip dashboard
-- **Decision: announcements stay one-to-many; no real chat for MVP. Use
-  group text. See `decisions.md`.**
-- Stretch: email digest via Resend on new announcements
-
----
-
-## Goal 5 — Itinerary builder [ ]
-
-**Definition of done:**
-- Day-by-day view of the trip (auto-generated from start/end dates)
-- Add/edit/delete `itinerary_items` (title, start time, location, notes,
-  cost estimate)
-- Click an address → opens in Google/Apple Maps
-- Mobile view is a vertical timeline; desktop can be denser
-- **Calendar export (ICS) per trip — one endpoint, generated on demand**
-
----
-
-## Goal 6 — MVP polish + ship [ ] *(DoD expanded from audit)*
+The ship moment. Polish + the bright line marked **STOP HERE.**
 
 **Definition of done:**
 - Custom domain wired up in Vercel
-- Theming pass: party-specific colors, hero, name
+- Theming pass: party-specific colors, hero image, party name
 - Mobile QA across iOS Safari and Android Chrome
-- **PWA manifest + apple-touch-icon (Add to Home Screen on iOS)**
-- **Sentry installed (server + browser, source maps)**
-- **Vercel Analytics enabled**
-- **Rate limiting on `createTrip`, `acceptInvite`, `postAnnouncement` (Upstash
-  or Supabase-based limiter)**
-- **`/legal/terms` and `/legal/privacy` stub pages live (see
-  `notes/moderation.md`)**
-- **axe-core / Lighthouse a11y pass per UI route in DoD checklist going
-  forward**
-- Send invite link to actual party attendees
-- **Stop here. Use it for the real trip. Come back after.**
+- **Microcopy review** enforced as PR-template checklist for any UI string
+- **`/legal/terms` and `/legal/privacy` stub pages** — pass the voice test
+- **axe-core + Lighthouse a11y pass** per UI route
+- **Color is never the only signal** — RSVP/state icons accompany color
+- **Send invite link to actual party attendees**
+- **Stop here.** Use it for the real trip. Come back to M5 only after a
+  retrospective surfaces what the trip actually needed.
+
+**Out of scope:** every delight mechanic deferred to M5 (Drumroll,
+Lock-In Day, Hot Seat — all killed; can earn back via retro).
 
 ---
 
-## Goal 6.5 — Money pool (manual) [ ] *(new, from audit)*
+## M5 — Earned post-trip
 
-Highest-asked feature in bachelor-party planning forums per the audience
-research. Ships the *coordination* of money, not actual fund movement.
+Gated on a real-trip retrospective. Items here are *valid* and *might
+ship* — they're just not in MVP. Each earns its way in by surviving the
+retro, not by being on this list.
 
-**Definition of done:**
-- New table `money_pool_entries (trip_id, user_id, amount_cents, status,
-  marked_paid_at)` with RLS
-- New table `payment_handles (user_id, provider, handle)` for Venmo /
-  Cash App / Zelle usernames per user
-- `/trips/[tripId]/money` page: organizer sets per-attendee amount due,
-  attendees see "you owe Jake $400 — pay via Venmo" with a deep link
-- Manual "mark paid" toggle for the organizer
-- No payment processing — explicitly documented in UI as informational
+Current shape (see GitHub `M5 — Earned post-trip` milestone for live
+list):
 
----
-
-## Goal 7 — Expenses + photos [ ] *(adjusted from audit)*
-
-**Definition of done:**
-- `expenses` + `expense_splits` flows (schema already exists)
-- Add expense: who paid, how much, what for, who owes
-- Per-member balance view ("you owe Alex $42")
-- **Settlement-suggestion algorithm to minimize number of transfers (Settle Up pattern)**
-- Photo upload via Supabase Storage, shared photo wall view
-- **`photos.expires_at` column with default of 90 days; archived photos
-  exempt (audit risk #3 mitigation)**
-- **Per-trip storage cap enforced to bound Supabase Storage cost**
-- **Photo report/takedown flow (mailto:link plus a `reports` table)**
-
----
-
-## Goal 8 — Multi-tenant pivot [ ]
-
-**Definition of done:**
-- Landing page at `/` with marketing copy
-- Anyone can sign up, create a trip, invite friends
-- Trip templates: bachelor party, bachelorette, ski trip, wedding weekend,
-  generic — each pre-populates itinerary categories
-- Basic dashboard listing all trips a user is in
-- Soft launch to a few friends; gather feedback
-- **PostHog (or equivalent) for product analytics**
-- **Plan Supabase Pro upgrade if storage / row counts approach free-tier
-  ceiling**
+- **Money pool (manual)** — itemized line items, per-day proration,
+  silent comping, 3-tier nudge escalation, Money-Front badge
+  (organizer-private only), `audit_log` triggers narrowed to money
+  tables
+- **Expenses + photos** — `expense_category` enum, Quick Tab mode,
+  Settlement Closer (single-Venmo-link-per-person), Supabase Storage
+  photo wall, Disposable Cam, Group Recap stub, Splitwise deep-link
+- **Multi-tenant pivot** — `bachelor` + `generic` template configs
+  only at first launch
+- **Retention engine** — Time Capsule (1-year anniversary), Recap Card
+  per attendee, Live Now during-trip mode, Hype Memos (voice memos
+  pre-trip)
+- **Re-evaluated delight (earned back via voice library + design
+  rigor)** — Drumroll, Lock-In Day OG share card, Hot Seat copy
+- **Deferred infrastructure** — `audit_log` (re-design when revived),
+  `content_visibility_grants` (design under requirements),
+  `display_name_override`, notification outbox / dispatcher (when a
+  second channel arrives)
+- **Research spikes** — AI itinerary extraction (Anthropic API +
+  Resend inbound), Apple + Google Wallet pass feasibility
 
 ---
 
-## Notes on running each goal
+## Cross-cutting (apply at every milestone)
+
+- **Voice test:** every UI string passes *"would you say this at a
+  pre-trip dinner?"*
+- **Don't encode a default:** per-item granular primitives; non-default
+  attendees opt INTO participation
+- **Visibility-first feature design:** decide default visibility before
+  coding any user-content table
+- **Idempotency:** every mutation server action accepts a
+  client-generated `idempotency_key`; mutation-heavy tables have the
+  column + unique index (scope per-table — see `notes/database-workflow.md`)
+- **Currency on money fields:** every money column ships with a
+  `currency char(3) default 'USD'` sibling
+- **Going broadcasts, declining whispers:** enforced schema-side via the
+  `trip_members_visible_rsvp` view + aggregate-only Pulse Poll defaults
+- **Mobile-first 375px:** every UI route tested on actual phone before
+  merge — desktop responsive mode lies
+
+## Anti-patterns hard-banned across all milestones
+
+From `notes/research/fun-and-delight.md` + 2026-05-19 review:
+
+- No leaderboards (RSVP speed, payment, photo count, votes — any kind)
+- No streaks; no Duolingo owl
+- No achievement unlocks / badges
+- No notification-preferences settings screen (one smart default + OS
+  mute)
+- No tooltips, onboarding banners, "complete your profile" prompts,
+  progress bars, completion scores
+- No required fields with asterisks
+- No anthropomorphized mascot
+- No reaction inflation (cap at ~6 fixed emoji)
+- No penis-anything in UI / assets / copy
+- Push notifications are for LOGISTICS only (cliff dates / day-of /
+  payment due) — never for "Pete added a photo"
+- Per-name "going / declining" poll visibility default → never (must be
+  voter opt-in)
+- Naming the last-to-RSVP person → never
+- Group-visible "outstanding payment" lists → never (aggregate-only when
+  shared)
+
+## Notes on running each milestone
 
 - Keep PRs small. One feature = one branch = one preview URL.
 - Test on your actual phone before merging — desktop responsive mode lies.
-- If you finish a goal in under an hour, you probably under-scoped the
-  acceptance criteria. Add more or polish.
-- If you're stuck past two hours, the goal was probably too big — split it.
+- If you finish a milestone in under a day, you under-scoped — add polish.
+- If you're stuck past a week on M1, the foundation cut was too big — split.
+- Per-task tooling recommendations live in
+  `notes/research/tooling-and-skills.md` §2.
+- Before starting any milestone: skim `notes/research/INDEX.md` for the
+  relevant persona + UX principles + audit findings.
