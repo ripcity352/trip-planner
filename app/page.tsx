@@ -18,7 +18,7 @@ export default async function Home() {
           Bachelor Party Planner
         </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Mobile-first group trip planning. Goal 1 — Foundation deployed.
+          Mobile-first group trip planning. M1 — Foundation deployed.
         </p>
       </header>
 
@@ -35,7 +35,7 @@ export default async function Home() {
       </section>
 
       <p className="text-xs text-zinc-500">
-        Goal 1 placeholder. Auth UI and trip creation land in Goal 2.
+        M1 placeholder. Auth UI and trip creation land in M2.
       </p>
     </main>
   );
