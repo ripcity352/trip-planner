@@ -12,11 +12,18 @@
  *
  * RLS still enforces "you can only see trips you're a member of." These
  * functions don't add app-level access checks because the database does
- * it for us. See `supabase/migrations/0001_init.sql`.
+ * it for us. See `supabase/migrations/20260519123255_m1_foundation.sql`.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Trip } from "./types";
+
+// Single source of truth for the trips column list. RLS will additionally
+// hide rows where `deleted_at is not null` for non-organizers, but we
+// also pass `.is("deleted_at", null)` on list queries as defense-in-depth
+// + an explicit signal to the reader.
+const TRIP_COLUMNS =
+  "id, slug, name, description, location, starts_at, ends_at, created_by, created_at, updated_at, kind, is_template, deleted_at, archived_at, vibe_tags";
 
 /**
  * Get a trip by its URL slug. Returns null if the trip doesn't exist or
@@ -28,9 +35,7 @@ export async function getTripBySlug(
 ): Promise<Trip | null> {
   const { data, error } = await supabase
     .from("trips")
-    .select(
-      "id, slug, name, description, location, starts_at, ends_at, created_by, created_at, updated_at"
-    )
+    .select(TRIP_COLUMNS)
     .eq("slug", slug)
     .maybeSingle();
 
@@ -50,9 +55,7 @@ export async function getTripById(
 ): Promise<Trip | null> {
   const { data, error } = await supabase
     .from("trips")
-    .select(
-      "id, slug, name, description, location, starts_at, ends_at, created_by, created_at, updated_at"
-    )
+    .select(TRIP_COLUMNS)
     .eq("id", id)
     .maybeSingle();
 
@@ -64,14 +67,15 @@ export async function getTripById(
 }
 
 /**
- * List all trips the caller is a member of, newest first.
+ * List all trips the caller is a member of, newest first. Excludes
+ * soft-deleted and template trips.
  */
 export async function listMyTrips(supabase: SupabaseClient): Promise<Trip[]> {
   const { data, error } = await supabase
     .from("trips")
-    .select(
-      "id, slug, name, description, location, starts_at, ends_at, created_by, created_at, updated_at"
-    )
+    .select(TRIP_COLUMNS)
+    .is("deleted_at", null)
+    .eq("is_template", false)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -108,9 +112,7 @@ export async function createTrip(
   const { data, error } = await supabase
     .from("trips")
     .insert({ ...input, created_by: userId })
-    .select(
-      "id, slug, name, description, location, starts_at, ends_at, created_by, created_at, updated_at"
-    )
+    .select(TRIP_COLUMNS)
     .single();
 
   if (error) {
