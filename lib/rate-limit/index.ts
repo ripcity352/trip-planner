@@ -50,10 +50,18 @@ const ANON_CLIENT_ID = "anon";
  * Scopes the action wrapper accepts. Keep this list narrow on purpose:
  * unrecognized scopes are rejected at the type level so callers can't
  * silently typo a new bucket into existence.
+ *
+ * `AUTH_MAGIC_LINK` (#102 fix-up) covers the `/login` server action and
+ * shares the default budget (30 / 60s). The default is generous for an
+ * auth-issuance endpoint; before production we should ratchet this
+ * down to ~5 / hour by introducing a per-scope budget map. Tracking as
+ * a follow-up: the surgical fix here keeps the seam in place without
+ * rebuilding the limiter config surface.
  */
 export const RATE_LIMIT_SCOPES = {
   CREATE_TRIP: "createTrip",
   ACCEPT_INVITE: "acceptInvite",
+  AUTH_MAGIC_LINK: "authMagicLink",
 } as const;
 
 export type RateLimitScope =

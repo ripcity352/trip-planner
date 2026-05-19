@@ -137,4 +137,28 @@ describe("<LoginForm />", () => {
       screen.getByRole("button", { name: /send the link/i })
     ).toBeInTheDocument();
   });
+
+  it("renders the rate_limit copy when the server action throttles", async () => {
+    // Covers the PR #102 hardening: magic-link issuance is now wrapped
+    // in `rateLimitedAction("authMagicLink", ...)`. When the bucket is
+    // empty, `requestMagicLink` returns `{ ok: false, errorKey:
+    // "rate_limit" }` and the form should surface the matching copy.
+    requestMagicLinkMock.mockResolvedValue({
+      ok: false,
+      errorKey: "rate_limit",
+    });
+    render(<LoginForm />);
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "dave@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send the link/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.rate_limit)).toBeInTheDocument();
+    });
+    // Submit button is back — user can retry once the budget resets.
+    expect(
+      screen.getByRole("button", { name: /send the link/i })
+    ).toBeInTheDocument();
+  });
 });
