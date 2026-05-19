@@ -28,7 +28,14 @@ export type ErrorKey =
   | "rls_denied"
   | "validation_failed"
   | "rate_limit"
-  | "idempotency_replayed";
+  | "idempotency_replayed"
+  | "auth_failed"
+  | "auth_link_sent"
+  | "invite_expired"
+  | "invite_exhausted"
+  | "invite_not_found"
+  | "trip_create_failed"
+  | "rsvp_save_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -37,4 +44,12 @@ export const ERRORS: Record<ErrorKey, string> = {
     "Something in there isn't quite right. Give it another look.",
   rate_limit: "Easy, tiger. Give it a sec and try again.",
   idempotency_replayed: "Already done — no double-tap needed.",
+  auth_failed: "Link's stale. Hop back to /login and try again.",
+  auth_link_sent: "Link's on its way. Check your email — it's quick.",
+  invite_expired: "That link expired. Ask whoever sent it for a fresh one.",
+  invite_exhausted: "Link's been used up. Ask whoever sent it for another.",
+  invite_not_found: "Can't find that invite. Double-check the link.",
+  trip_create_failed:
+    "Couldn't lock that in. Give it another shot in a sec.",
+  rsvp_save_failed: "RSVP didn't save. Tap it again — it'll catch.",
 };
