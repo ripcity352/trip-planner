@@ -56,6 +56,8 @@ supabase/.temp
 
 # claude code — keep settings.json (shared), drop local overrides
 .claude/settings.local.json
+# agent scratch worktrees created by Claude Code subagent runs
+.claude/worktrees/
 
 # generated Supabase types (verification only; lib/db/types.ts is the
 # committed source of truth — see notes/database-workflow.md)
