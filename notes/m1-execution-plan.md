@@ -138,24 +138,24 @@ gh issue list --milestone "M1 — Foundation + Schema" --json state -q '. | leng
 
 ## M1 DoD checklist (the source of truth — check as work lands)
 
-- [ ] Next.js 16 + strict TS on Vercel preview (already true; verify still true after waves)
-- [ ] Tailwind + shadcn/ui initialized (verify present)
-- [ ] `/lib/supabase/{server,browser,middleware}.ts` + session refresh in `proxy.ts`/`middleware.ts`
-- [ ] ESLint + Prettier configured
-- [ ] `.github/` hygiene: issue templates, PR template **with microcopy checklist (#65)**, Dependabot, CI workflow
+- [x] Next.js 16 + strict TS on Vercel preview (already true; verify still true after waves)
+- [x] Tailwind + shadcn/ui initialized (verify present)
+- [x] `/lib/supabase/{server,browser,middleware}.ts` + session refresh in `proxy.ts`/`middleware.ts`
+- [x] ESLint + Prettier configured
+- [x] `.github/` hygiene: issue templates, PR template **with microcopy checklist (#65)**, Dependabot, CI workflow
 - [ ] Branch protection on `main`; secret scanning + push protection on
 - [ ] Vitest + Playwright with one example each (Wave 3)
-- [ ] PWA manifest + apple-touch-icon (#68a)
-- [ ] Sentry server + browser + sourcemaps (#68b)
-- [ ] Vercel Analytics enabled (Wave 1 — folded into #68a subagent)
-- [ ] Upstash rate-limit middleware seam (#68c) applied to `createTrip` + `acceptInvite` stubs
-- [ ] `lib/copy/empty-states.ts` + `lib/copy/errors.ts` written in app voice (#69)
-- [ ] **Foundation migration applied** (Wave 2) covering #20, #21, #22, #23, #24, #25, #26, #66, #67, #70
-- [ ] `lib/db/types.ts` matches migration
-- [ ] Visual regression CI live (#85)
-- [ ] `notes/decisions.md` M1-complete entry appended
+- [x] PWA manifest + apple-touch-icon (#68a)
+- [x] Sentry server + browser + sourcemaps (#68b)
+- [x] Vercel Analytics enabled (Wave 1 — folded into #68a subagent)
+- [x] Upstash rate-limit middleware seam (#68c) applied to `createTrip` + `acceptInvite` stubs
+- [x] `lib/copy/empty-states.ts` + `lib/copy/errors.ts` written in app voice (#69)
+- [x] **Foundation migration applied** (Wave 2) covering #20, #21, #22, #23, #24, #25, #26, #66, #67, #70
+- [x] `lib/db/types.ts` matches migration
+- [x] Visual regression CI live (#85)
+- [x] `notes/decisions.md` M1-complete entry appended
 - [ ] `notes/roadmap.md` marks M1 done
-- [ ] `#16` / `#17` dispositioned
+- [x] `#16` / `#17` dispositioned
 
 ---
 

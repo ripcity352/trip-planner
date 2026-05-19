@@ -5,6 +5,101 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-19 — M1 foundation + schema — all PRs open, awaiting merge
+
+**Decision:** The M1 execution plan from the same date completed authoring.
+Seven PRs are open against `main` with CI green on all:
+
+- #86 — design-system PR checklist (`chore/ds-pr-checklist`)
+- #87 — PWA manifest + apple-touch-icon + Vercel Analytics (`feat/pwa-manifest`)
+- #88 — copy palettes `lib/copy/empty-states.ts` + `lib/copy/errors.ts`
+  (`chore/copy-palettes`)
+- #89 — Sentry server + browser + sourcemaps (`feat/sentry`)
+- #91 — visual-regression Playwright pixel-diff in CI (`feat/visual-regression-ci`)
+- #92 — Upstash rate-limit middleware seam (`feat/rate-limit`)
+- #93 — foundation migration + `lib/db/types.ts` sync
+  (`feat/m1-foundation-migration`)
+
+Milestone closure happens when the DoD checklist in
+`notes/m1-execution-plan.md` is fully ticked — i.e. *after* these PRs land
+on `main`, not at the moment this entry is written.
+
+**Load-bearing decisions made *during* execution (not in the original plan
+or issue bodies):**
+
+- **One foundation migration file, not one-per-issue.**
+  `20260519123255_m1_foundation.sql` is a single timestamped SQL file
+  collapsing #20, #21, #22, #23, #24, #25, #26, #66, #67, #70. RLS rewrites
+  for the changed tables ship in the same migration as the schema changes
+  that triggered them — atomicity over per-issue clarity.
+- **`trip_visibility` lands on `announcements`, `itinerary_items`,
+  `expenses` *in M1*,** not per-feature in M3. The helper
+  `can_see_content(trip_id, visibility)` is the single source of truth for
+  content-visibility RLS; pushing the column out of M1 would have meant
+  three separate RLS rewrites in M3.
+- **`trip_member_days` SELECT is trip-wide for members, not own-row only.**
+  The roster view ("who's around on Saturday night?") is the load-bearing
+  query and own-row RLS would have forced an N+1 client-side join.
+- **Two triggers on `trip_member_days`, not one.** In addition to the
+  RSVP=going seed, a second trigger fires on `trips.starts_at/ends_at
+  UPDATE` to re-seed days. This covers the common "name the trip first,
+  pick dates later" path — without it, members who RSVPd before dates
+  were locked would have empty day rows.
+- **`content_visibility_grants` deferred to the first `custom`-audience
+  consumer (likely M3 announcements).** The polymorphic-by-content-type vs
+  per-type join-table decision is left open until there's a real consumer
+  to design against. The `trip_visibility` enum already accepts `custom`
+  as a value; the grants table can be added without an enum migration.
+
+**Still-open follow-ups (post-M1):**
+
+- **#90** — design-system v2 token + font wiring (deferred from M1; not
+  blocking the milestone).
+- **Human-only steps from the docs PR (this one):**
+  - Vercel dashboard SSO flip (see the ADR entry below).
+  - Supabase PAT provisioning for the CI staging-migration workflow in #16.
+
+---
+
+## 2026-05-19 — Vercel preview SSO — off for preview, on for production
+
+**Decision:** Turn SSO **off** for Vercel Preview deployments. Production
+stays gated by SSO if/when production handles real attendee data.
+
+**Rationale:** Aligns with the "code is public, data is private"
+architecture already accepted for this repo. Preview deploys point at the
+staging Supabase project, which holds only test data, so the data-leak
+risk on a public preview URL is low. The upside — being able to text a
+preview URL to a designer or to the groom for early feedback without
+asking them to authenticate against a team they're not on (Vercel Hobby
+caps team size at 1) — outweighs the marginal indexing risk.
+
+**Alternatives considered:**
+
+- **Keep SSO on everywhere** — rejected. Adds friction for design feedback
+  loops and means the second collaborator can't see their own preview URL
+  without an out-of-band login.
+- **Lock previews behind a shared static password** — rejected. Vercel's
+  password-protect feature is a paid Pro-plan tier; the Hobby plan we're
+  on doesn't support it. SSO-off + private staging data is simpler and
+  costs nothing.
+
+**Indexing concern:** Vercel preview subdomains return a `noindex` header
+by default. Verify with `curl -I` against a preview URL after the flip,
+from a logged-out browser, to confirm both the 200 and the noindex header.
+
+**Action items (human-only — `ripcity352`):**
+
+1. Vercel dashboard → Project → Settings → Deployment Protection → set
+   Preview to "Only Preview Deployments are not protected" (or equivalent
+   per the current Vercel UI).
+2. From a logged-out browser, hit a fresh preview URL and confirm `curl -I`
+   returns a 200 with `x-robots-tag: noindex` (or equivalent).
+3. Track completion as a follow-up comment on #17 after this docs PR
+   merges; close #17 only once both steps are verified.
+
+---
+
 ## 2026-05-19 — Multi-perspective review: prune + restructure
 
 **Decision:** Replace the Goal 1 / 1.5 / 1.6 / 2 / 3 / 4 / 5 / 6 / 6.5 / 7 / 8
