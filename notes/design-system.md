@@ -14,6 +14,12 @@
 > primitives (buttons, focus rings, sheet bottoms) and distinctiveness wins
 > for low-frequency moments (display type, accent color, hero motion).
 
+## PR checklist
+
+Every UI-touching PR uses the Design system review section in
+`.github/pull_request_template.md`. Reviewers do not approve UI PRs that
+skip the checklist.
+
 ## v0 → v1 changelog
 
 | Change | Why |
