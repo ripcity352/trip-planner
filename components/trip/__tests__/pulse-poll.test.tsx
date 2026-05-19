@@ -190,6 +190,45 @@ describe("<PulsePoll />", () => {
     ).toBe("t2");
   });
 
+  it("does not rebuild the channel when subscribeTableConfig is a new-but-equivalent array", async () => {
+    // Defensive contract: even if the caller fails to wrap
+    // subscribeTableConfig in useMemo, the hash-stable internal key
+    // keeps the channel intact. We re-render with a brand-new array
+    // literal carrying the same payload and assert removeChannel was
+    // NOT called.
+    const ch = buildFakeChannel();
+    const client = buildFakeClient(ch);
+    const fetchData = vi.fn(async () => "v");
+    const { rerender } = render(
+      <PulsePoll<string>
+        channelKey="k"
+        initialData="v"
+        fetchData={fetchData}
+        subscribeTableConfig={[{ table: "t1" }]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        __supabaseClient={client as any}
+        render={(d) => <span>{d}</span>}
+      />
+    );
+    expect(client.channel).toHaveBeenCalledTimes(1);
+    expect(client.removeChannel).not.toHaveBeenCalled();
+
+    // New array, identical content — should NOT trigger a teardown.
+    rerender(
+      <PulsePoll<string>
+        channelKey="k"
+        initialData="v"
+        fetchData={fetchData}
+        subscribeTableConfig={[{ table: "t1" }]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        __supabaseClient={client as any}
+        render={(d) => <span>{d}</span>}
+      />
+    );
+    expect(client.channel).toHaveBeenCalledTimes(1);
+    expect(client.removeChannel).not.toHaveBeenCalled();
+  });
+
   it("calls removeChannel on unmount", () => {
     const ch = buildFakeChannel();
     const client = buildFakeClient(ch);

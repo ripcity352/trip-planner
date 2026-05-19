@@ -208,6 +208,12 @@ create policy "marks: celebrant can update"
     )
   );
 
+-- NOTE: no DELETE policy on date_poll_celebrant_marks. Celebrants
+-- update marks via INSERT/UPDATE (upsert pattern); retraction is
+-- not supported at this layer. When "clear my mark" becomes a
+-- feature, add an explicit DELETE policy here so it doesn't quietly
+-- land without RLS coverage.
+
 -- =============================================================
 -- 5c. RLS — date_poll_votes
 -- =============================================================
@@ -265,6 +271,11 @@ create policy "votes: members update own vote"
         and tm.user_id = auth.uid()
     )
   );
+
+-- NOTE: no DELETE policy on date_poll_votes. Vote retraction goes
+-- through UPDATE-to-false (still a row, vote = false). Adding DELETE
+-- would change the semantics (an absent row is "never voted" vs.
+-- "voted no") — think before doing it.
 
 -- =============================================================
 -- 6. Trigger: assert_candidate_not_vetoed_before_vote

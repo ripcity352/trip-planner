@@ -5,6 +5,29 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-19 (PM) — proposeDateCandidates 4-cap is app-level; TOCTOU race deferred
+
+**Decision:** The `proposeDateCandidatesAction` enforces
+`MAX_CANDIDATES_PER_TRIP = 4` via an app-layer count check before
+INSERT. Two concurrent organizers can both pass the check and push
+past the cap. We accept this for MVP.
+
+**Rationale:** The expected concurrency on this surface is near-zero
+(one organizer typing on their phone). The UI surfaces the cap as a
+polite "drop one before adding" message; the actual data-integrity
+risk if exceeded is minor (an extra candidate row that can be
+deleted).
+
+**When to revisit:** when we see >1 active organizer per trip (Wave
+2a shipped `co_organizer`; not yet in UI). At that point, promote
+the cap to a `BEFORE INSERT` trigger or PG function — the trigger
+pattern is already proven in Wave 3 via
+`assert_candidate_not_vetoed_before_vote`. Tracked in #115.
+
+**Caught by:** code-reviewer agent during PR #114 review.
+
+---
+
 ## 2026-05-19 (PM) — Unify trip_members idempotency-key scope to (trip_id, user_id, idempotency_key)
 
 **Decision:** Drop the original Wave-2a `(trip_id, idempotency_key)` partial unique on `trip_members.idempotency_key` and replace with `(trip_id, user_id, idempotency_key)`. Update `accept_invite()` lookup to include `user_id`.

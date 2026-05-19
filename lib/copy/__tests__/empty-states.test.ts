@@ -145,4 +145,19 @@ describe("M2_UI_STRINGS — date-poll keys", () => {
       M2_UI_STRINGS.datePoll_no_candidates_yet.length
     ).toBeGreaterThan(0);
   });
+
+  // Vote-count + aria-label templates use `.replace()` substitution
+  // (no full i18n lib). The placeholders are load-bearing; a missing
+  // `{yes}` / `{no}` / `{label}` would leave a literal placeholder in
+  // the rendered UI. Pin the contract here.
+  it("vote-count + aria templates carry their placeholders", () => {
+    expect(M2_UI_STRINGS.datePoll_vote_counts_template).toContain("{yes}");
+    expect(M2_UI_STRINGS.datePoll_vote_counts_template).toContain("{no}");
+    expect(M2_UI_STRINGS.datePoll_vote_aria_label_template).toContain(
+      "{label}"
+    );
+    expect(M2_UI_STRINGS.datePoll_mark_aria_label_template).toContain(
+      "{label}"
+    );
+  });
 });

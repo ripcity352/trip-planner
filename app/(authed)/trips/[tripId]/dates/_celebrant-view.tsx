@@ -106,7 +106,10 @@ function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
       <CardContent className="flex flex-col gap-3">
         <div
           role="group"
-          aria-label={`Mark for ${row.candidate.label}`}
+          aria-label={M2_UI_STRINGS.datePoll_mark_aria_label_template.replace(
+            "{label}",
+            row.candidate.label
+          )}
           className="flex flex-wrap items-center gap-2"
         >
           {CHIPS.map((chip) => {
@@ -135,7 +138,9 @@ function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
         {/* Aggregate count remains visible to celebrant — they earn the
             see-all view explicitly. */}
         <p className="text-muted-foreground text-xs">
-          {row.yes_votes} yes · {row.no_votes} no
+          {M2_UI_STRINGS.datePoll_vote_counts_template
+            .replace("{yes}", String(row.yes_votes))
+            .replace("{no}", String(row.no_votes))}
         </p>
         {errorKey ? (
           <p role="alert" className="text-destructive text-sm">

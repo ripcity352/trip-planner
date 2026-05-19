@@ -78,7 +78,21 @@ export interface PulsePollProps<T> {
    */
   fetchData: () => Promise<T>;
 
-  /** Postgres table subscriptions for `postgres_changes`. */
+  /**
+   * Array of `postgres_changes` subscriptions to wire up.
+   *
+   * **IMPORTANT — must be stable across renders.** This value is in the
+   * subscription effect's dependency array; passing an inline literal
+   * `[{ table: "..." }]` will rebuild the Realtime channel on every
+   * render, spamming the server. Wrap in `useMemo` at the call site
+   * (see `_live-region.tsx` for the canonical example).
+   *
+   * As a defensive fallback we also hash this value into a stable key
+   * (`JSON.stringify`) and depend on the hash inside the effect — so
+   * even an unstable caller doesn't tear the channel down. The hash
+   * is cheap (small array of `{ table, filter? }`) and closes the
+   * footgun cleanly.
+   */
   subscribeTableConfig: ReadonlyArray<PulsePollSubscriptionTable>;
 
   /**
@@ -119,6 +133,15 @@ export function PulsePoll<T>({
   // post-reconnect refetch only fires after a real disconnect (not on
   // the first successful subscribe).
   const wasDisconnectedRef = React.useRef(false);
+
+  // Defensive: hash the subscription config to a stable key so an
+  // unstable caller doesn't rebuild the channel on every render. The
+  // JSDoc on `subscribeTableConfig` already mandates `useMemo` at the
+  // call site; this is the belt-and-braces backstop.
+  const subscribeTableConfigKey = React.useMemo(
+    () => JSON.stringify(subscribeTableConfig),
+    [subscribeTableConfig]
+  );
 
   React.useEffect(() => {
     const client = __supabaseClient ?? createClient();
@@ -197,8 +220,14 @@ export function PulsePoll<T>({
     // The dependency array binds to props that genuinely affect the
     // subscription. `fetchData` is expected to be stable
     // (`useCallback` at the call site); we include it so a swap
-    // re-binds.
-  }, [channelKey, fetchData, subscribeTableConfig, __supabaseClient]);
+    // re-binds. `subscribeTableConfigKey` is the hashed form of
+    // `subscribeTableConfig` — depending on the hash (not the array
+    // identity) means a caller that hands us a new-but-equivalent
+    // array doesn't trigger an unnecessary teardown. The lint disable
+    // is intentional: we explicitly want hash equality, not reference
+    // equality, on the subscription config.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelKey, fetchData, subscribeTableConfigKey, __supabaseClient]);
 
   return <>{render(data, isStale)}</>;
 }

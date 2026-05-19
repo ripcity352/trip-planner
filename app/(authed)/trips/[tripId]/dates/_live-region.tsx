@@ -20,6 +20,7 @@ import {
   getDatePollViewModel,
   rankCandidates,
 } from "@/lib/db/date-poll";
+import { MAX_CANDIDATES_PER_TRIP } from "@/lib/actions/date-poll-constants";
 import type { DatePollCandidateView } from "@/lib/db/types";
 
 import { PulsePoll } from "@/components/trip/pulse-poll";
@@ -93,7 +94,7 @@ export function LiveRegion({
             {isOrganizer || isCelebrant ? (
               <AddWindowForm
                 tripId={tripId}
-                atCap={rows.length >= 4}
+                atCap={rows.length >= MAX_CANDIDATES_PER_TRIP}
               />
             ) : null}
           </div>

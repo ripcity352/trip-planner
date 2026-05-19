@@ -157,6 +157,11 @@ export const M2_UI_STRINGS = {
   datePoll_add_form_submit: "Add it",
   datePoll_add_form_cancel: "Cancel",
   datePoll_unsynced_badge: "Syncing…",
+  // Vote count + aria-label templates. Same `.replace()` pattern as
+  // `dashboard_rsvp_count_template` — no full i18n lib for two strings.
+  datePoll_vote_counts_template: "{yes} yes · {no} no",
+  datePoll_vote_aria_label_template: "Vote on {label}",
+  datePoll_mark_aria_label_template: "Mark for {label}",
 } as const;
 
 export type M2UIStringKey = keyof typeof M2_UI_STRINGS;

@@ -39,13 +39,13 @@ import type {
 // Constants
 // =============================================================
 
-/**
- * Hard cap on active candidates per trip. Enforced at the action
- * layer rather than via a CHECK because the cap is a UX rule (the
- * 4-card grid at 375px gets unmanageable past this) and may evolve
- * — keeping it in code lets us tweak without a migration.
- */
-const MAX_CANDIDATES_PER_TRIP = 4;
+// `MAX_CANDIDATES_PER_TRIP` lives in `./date-poll-constants` because
+// Next.js `"use server"` modules can only export async functions —
+// re-exporting a non-async const here would fail the App Router
+// compile. Importing from the shared module instead means both the
+// action layer and the UI (e.g. `_live-region.tsx`) share one source
+// of truth without a magic-literal mismatch.
+import { MAX_CANDIDATES_PER_TRIP } from "./date-poll-constants";
 
 // =============================================================
 // zod schemas
@@ -134,6 +134,10 @@ function mapDbError(error: {
   if (!error) return "network";
   if (error.code === "42501") return "rls_denied";
   if (error.code === "P0001") return "validation_failed";
+  // 23xxx — integrity constraint violations (unique, foreign-key,
+  // check). Surfacing as `validation_failed` is the safest default;
+  // the user's intended write is structurally invalid.
+  if (error.code?.startsWith("23")) return "validation_failed";
   return "network";
 }
 
