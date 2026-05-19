@@ -143,4 +143,61 @@ describe("<RsvpToggle />", () => {
     // double-charge the rate limiter for a click that means nothing.
     expect(setRsvpActionMock).not.toHaveBeenCalled();
   });
+
+  it("after a failed attempt rolls state back, clicking the same value retries with a fresh idempotency_key", async () => {
+    // Initial confirmed status = "going". User clicks "maybe", server
+    // returns an error, state rolls back to "going". A second click
+    // on "going" should NOT be short-circuited — the prior attempt
+    // was a "maybe" write that failed; the user is now reasserting
+    // their "going" position and deserves a retry.
+    const idempotencyKeys: string[] = [];
+    let counter = 0;
+    vi.stubGlobal("crypto", {
+      ...globalThis.crypto,
+      randomUUID: vi.fn(() => {
+        counter += 1;
+        const key = `uuid-${counter}`;
+        idempotencyKeys.push(key);
+        return key;
+      }),
+    });
+
+    // First call (maybe) fails; second call (going) succeeds.
+    setRsvpActionMock
+      .mockResolvedValueOnce({ ok: false, errorKey: "rsvp_save_failed" })
+      .mockResolvedValueOnce({ ok: true, status: "going" });
+
+    render(<RsvpToggle tripId={TRIP_ID} initialStatus="going" />);
+    const goingChip = screen.getByRole("button", {
+      name: M2_UI_STRINGS.rsvp_chip_going,
+    });
+    const maybeChip = screen.getByRole("button", {
+      name: M2_UI_STRINGS.rsvp_chip_maybe,
+    });
+
+    fireEvent.click(maybeChip);
+    // Wait for rollback to land — going is pressed again after failure.
+    await waitFor(() => {
+      expect(goingChip).toHaveAttribute("aria-pressed", "true");
+      expect(maybeChip).toHaveAttribute("aria-pressed", "false");
+    });
+    expect(setRsvpActionMock).toHaveBeenCalledTimes(1);
+
+    // Now click going — this must NOT be short-circuited even though
+    // the optimistic state already shows "going". The user is retrying
+    // after a failed write.
+    fireEvent.click(goingChip);
+
+    await waitFor(() => {
+      expect(setRsvpActionMock).toHaveBeenCalledTimes(2);
+    });
+    // Second call used a fresh idempotency_key, not the failed one.
+    expect(idempotencyKeys.length).toBe(2);
+    expect(idempotencyKeys[0]).not.toBe(idempotencyKeys[1]);
+    expect(setRsvpActionMock).toHaveBeenNthCalledWith(
+      2,
+      { tripId: TRIP_ID, status: "going" },
+      idempotencyKeys[1]
+    );
+  });
 });

@@ -160,10 +160,10 @@ export async function setRsvpAction(
   // We chain a `.select(...).maybeSingle()` so the request returns the
   // updated row (or null if the row vanished between SELECT and
   // UPDATE — race-tolerant). RLS already enforces "you can only
-  // update your own membership row" by way of `is_trip_member(...)`
-  // policies on `trip_members`; we don't add a redundant `.eq(user_id)`
-  // filter because the existing-row lookup above already bound the
-  // primary key to the authenticated caller.
+  // update your own membership row," but we ALSO bind `user_id` in
+  // the WHERE clause as defense-in-depth: if RLS is ever relaxed for
+  // an organizer-edit feature, the app-layer filter still guarantees
+  // this action only writes the caller's own row.
   const targetMemberId = existingRow.id;
   try {
     const updatedStatus: SettableRsvpStatus = await rateLimitedAction(
@@ -177,6 +177,7 @@ export async function setRsvpAction(
             idempotency_key: idempotencyKey,
           })
           .eq("id", targetMemberId)
+          .eq("user_id", userId)
           .select("id")
           .maybeSingle();
 

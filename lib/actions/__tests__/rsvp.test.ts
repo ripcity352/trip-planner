@@ -31,6 +31,9 @@ type MemberRow = {
 const getUserMock = vi.fn();
 const memberSelectMock = vi.fn();
 const memberUpdateMock = vi.fn();
+// Spies on the .eq(...) calls chained after .update(...) so we can
+// assert the defense-in-depth (id + user_id) filter is bound.
+const updateEqCalls: Array<[string, unknown]> = [];
 
 const createClientMock = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
@@ -60,10 +63,31 @@ vi.mock("@/lib/rate-limit", async () => {
  *   - `auth.getUser()` returns whatever getUserMock yields
  *   - `from("trip_members").select(...).eq(...).eq(...).maybeSingle()`
  *      returns memberSelectMock's resolved value
- *   - `from("trip_members").update(...).eq(...).select(...).maybeSingle()`
- *      returns memberUpdateMock's resolved value
+ *   - `from("trip_members").update(...).eq(...).eq(...).select(...).maybeSingle()`
+ *      returns memberUpdateMock's resolved value. The update chain
+ *      includes two `.eq()` calls — `id` *and* `user_id` — so we can
+ *      assert the defense-in-depth user_id binding required by the
+ *      security review.
  */
 function buildClient(): unknown {
+  // Each .eq() must return an object that supports .eq() again AND .select().
+  // We model the post-update query chain as a fluent builder.
+  const updateChainTerminal = {
+    select: vi.fn().mockReturnValue({
+      maybeSingle: () => memberUpdateMock(),
+    }),
+  };
+  const updateChainAfterEq: {
+    eq: ReturnType<typeof vi.fn>;
+    select: ReturnType<typeof vi.fn>;
+  } = {
+    eq: vi.fn((col: string, val: unknown) => {
+      updateEqCalls.push([col, val]);
+      return updateChainAfterEq;
+    }),
+    select: updateChainTerminal.select,
+  };
+
   const tripMembers = {
     select: vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
@@ -73,10 +97,9 @@ function buildClient(): unknown {
       }),
     }),
     update: vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          maybeSingle: () => memberUpdateMock(),
-        }),
+      eq: vi.fn((col: string, val: unknown) => {
+        updateEqCalls.push([col, val]);
+        return updateChainAfterEq;
       }),
     }),
   };
@@ -116,6 +139,7 @@ describe("setRsvpAction", () => {
     memberUpdateMock.mockReset();
     rateLimitedActionMock.mockClear();
     createClientMock.mockReset();
+    updateEqCalls.length = 0;
     createClientMock.mockResolvedValue(buildClient());
     // Suppress deliberate console.error noise from failure-path tests.
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -198,6 +222,10 @@ describe("setRsvpAction", () => {
 
     expect(result).toEqual({ ok: true, status: "going" });
     expect(memberUpdateMock).toHaveBeenCalledTimes(1);
+    // Defense-in-depth: UPDATE binds BOTH id AND user_id so the action
+    // can never write a different user's row even if RLS is relaxed.
+    expect(updateEqCalls).toContainEqual(["id", "tm-1"]);
+    expect(updateEqCalls).toContainEqual(["user_id", "u-1"]);
   });
 
   it("replay (same idempotency_key) is a no-op and still returns ok with the current status", async () => {

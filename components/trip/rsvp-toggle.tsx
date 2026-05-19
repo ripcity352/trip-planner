@@ -52,17 +52,28 @@ export interface RsvpToggleProps {
 }
 
 export function RsvpToggle({ tripId, initialStatus }: RsvpToggleProps) {
+  // Two slots: `status` is the optimistic view (what the chip group
+  // renders); `confirmedStatus` is the last server-acknowledged value.
+  // Splitting them lets us tell "no change to confirm" apart from
+  // "rolled-back to the same value after a failure" — the latter
+  // must remain retry-able.
   const [status, setStatus] = React.useState<RsvpStatus>(initialStatus);
+  const [confirmedStatus, setConfirmedStatus] =
+    React.useState<RsvpStatus>(initialStatus);
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
 
   const handleClick = React.useCallback(
     (next: ChipStatus) => {
-      // Same-state click is a no-op — never re-fire the server action
-      // for a click that doesn't change state. Saves a rate-limit slot
-      // and a round-trip; matters when the user taps a chip multiple
-      // times on bad cell signal.
-      if (status === next) return;
+      // Short-circuit only when the optimistic state matches the next
+      // value AND the server has already acknowledged it AND there's
+      // no outstanding error. After a failed attempt rolls state back
+      // to the same value as `next`, `errorKey` is non-null (or
+      // `confirmedStatus !== next`), so the user can retry instead of
+      // being silently blocked.
+      if (status === next && confirmedStatus === next && errorKey === null) {
+        return;
+      }
 
       const previousStatus = status;
       // Optimistic: flip local state first so the chip lands instantly.
@@ -79,7 +90,10 @@ export function RsvpToggle({ tripId, initialStatus }: RsvpToggleProps) {
           );
 
           if (!result.ok) {
-            // Roll back to whatever we had before the click.
+            // Roll back to whatever we had before the click. Leave
+            // `confirmedStatus` untouched — the server never
+            // acknowledged a change, so the last-known confirmed
+            // value is still the prior one.
             setStatus(previousStatus);
             setErrorKey(result.errorKey);
             return;
@@ -87,8 +101,11 @@ export function RsvpToggle({ tripId, initialStatus }: RsvpToggleProps) {
 
           // Server is authoritative — if it returned a different
           // status (e.g. idempotency replay echoed the stored value),
-          // we trust it over our optimistic guess.
+          // we trust it over our optimistic guess. Promote the
+          // server's value into `confirmedStatus` so future
+          // same-state clicks short-circuit correctly.
           setStatus(result.status);
+          setConfirmedStatus(result.status);
         } catch (err) {
           // The action contract is "never throws," but a thrown error
           // from the network boundary still needs a rollback path.
@@ -98,7 +115,7 @@ export function RsvpToggle({ tripId, initialStatus }: RsvpToggleProps) {
         }
       });
     },
-    [status, tripId]
+    [status, confirmedStatus, errorKey, tripId]
   );
 
   return (

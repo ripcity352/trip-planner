@@ -103,7 +103,6 @@ export const M2_UI_STRINGS = {
   newTrip_vibePromptLabel: "What's the vibe?",
   // /trips/[tripId] dashboard
   dashboard_section_rsvp_heading: "Who's in",
-  dashboard_section_rsvp_body: "RSVPs roll in here.",
   dashboard_section_invite_heading: "Share the link",
   dashboard_section_invite_body:
     "Pop a link in the group chat. People click it, they're in.",
