@@ -44,15 +44,37 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
         run: pnpm build
 
+  # Tiny gate job whose only purpose is to expose "is the staging-migration
+  # secret set?" as an output. GitHub Actions does NOT allow `secrets.*` in
+  # job-level `if:` expressions — only in steps and `env:` — so we evaluate
+  # presence in a step and surface the result as a job output that the
+  # downstream job can gate on.
+  check-staging-secrets:
+    name: check staging migration secrets
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      has-token: ${{ steps.check.outputs.has-token }}
+    steps:
+      - id: check
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -n "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "has-token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-token=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SUPABASE_ACCESS_TOKEN not set — skipping migrate-staging job. See issue #16."
+          fi
+
   migrate-staging:
     name: push migrations → staging supabase
-    # Runs only on push to main, and only when the access token secret is
-    # provisioned. The empty-secret guard means the workflow no-ops cleanly
-    # until ripcity352 sets SUPABASE_ACCESS_TOKEN + SUPABASE_PROJECT_REF
-    # (see issue #16). Gates on `verify` so we never push migrations from a
-    # broken main.
-    needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.SUPABASE_ACCESS_TOKEN != ''
+    # Runs only on push to main, only after verify passes, and only when the
+    # access token secret is provisioned. The has-token gate means the
+    # workflow no-ops cleanly until ripcity352 sets SUPABASE_ACCESS_TOKEN +
+    # SUPABASE_PROJECT_REF (see issue #16).
+    needs: [verify, check-staging-secrets]
+    if: needs.check-staging-secrets.outputs.has-token == 'true'
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
