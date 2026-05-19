@@ -21,6 +21,11 @@ Use it for the trip. Come back to M5 only after a real-trip retro.
 Infrastructure + the schema primitives that every later milestone keys
 off. PWA / Sentry / rate-limiting are infra, not polish, so they land here.
 
+**Status (2026-05-19):** All PRs authored and green on CI. Awaiting merge:
+#86, #87, #88, #89, #91, #92, #93. Merge order documented in
+`notes/m1-execution-plan.md`. Milestone closes when all checkboxes in the
+DoD section of the execution plan are checked.
+
 **Definition of done:**
 - Next.js 16 app with strict TypeScript, deployed to Vercel preview
 - Tailwind + shadcn/ui initialized
