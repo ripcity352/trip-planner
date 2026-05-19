@@ -32,18 +32,52 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ERRORS } from "@/lib/copy/errors";
-import { ATTENDEE_COUNT_BUCKET_LABELS } from "@/lib/copy/empty-states";
+import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import {
+  ATTENDEE_COUNT_BUCKET_LABELS,
+  M2_UI_STRINGS,
+} from "@/lib/copy/empty-states";
 import { getInvitePreview } from "@/lib/db/invites";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type { InvitePreview } from "@/lib/db/types";
 
 type PageProps = {
   params: Promise<{ token: string }>;
+  // Next 16 — `searchParams` is also a Promise.
+  searchParams: Promise<{ error?: string }>;
 };
 
-export default async function InvitePreviewPage({ params }: PageProps) {
+/**
+ * Narrow the `?error=` query value to a known ErrorKey before indexing
+ * the ERRORS palette. Anything outside the known surface is dropped —
+ * an attacker can't seed an arbitrary string into the rendered output.
+ *
+ * Only the keys actually emitted by `/invite/[token]/accept` are
+ * accepted: `invite_not_found` (collapsed from expired/exhausted/
+ * not-found per anti-enumeration), `auth_failed`, `rate_limit`,
+ * `network`. Anything else returns null and we render no error band.
+ */
+const RENDERABLE_INVITE_ERRORS = new Set<ErrorKey>([
+  "invite_not_found",
+  "auth_failed",
+  "rate_limit",
+  "network",
+]);
+
+function narrowInviteErrorKey(raw: string | undefined): ErrorKey | null {
+  if (!raw) return null;
+  return RENDERABLE_INVITE_ERRORS.has(raw as ErrorKey)
+    ? (raw as ErrorKey)
+    : null;
+}
+
+export default async function InvitePreviewPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { token } = await params;
+  const { error: errorKeyRaw } = await searchParams;
+  const errorKey = narrowInviteErrorKey(errorKeyRaw);
 
   // Anonymous client — no cookies, no session. This is the load-bearing
   // detail: we never want the SSR session leaking into a public route.
@@ -56,9 +90,10 @@ export default async function InvitePreviewPage({ params }: PageProps) {
   let preview: InvitePreview | null = null;
   try {
     preview = await getInvitePreview(anon, token);
-  } catch {
-    // The RPC errored — treat as missing. We deliberately don't surface
-    // the underlying error message; Sentry has the trace.
+  } catch (err) {
+    // Log so a real outage surfaces in our logs / Sentry — the user
+    // still sees the generic "invite not found" view (anti-enumeration).
+    console.error("[invite] getInvitePreview failed:", err);
     preview = null;
   }
 
@@ -87,6 +122,19 @@ export default async function InvitePreviewPage({ params }: PageProps) {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          {/* Error band from a previous /accept attempt. Renders only
+              for keys that can actually originate from that path; all
+              user-visible distinctions between expired / exhausted /
+              not-found collapse to a single `invite_not_found` string
+              upstream (anti-enumeration). */}
+          {errorKey ? (
+            <p
+              role="alert"
+              className="text-destructive border-destructive/30 rounded-md border p-2 text-sm"
+            >
+              {ERRORS[errorKey]}
+            </p>
+          ) : null}
           <p className="text-muted-foreground text-sm">
             {ATTENDEE_COUNT_BUCKET_LABELS[preview.attendee_count_bucket]}
           </p>
@@ -95,7 +143,7 @@ export default async function InvitePreviewPage({ params }: PageProps) {
             // The POST route does the actual mutation and redirects.
             <form action={`/invite/${token}/accept`} method="post">
               <Button type="submit" size="lg" className="w-full">
-                Count me in
+                {M2_UI_STRINGS.invitePreview_cta_authed}
               </Button>
             </form>
           ) : (
@@ -103,7 +151,7 @@ export default async function InvitePreviewPage({ params }: PageProps) {
               href={`/login?next=/invite/${token}/accept`}
               className={buttonVariants({ size: "lg", className: "w-full" })}
             >
-              Sign in to join
+              {M2_UI_STRINGS.invitePreview_cta_anon}
             </Link>
           )}
         </CardContent>
@@ -128,7 +176,7 @@ function InviteMissing() {
         </CardHeader>
         <CardContent>
           <Link href="/" className={buttonVariants({ variant: "outline" })}>
-            Back home
+            {M2_UI_STRINGS.invitePreview_back_link}
           </Link>
         </CardContent>
       </Card>
@@ -146,5 +194,5 @@ function formatPreviewDates(preview: InvitePreview): string {
   if (preview.starts_at) {
     return format(new Date(preview.starts_at), "MMM d");
   }
-  return "Dates TBD";
+  return M2_UI_STRINGS.invitePreview_dates_unset;
 }

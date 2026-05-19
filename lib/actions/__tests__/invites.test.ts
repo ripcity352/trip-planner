@@ -86,6 +86,10 @@ describe("acceptInviteAction", () => {
       throw new Error(`NEXT_REDIRECT:${url}`);
     });
     createClientMock.mockReset();
+    // Suppress the SQLSTATE-distinguished log noise that the production
+    // path emits on RPC errors — every failure-mode test below triggers
+    // a deliberate error path.
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -133,7 +137,7 @@ describe("acceptInviteAction", () => {
     expect(redirectMock).toHaveBeenCalledWith("/trips/vegas-bach");
   });
 
-  it("returns invite_not_found when the RPC errors with that code", async () => {
+  it("returns invite_not_found when the RPC errors with P0002", async () => {
     primeAuth("u-1");
     primeClient({});
     rpcMock.mockResolvedValueOnce({
@@ -148,7 +152,10 @@ describe("acceptInviteAction", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 
-  it("returns invite_expired when the RPC raises 'invite_expired'", async () => {
+  // Anti-enumeration: expired and exhausted RPCs collapse to the same
+  // user-facing `invite_not_found` key. The SQLSTATEs stay distinct in
+  // the migration for internal observability — see mapRpcErrorToKey.
+  it("collapses invite_expired (P0001) to invite_not_found for the user", async () => {
     primeAuth("u-1");
     primeClient({});
     rpcMock.mockResolvedValueOnce({
@@ -159,10 +166,10 @@ describe("acceptInviteAction", () => {
     const { acceptInviteAction } = await import("@/lib/actions/invites");
     const result = await acceptInviteAction("token-1", "idem-1");
 
-    expect(result).toEqual({ ok: false, errorKey: "invite_expired" });
+    expect(result).toEqual({ ok: false, errorKey: "invite_not_found" });
   });
 
-  it("returns invite_exhausted when the RPC raises 'invite_exhausted'", async () => {
+  it("collapses invite_exhausted (P0001) to invite_not_found for the user", async () => {
     primeAuth("u-1");
     primeClient({});
     rpcMock.mockResolvedValueOnce({
@@ -173,7 +180,7 @@ describe("acceptInviteAction", () => {
     const { acceptInviteAction } = await import("@/lib/actions/invites");
     const result = await acceptInviteAction("token-1", "idem-1");
 
-    expect(result).toEqual({ ok: false, errorKey: "invite_exhausted" });
+    expect(result).toEqual({ ok: false, errorKey: "invite_not_found" });
   });
 
   it("returns rate_limit when the limiter throws", async () => {

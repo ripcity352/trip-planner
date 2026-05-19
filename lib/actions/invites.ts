@@ -10,6 +10,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { createInviteRecord, revokeInvite } from "@/lib/db/invites";
@@ -44,37 +45,68 @@ export interface CreateInviteActionInput {
 // ---------- helpers ----------
 
 /**
- * Map a Postgres / Supabase RPC error to one of our ErrorKey values.
- * The `accept_invite` SECURITY DEFINER function raises with PG SQLSTATE
- * codes plus a recognizable `message`:
- *   - P0002 / "invite_not_found" → invite_not_found
- *   - P0001 / "invite_expired"   → invite_expired
- *   - P0001 / "invite_exhausted" → invite_exhausted
- *   - 42501 (insufficient_privilege) → auth_failed
+ * Map a Postgres / Supabase RPC error from `accept_invite` to a
+ * user-facing ErrorKey.
  *
- * Anything else falls through to a generic `network` toast — the user
- * can retry; we'd see it in Sentry first.
+ * Security note (anti-enumeration): the SQL function distinguishes
+ * `invite_not_found` (P0002), `invite_expired` (P0001), and
+ * `invite_exhausted` (P0001) — those distinctions are useful for
+ * internal observability, but surfacing them to a hostile prober turns
+ * the endpoint into an oracle:
+ *
+ *   - "expired" vs "not_found" → "this token existed at some point"
+ *   - "exhausted" vs "not_found" → "this token was a single-use that
+ *     got used" → leaks ground truth about a specific invite's lifecycle
+ *
+ * We collapse all three to `invite_not_found` for the user, and log
+ * the original SQLSTATE / message at the call site for debugging.
+ *
+ *   - 42501 (insufficient_privilege) → auth_failed
+ *   - anything else → network (the user can retry; Sentry has the trace)
  */
 function mapRpcErrorToKey(error: {
   message?: string;
   code?: string;
 } | null): ErrorKey {
   if (!error) return "network";
-  const msg = error.message ?? "";
-  if (msg.includes("invite_not_found") || error.code === "P0002") {
-    return "invite_not_found";
-  }
-  if (msg.includes("invite_expired")) {
-    return "invite_expired";
-  }
-  if (msg.includes("invite_exhausted")) {
-    return "invite_exhausted";
-  }
   if (error.code === "42501") {
     return "auth_failed";
   }
+  const msg = error.message ?? "";
+  if (
+    error.code === "P0002" ||
+    error.code === "P0001" ||
+    msg.includes("invite_not_found") ||
+    msg.includes("invite_expired") ||
+    msg.includes("invite_exhausted")
+  ) {
+    // Distinguished only in server logs — see acceptInviteAction.
+    return "invite_not_found";
+  }
   return "network";
 }
+
+/**
+ * Validation for `createInviteAction`. Reject negative / zero uses and
+ * past expiry timestamps at the server boundary — the database doesn't
+ * enforce these (the columns are nullable for "unlimited" / "no expiry")
+ * so the action layer is the chokepoint.
+ *
+ * `usesLeft = null` means unlimited; positive integer with a cap so a
+ * client can't ask for a 9-quadrillion-use link.
+ */
+const createInviteSchema = z.object({
+  tripId: z.string().uuid(),
+  usesLeft: z.number().int().positive().max(1000).nullable().optional(),
+  expiresAt: z
+    .string()
+    .datetime()
+    .refine((iso) => new Date(iso).getTime() > Date.now(), {
+      message: "expiresAt must be in the future",
+    })
+    .nullable()
+    .optional(),
+});
 
 // ---------- actions ----------
 
@@ -109,6 +141,14 @@ export async function acceptInviteAction(
           p_idempotency_key: idempotencyKey,
         });
         if (error) {
+          // Log the SQLSTATE-distinguished reason server-side so we can
+          // tell apart "never existed" / "expired" / "exhausted" in
+          // logs without ever surfacing that distinction to the user.
+          // See mapRpcErrorToKey for the anti-enumeration rationale.
+          console.error("[invites] accept_invite RPC failed:", {
+            code: error.code,
+            message: error.message,
+          });
           const errorKey = mapRpcErrorToKey(error);
           // Throw a tagged error so the outer try/catch can map back to
           // the discriminated-union shape. We bake the key onto the
@@ -125,6 +165,7 @@ export async function acceptInviteAction(
     if (err instanceof TaggedRpcError) {
       return { ok: false, errorKey: err.errorKey };
     }
+    console.error("[invites] acceptInvite unexpected failure:", err);
     return { ok: false, errorKey: "network" };
   }
 
@@ -167,6 +208,15 @@ export async function acceptInviteAction(
 export async function createInviteAction(
   input: CreateInviteActionInput
 ): Promise<CreateInviteResult> {
+  // Validate first — reject usesLeft <= 0, capped >1000, and any
+  // expires_at already in the past. The DB columns don't enforce
+  // these (they're nullable to mean "unlimited" / "never"), so the
+  // action layer is the only chokepoint.
+  const parsed = createInviteSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData?.user) {
@@ -181,9 +231,9 @@ export async function createInviteAction(
       () =>
         createInviteRecord(
           supabase,
-          input.tripId,
-          input.usesLeft,
-          input.expiresAt,
+          parsed.data.tripId,
+          parsed.data.usesLeft ?? null,
+          parsed.data.expiresAt ?? null,
           userId
         )
     );

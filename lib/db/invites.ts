@@ -19,10 +19,28 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Invite, InvitePreview } from "./types";
+import type { AttendeeCountBucket, Invite, InvitePreview } from "./types";
 
 const INVITE_COLUMNS =
   "token, trip_id, created_by, expires_at, uses_left, created_at";
+
+/**
+ * Runtime contract for the bucketed attendee count the SQL function
+ * returns as `text`. We narrow at the data-layer boundary so the rest
+ * of the app can rely on the typed union — and so an unexpected DB
+ * value (migration drift, manual SQL tweak) fails loud here rather
+ * than silently mis-rendering downstream.
+ */
+const ATTENDEE_COUNT_BUCKETS: readonly AttendeeCountBucket[] = [
+  "just-getting-started",
+  "small-crew",
+  "full-house",
+  "big-group",
+] as const;
+
+function isAttendeeCountBucket(s: string): s is AttendeeCountBucket {
+  return (ATTENDEE_COUNT_BUCKETS as readonly string[]).includes(s);
+}
 
 /**
  * Calls the `invite_preview(p_token)` RPC. Returns the first row
@@ -48,7 +66,30 @@ export async function getInvitePreview(
 
   // RPC returns `setof record` — Supabase deserializes as an array. The
   // function emits exactly one row or none, so we read [0].
-  return data[0] as InvitePreview;
+  const row = data[0] as {
+    trip_name: string;
+    starts_at: string | null;
+    ends_at: string | null;
+    host_display_name: string;
+    attendee_count_bucket: string;
+  };
+
+  // Narrow the bucket from `text` → typed union at the data boundary.
+  // Unexpected values are migration-drift signals, not a happy-path
+  // outcome; throw so it surfaces in logs immediately.
+  if (!isAttendeeCountBucket(row.attendee_count_bucket)) {
+    throw new Error(
+      `invite_preview returned unexpected attendee_count_bucket: ${row.attendee_count_bucket}`
+    );
+  }
+
+  return {
+    trip_name: row.trip_name,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    host_display_name: row.host_display_name,
+    attendee_count_bucket: row.attendee_count_bucket,
+  } satisfies InvitePreview;
 }
 
 /**
@@ -83,14 +124,11 @@ export async function getTripInvites(
  * `usesLeft = null` means "unlimited"; `expiresAt = null` means
  * "never expires". Both null is the most permissive shape; the UI
  * surfaces the trade-off so the organizer is the one choosing.
+ *
+ * Positional params (not an options object) to keep the call site terse
+ * — the action layer is the only caller and it already validates with
+ * zod. If a third caller lands we hoist this to an options bag.
  */
-export interface CreateInviteRecordInput {
-  tripId: string;
-  createdBy: string;
-  usesLeft: number | null;
-  expiresAt: string | null;
-}
-
 export async function createInviteRecord(
   supabase: SupabaseClient,
   tripId: string,

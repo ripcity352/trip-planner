@@ -78,7 +78,7 @@ describe("createTripAction", () => {
     primeAuth("u-1");
     const { createTripAction } = await import("@/lib/actions/trips");
 
-    const result = await createTripAction({ name: "" }, "idem-1");
+    const result = await createTripAction({ name: "" });
 
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
     expect(createTripMock).not.toHaveBeenCalled();
@@ -88,7 +88,7 @@ describe("createTripAction", () => {
     primeAuth(null);
     const { createTripAction } = await import("@/lib/actions/trips");
 
-    const result = await createTripAction({ name: "Vegas" }, "idem-1");
+    const result = await createTripAction({ name: "Vegas" });
     expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
     expect(createTripMock).not.toHaveBeenCalled();
   });
@@ -104,7 +104,7 @@ describe("createTripAction", () => {
     const { createTripAction } = await import("@/lib/actions/trips");
 
     await expect(
-      createTripAction({ name: "Vegas Bach" }, "idem-1")
+      createTripAction({ name: "Vegas Bach" })
     ).rejects.toThrow("NEXT_REDIRECT:/trips/vegas-bach");
 
     expect(createTripMock).toHaveBeenCalledTimes(1);
@@ -127,7 +127,7 @@ describe("createTripAction", () => {
     const { createTripAction } = await import("@/lib/actions/trips");
 
     await expect(
-      createTripAction({ name: "Vegas" }, "idem-1")
+      createTripAction({ name: "Vegas" })
     ).rejects.toThrow("NEXT_REDIRECT:/trips/vegas-bach");
 
     expect(rateLimitedActionMock).toHaveBeenCalledTimes(1);
@@ -145,7 +145,7 @@ describe("createTripAction", () => {
     );
 
     const { createTripAction } = await import("@/lib/actions/trips");
-    const result = await createTripAction({ name: "Vegas" }, "idem-1");
+    const result = await createTripAction({ name: "Vegas" });
 
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
     expect(redirectMock).not.toHaveBeenCalled();
@@ -156,7 +156,7 @@ describe("createTripAction", () => {
     createTripMock.mockRejectedValueOnce(new Error("boom"));
 
     const { createTripAction } = await import("@/lib/actions/trips");
-    const result = await createTripAction({ name: "Vegas" }, "idem-1");
+    const result = await createTripAction({ name: "Vegas" });
 
     expect(result).toEqual({ ok: false, errorKey: "trip_create_failed" });
     expect(redirectMock).not.toHaveBeenCalled();

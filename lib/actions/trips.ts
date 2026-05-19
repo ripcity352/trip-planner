@@ -4,13 +4,18 @@
  * Server actions for trip creation (#72).
  *
  * Surface contract:
- *   - `createTripAction(input, idempotencyKey)` validates with zod,
- *     derives a slug from the name, wraps the DB call in
+ *   - `createTripAction(input)` validates with zod, derives a slug from
+ *     the name, wraps the DB call in
  *     `rateLimitedAction("createTrip", userId, ...)`, and on success
  *     redirects to `/trips/<slug>` (throws Next's redirect signal).
  *   - On failure it returns a discriminated union — no throwing to
  *     the caller — so the form can surface the matching error toast
  *     from `lib/copy/errors.ts`.
+ *   - Idempotency key is intentionally NOT a parameter: trip creation
+ *     is a deliberate moment, slug-collision retry handles the
+ *     realistic race, and adding the param would invite the form to
+ *     mint a UUID it doesn't actually need. Mutation-heavy paths
+ *     (accept_invite, RSVPs) still ship idempotency keys.
  */
 
 import { redirect } from "next/navigation";
@@ -76,8 +81,7 @@ function shortRand(): string {
 }
 
 export async function createTripAction(
-  input: CreateTripActionInput,
-  idempotencyKey: string
+  input: CreateTripActionInput
 ): Promise<CreateTripResult | never> {
   // 1. Validate.
   const parsed = inputSchema.safeParse(input);
@@ -99,10 +103,11 @@ export async function createTripAction(
   //    constraint on `trips.slug` will surface 23505 if we collide on
   //    the suffixed form; we return `trip_create_failed` in that case —
   //    rare in practice and the user can re-submit with a different
-  //    name. `idempotencyKey` is currently unused at the DB layer
-  //    (the RPC doesn't accept one); reserved for a future scope where
-  //    the same client-replay should return the same trip.
-  void idempotencyKey;
+  //    name. Drunk-double-tap idempotency is intentionally NOT wired
+  //    here: trip creation is a deliberate moment, not a flaky-signal
+  //    retry surface, and the collision-suffix retry already handles
+  //    the realistic race. Mutation-heavy paths (accept_invite, RSVPs)
+  //    still ship idempotency keys.
   const baseSlug = slugifyName(parsed.data.name);
   const slug = baseSlug; // first attempt — collision path adds suffix
 

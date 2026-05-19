@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/card";
 import { getTripBySlug } from "@/lib/db/trips";
 import { createClient } from "@/lib/supabase/server";
+import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Trip } from "@/lib/db/types";
 
 type PageProps = {
@@ -58,27 +59,28 @@ export default async function TripDashboardPage({ params }: PageProps) {
       <div className="grid grid-cols-1 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle>Who&apos;s in</CardTitle>
+            <CardTitle>{M2_UI_STRINGS.dashboard_section_rsvp_heading}</CardTitle>
             <CardDescription>
               {/* Wave 2b wires the live count. The placeholder is a
                   voice-tested holding string, not "Loading…" or
                   "Coming soon" — neither would land at dinner. */}
-              RSVPs roll in here.
+              {M2_UI_STRINGS.dashboard_section_rsvp_body}
             </CardDescription>
           </CardHeader>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Share the link</CardTitle>
+            <CardTitle>
+              {M2_UI_STRINGS.dashboard_section_invite_heading}
+            </CardTitle>
             <CardDescription>
-              Pop a link in the group chat. People click it, they&apos;re in.
+              {M2_UI_STRINGS.dashboard_section_invite_body}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground text-sm">
-              Invite issuance UI ships in the next slice — for now you can
-              mint links from the database directly.
+              {M2_UI_STRINGS.dashboard_invite_placeholder}
             </p>
           </CardContent>
         </Card>
@@ -97,5 +99,5 @@ function formatTripDates(trip: Trip): string {
   if (trip.starts_at) {
     return format(new Date(trip.starts_at), "MMM d");
   }
-  return "Dates not locked in yet.";
+  return M2_UI_STRINGS.dashboard_dates_unset;
 }

@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import { createTripAction } from "@/lib/actions/trips";
 
 const schema = z.object({
@@ -59,18 +60,19 @@ export function TripForm() {
 
   function onSubmit(values: FormValues) {
     setErrorKey(null);
-    const idempotencyKey = crypto.randomUUID();
+    // No client idempotency key: trip creation isn't drunk-double-tap
+    // territory (it's a deliberate "I'm starting a new thing" moment),
+    // and slug-collision retry inside the action already handles the
+    // realistic race. The action's signature dropped the param — see
+    // lib/actions/trips.ts.
     startTransition(async () => {
       try {
-        const result = await createTripAction(
-          {
-            name: values.name,
-            description: values.description || undefined,
-            starts_at: values.starts_at || undefined,
-            ends_at: values.ends_at || undefined,
-          },
-          idempotencyKey
-        );
+        const result = await createTripAction({
+          name: values.name,
+          description: values.description || undefined,
+          starts_at: values.starts_at || undefined,
+          ends_at: values.ends_at || undefined,
+        });
         // On success the action redirects; if we got here, it returned
         // an error envelope.
         if (result && !result.ok) {
@@ -101,7 +103,7 @@ export function TripForm() {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="trip-name">Name</Label>
+        <Label htmlFor="trip-name">{M2_UI_STRINGS.newTrip_nameLabel}</Label>
         <Input
           id="trip-name"
           type="text"
@@ -123,7 +125,9 @@ export function TripForm() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="trip-starts-at">From</Label>
+          <Label htmlFor="trip-starts-at">
+            {M2_UI_STRINGS.newTrip_startLabel}
+          </Label>
           <Input
             id="trip-starts-at"
             type="date"
@@ -131,13 +135,15 @@ export function TripForm() {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="trip-ends-at">To</Label>
+          <Label htmlFor="trip-ends-at">{M2_UI_STRINGS.newTrip_endLabel}</Label>
           <Input id="trip-ends-at" type="date" {...register("ends_at")} />
         </div>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="trip-description">What&apos;s the vibe?</Label>
+        <Label htmlFor="trip-description">
+          {M2_UI_STRINGS.newTrip_vibePromptLabel}
+        </Label>
         <Input
           id="trip-description"
           type="text"
@@ -160,7 +166,7 @@ export function TripForm() {
             aria-hidden="true"
           />
         ) : null}
-        Lock it in
+        {M2_UI_STRINGS.newTrip_submit}
       </Button>
     </form>
   );

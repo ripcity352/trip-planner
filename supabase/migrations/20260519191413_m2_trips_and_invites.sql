@@ -219,10 +219,15 @@ begin
       ),
       'a friend'
     )::text as host_display_name,
+    -- Bucket cutoffs widened so a single attendee can't be identified by
+    -- their bucket flipping ("the count was 1 yesterday, now it's 2 →
+    -- exactly one person joined between now and then"). Floor of 3 means
+    -- the "just-getting-started" bucket always contains ≥ the organizer +
+    -- 2 plausible others, so it's never an enumeration oracle.
     case
-      when ac.cnt <= 1  then 'just-getting-started'
-      when ac.cnt <= 5  then 'small-crew'
-      when ac.cnt <= 15 then 'full-house'
+      when ac.cnt <= 3  then 'just-getting-started'
+      when ac.cnt <= 8  then 'small-crew'
+      when ac.cnt <= 20 then 'full-house'
       else                   'big-group'
     end::text as attendee_count_bucket
   from (

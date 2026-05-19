@@ -9,6 +9,7 @@ import {
   EMPTY_STATES,
   EMPTY_STATE_CTAS,
   ATTENDEE_COUNT_BUCKET_LABELS,
+  M2_UI_STRINGS,
   type EmptyStateKey,
   type AttendeeCountBucketLabelKey,
 } from "@/lib/copy/empty-states";
@@ -91,5 +92,19 @@ describe("ATTENDEE_COUNT_BUCKET_LABELS", () => {
       expect(value.trim().length).toBeGreaterThan(0);
       expect(value.length).toBeLessThanOrEqual(BUCKET_LABEL_MAX_LENGTH);
     }
+  });
+});
+
+// M2 surface strings — paging-title, button labels, body copy on the
+// /trips/new, /trips/[tripId], and /invite/[token] surfaces. We don't
+// enumerate every key by name here (the type already pins exhaustiveness
+// at compile time); we just sweep the recorded palette for shape.
+describe("M2_UI_STRINGS", () => {
+  it("every value is a non-empty string under 120 chars", () => {
+    Object.values(M2_UI_STRINGS).forEach((value) => {
+      expect(typeof value).toBe("string");
+      expect(value.trim().length).toBeGreaterThan(0);
+      expect(value.length).toBeLessThanOrEqual(MAX_LENGTH);
+    });
   });
 });

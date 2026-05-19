@@ -14,10 +14,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import { TripForm } from "./_form";
 
 export const metadata: Metadata = {
-  title: "Start a trip — Bachelor Party Planner",
+  title: M2_UI_STRINGS.newTrip_pageTitle,
 };
 
 export default function NewTripPage() {
@@ -26,7 +27,9 @@ export default function NewTripPage() {
       <Card>
         <CardHeader>
           <CardTitle>
-            <h1 className="text-lg font-medium">Start a trip</h1>
+            <h1 className="text-lg font-medium">
+              {M2_UI_STRINGS.newTrip_heading}
+            </h1>
           </CardTitle>
         </CardHeader>
         <CardContent>

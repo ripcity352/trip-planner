@@ -9,10 +9,20 @@
  *      `createTrip`, `acceptInvite`, etc. Throws `RateLimitError` instead of
  *      returning an HTTP response so callers can surface a friendly toast.
  *
- * Upstash Redis is optional. When `UPSTASH_REDIS_REST_URL` is unset (local
- * dev, CI, tests) we fall back to an in-memory limiter that always allows.
- * This keeps `pnpm build` green without secrets and lets unit tests run
- * without network. Importing this module must never throw.
+ * Upstash Redis is configured via `UPSTASH_REDIS_REST_URL` +
+ * `UPSTASH_REDIS_REST_TOKEN`. When BOTH are present we wire the real
+ * limiter. When either is missing:
+ *
+ *   - In dev / test (`NODE_ENV !== "production"`) we fall back to an
+ *     in-memory shim that always allows. This keeps `pnpm build` green
+ *     without secrets and lets unit tests run without network.
+ *   - In production we still build the same shim at import time (so the
+ *     deploy doesn't crash on cold-start), but every `.limit()` call
+ *     FAILS CLOSED — `success: false`. The deploy will then surface
+ *     rate-limit errors on every guarded path, which is the loud
+ *     signal we want: "rate limit creds are missing from the env."
+ *
+ * Importing this module must never throw.
  */
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
@@ -77,6 +87,9 @@ const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const GUARDED_PATH_PATTERNS: ReadonlyArray<RegExp> = [
   /^\/api\//,
   /^\/trips(\/|$)/,
+  // `/invite/<token>/accept` is a public POST endpoint — unauthenticated
+  // abuse needs the HTTP-edge throttle before it reaches the action.
+  /^\/invite\//,
 ];
 
 // --- error -------------------------------------------------------------
@@ -124,11 +137,18 @@ interface InMemoryLimiter {
 }
 
 function buildInMemoryLimiter(): InMemoryLimiter {
+  // Fail-closed in production: if we got here without Upstash creds,
+  // the deploy is misconfigured. We deliberately don't crash imports
+  // (that would brick cold-starts on every request); instead each call
+  // returns `success: false` so guarded paths 429 visibly until the
+  // operator fixes the env vars. Dev / test still get the always-allow
+  // path so local work and CI don't need real creds.
+  const failClosed = process.env.NODE_ENV === "production";
   return {
     limit: async (): Promise<RateLimitResult> => ({
-      success: true,
+      success: !failClosed,
       limit: DEFAULT_LIMIT,
-      remaining: DEFAULT_LIMIT,
+      remaining: failClosed ? 0 : DEFAULT_LIMIT,
       reset: Date.now() + 60_000,
       pending: Promise.resolve(),
     }),

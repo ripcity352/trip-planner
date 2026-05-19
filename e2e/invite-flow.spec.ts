@@ -24,10 +24,14 @@
 
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
+import { ERRORS } from "@/lib/copy/errors";
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-const INVITE_NOT_FOUND_COPY = "Can't find that invite. Double-check the link.";
+// Source the assertion string from the copy palette so a microcopy
+// rewrite in `lib/copy/errors.ts` doesn't silently break the spec.
+const INVITE_NOT_FOUND_COPY = ERRORS.invite_not_found;
 
 test.describe("invite preview (logged-out)", () => {
   test.use({
