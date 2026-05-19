@@ -40,3 +40,16 @@ export const EMPTY_STATES: Record<EmptyStateKey, string> = {
   invites_for_trip:
     "No links out yet. Mint one and start texting it around.",
 };
+
+/**
+ * CTAs paired with empty states. Partial because not every empty state
+ * needs a button — sometimes the absence IS the message (e.g.
+ * `announcements`, where the silence is the point).
+ *
+ * Same voice rules as `EMPTY_STATES`. Keep these <= 40 chars so they
+ * fit on a button at 375px without wrapping.
+ */
+export const EMPTY_STATE_CTAS: Partial<Record<EmptyStateKey, string>> = {
+  trips_mine: "Start a trip",
+  // Other keys add their CTA strings here as features land.
+};
