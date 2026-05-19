@@ -18,8 +18,40 @@
 // Enums
 // =============================================================
 
-export type TripRole = "organizer" | "attendee";
-// `co_organizer` lands in the Goal 2 migration — add to this union then.
+export type TripRole = "organizer" | "co_organizer" | "attendee";
+// `co_organizer` added in 20260519191412_m2_trip_role_co_organizer.sql.
+// `is_trip_organizer()` returns true for both `organizer` and `co_organizer`
+// per the M2 ADR — see notes/decisions.md.
+
+/**
+ * Bucketed attendee-count returned by `public.invite_preview(token)`.
+ *
+ * We deliberately do NOT expose the raw integer to anonymous callers:
+ * a single-use invite would otherwise act as an enumeration oracle
+ * (each forward increments the count by 1, so the recipient can map
+ * who else got the link).
+ */
+export type AttendeeCountBucket =
+  | "just-getting-started"
+  | "small-crew"
+  | "full-house"
+  | "big-group";
+
+/**
+ * Logged-out-safe payload returned by `public.invite_preview(token)`.
+ *
+ * `starts_at`/`ends_at` are ISO date strings at midnight UTC (the
+ * underlying columns are `date`; the SECURITY DEFINER function casts
+ * to `timestamptz` for forward-compatibility with feature tables that
+ * use `timestamptz` natively).
+ */
+export interface InvitePreview {
+  trip_name: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  host_display_name: string;
+  attendee_count_bucket: AttendeeCountBucket;
+}
 
 export type RsvpStatus = "pending" | "going" | "maybe" | "declined";
 
@@ -77,6 +109,9 @@ export interface TripMember {
   display_name: string | null;
   phone_e164: string | null;
   email: string | null;
+  // Client-generated UUID for accept_invite replay safety. Unique per
+  // (trip_id, idempotency_key) where set — see 20260519191413_m2_*.sql.
+  idempotency_key: string | null;
 }
 
 export interface Invite {
