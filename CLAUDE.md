@@ -219,6 +219,7 @@ the full voice guide + sample strings.
   - No anthropomorphized mascot ("Hi, I'm Sparky!")
   - No reaction inflation (cap at ~6 fixed emoji)
   - No penis-anything in UI / assets / copy
+- Don't inline copy literals in UI — pull from `lib/copy/empty-states.ts` or `lib/copy/errors.ts`.
 - Don't use `any` in TypeScript without a `// eslint-disable` comment
   explaining why.
 - Don't add tests for trivial things; do add them for data-layer functions
