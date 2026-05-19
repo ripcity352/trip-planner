@@ -93,24 +93,25 @@ no new pages, no copy additions (those are Wave 1c).
 
 ---
 
-## Wave 1 — Parallel UI primitives (3 agents, 3 PRs)
+## Wave 1 — Parallel UI primitives (2 agents, 2 PRs)
 
 Dispatch via `superpowers:dispatching-parallel-agents`. Each row is a
 separate subagent on its own branch + isolated worktree + own PR.
+The M2 copy keys (`trips_mine`, `invites_for_trip`, `auth_failed`,
+`auth_link_sent`, `invite_expired`, `invite_exhausted`,
+`invite_not_found`, `trip_create_failed`, `rsvp_save_failed`) are
+**already in `lib/copy/{empty-states,errors}.ts` as of Wave 0** — both
+agents read them, neither writes to those files.
 
 | ID | Issue | Branch | Owns (files) | Tests claimed | Risk |
 |---|---|---|---|---|---|
-| **1a** | #71 | `feat/m2-login-page` | `app/login/page.tsx`, `app/login/_form.tsx`, `app/login/actions.ts` (requestMagicLink server action), `app/auth/callback/route.ts` (error-path polish only) | `app/login/__tests__/login-form.test.tsx`, `e2e/login-magic-link.spec.ts` | low |
-| **1b** | — | `feat/m2-dashboard-shell` | `app/(authed)/layout.tsx` (new route group), `components/trip/header.tsx` (avatar + sign-out), `lib/actions/auth.ts` (signOut), `app/trips/page.tsx` (list-my-trips index, minimal) | `components/trip/__tests__/header.test.tsx`, `lib/actions/__tests__/auth.test.ts` | low |
-| **1c** | — | `chore/m2-copy-additions` | `lib/copy/empty-states.ts` (append), `lib/copy/errors.ts` (append) — strings for: no-trips-yet, invite-link-copied, invite-expired, invite-exhausted, rsvp-saved, login-magic-link-sent, login-callback-failure | `lib/copy/__tests__/m2-strings.test.ts` | low |
+| **1a** | #71 | `feat/m2-login-page` | `app/login/page.tsx`, `app/login/_form.tsx`, `app/login/actions.ts` (requestMagicLink server action), `app/auth/callback/route.ts` (error-path polish using `auth_failed` key) | `app/login/__tests__/login-form.test.tsx`, `e2e/login-magic-link.spec.ts` | low |
+| **1b** | — | `feat/m2-dashboard-shell` | `app/(authed)/layout.tsx` (new route group), `components/trip/header.tsx` (avatar + sign-out), `lib/actions/auth.ts` (signOut), `app/trips/page.tsx` (list-my-trips index, minimal — uses `trips_mine` empty state) | `components/trip/__tests__/header.test.tsx`, `lib/actions/__tests__/auth.test.ts` | low |
 
 **Coordination rule:** zero file overlap. 1a owns `app/login/**` +
 auth-callback error polish. 1b owns `app/(authed)/**` + `app/trips/page.tsx`
-+ `components/trip/header.tsx` + `lib/actions/auth.ts`. 1c owns
-`lib/copy/**` *append-only* to existing files. Append-only matters: 1c
-must add NEW exports at the bottom of `empty-states.ts` / `errors.ts`,
-not modify existing keys — three agents could touch these in future
-waves (M1 learning).
++ `components/trip/header.tsx` + `lib/actions/auth.ts`. Neither
+touches `lib/copy/**` — copy palettes are read-only for Wave 1.
 
 **Each agent's PR must:**
 - Pass: `pnpm typecheck && pnpm lint && pnpm test`

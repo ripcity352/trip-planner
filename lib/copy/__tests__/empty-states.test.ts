@@ -14,6 +14,8 @@ const EXPECTED_KEYS: readonly EmptyStateKey[] = [
   "announcements",
   "polls",
   "photos",
+  "trips_mine",
+  "invites_for_trip",
 ];
 
 // ~120 chars keeps strings to a tweet-line; anything longer is a paragraph,

@@ -23,7 +23,9 @@ export type EmptyStateKey =
   | "expenses"
   | "announcements"
   | "polls"
-  | "photos";
+  | "photos"
+  | "trips_mine"
+  | "invites_for_trip";
 
 export const EMPTY_STATES: Record<EmptyStateKey, string> = {
   itinerary: "Nothing booked yet. Dave's working on it.",
@@ -33,4 +35,8 @@ export const EMPTY_STATES: Record<EmptyStateKey, string> = {
   polls: "Nothing to vote on yet. Someone's got opinions, just not here.",
   photos:
     "No photos yet. Someone has to be sober enough to take the first one.",
+  trips_mine:
+    "Nothing planned yet. Start a trip and we'll figure the rest out.",
+  invites_for_trip:
+    "No links out yet. Mint one and start texting it around.",
 };

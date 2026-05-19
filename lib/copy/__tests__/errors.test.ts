@@ -12,6 +12,13 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "validation_failed",
   "rate_limit",
   "idempotency_replayed",
+  "auth_failed",
+  "auth_link_sent",
+  "invite_expired",
+  "invite_exhausted",
+  "invite_not_found",
+  "trip_create_failed",
+  "rsvp_save_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user
