@@ -104,6 +104,7 @@ export interface Announcement {
   pinned: boolean;
   created_at: string;
   idempotency_key: string | null;
+  visibility: TripVisibility;
 }
 
 export interface ItineraryItem {
@@ -121,6 +122,7 @@ export interface ItineraryItem {
   created_by: string;
   created_at: string;
   updated_at: string;
+  visibility: TripVisibility;
 }
 
 export interface Expense {
@@ -133,6 +135,7 @@ export interface Expense {
   occurred_on: string;
   created_at: string;
   idempotency_key: string | null;
+  visibility: TripVisibility;
 }
 
 export interface ExpenseSplit {

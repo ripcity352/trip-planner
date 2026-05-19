@@ -190,6 +190,26 @@ $$;
 comment on function public.can_see_content(uuid, trip_visibility) is
   'RLS helper. everyone=any member; organizers_only=organizer; hide_from_celebrant=member AND not the celebrant; custom=falls back to membership for M1.';
 
+-- Visibility column on content tables (CLAUDE.md rule #7). Every user-
+-- content table ships with this axis from day one so we never have to
+-- migrate-then-backfill a default. Defaults to 'everyone'; per-row
+-- overrides drive SELECT visibility via can_see_content().
+alter table public.announcements
+  add column visibility trip_visibility not null default 'everyone';
+
+alter table public.itinerary_items
+  add column visibility trip_visibility not null default 'everyone';
+
+alter table public.expenses
+  add column visibility trip_visibility not null default 'everyone';
+
+comment on column public.announcements.visibility is
+  'Per-row visibility. SELECT RLS routes through can_see_content(trip_id, visibility).';
+comment on column public.itinerary_items.visibility is
+  'Per-row visibility. SELECT RLS routes through can_see_content(trip_id, visibility).';
+comment on column public.expenses.visibility is
+  'Per-row visibility. SELECT RLS routes through can_see_content(trip_id, visibility).';
+
 -- =============================================================
 -- 8. is_trip_member_by_member_id helper (for FK-retargeted tables)
 -- =============================================================
@@ -326,6 +346,39 @@ create trigger trip_members_seed_days_insert
 create trigger trip_members_seed_days_update
   after update of rsvp_status on public.trip_members
   for each row execute function public.seed_trip_member_days();
+
+-- Date-change re-seed: organizer often creates a trip without dates,
+-- collects RSVPs first, THEN sets starts_at/ends_at. The trigger above
+-- only fires on rsvp_status change, so without this we'd seed nothing.
+-- On any date change (NULL→date or date→date), fan out trip_member_days
+-- rows for every going member across the new range. on conflict makes
+-- the trigger idempotent; we do NOT delete rows outside the new range
+-- so existing attendance choices survive a date shuffle.
+create or replace function public.seed_trip_member_days_for_trip()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.starts_at is not null and new.ends_at is not null then
+    insert into public.trip_member_days (trip_member_id, date, status)
+    select tm.id, d.date::date, 'going'::trip_member_day_status
+    from public.trip_members tm
+    cross join generate_series(new.starts_at::timestamp, new.ends_at::timestamp, interval '1 day') as d(date)
+    where tm.trip_id = new.id and tm.rsvp_status = 'going'
+    on conflict (trip_member_id, date) do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+comment on function public.seed_trip_member_days_for_trip() is
+  'AFTER UPDATE OF starts_at, ends_at on trips. Fans out trip_member_days for every going member across the new range. Idempotent via on conflict; does not delete rows outside the new range.';
+
+create trigger trips_seed_member_days_on_date_change
+  after update of starts_at, ends_at on public.trips
+  for each row execute function public.seed_trip_member_days_for_trip();
 
 -- =============================================================
 -- 11. FK retargeting: availability + expense_splits (issue #66)
@@ -551,7 +604,7 @@ alter table public.announcements enable row level security;
 create policy "members can read announcements"
   on public.announcements for select
   to authenticated
-  using (public.is_trip_member(trip_id));
+  using (public.can_see_content(trip_id, visibility));
 
 create policy "organizers can write announcements"
   on public.announcements for insert
@@ -578,7 +631,7 @@ alter table public.itinerary_items enable row level security;
 create policy "members can read itinerary"
   on public.itinerary_items for select
   to authenticated
-  using (public.is_trip_member(trip_id));
+  using (public.can_see_content(trip_id, visibility));
 
 create policy "organizers can write itinerary"
   on public.itinerary_items for all
@@ -598,7 +651,7 @@ alter table public.expense_splits enable row level security;
 create policy "members can read expenses"
   on public.expenses for select
   to authenticated
-  using (public.is_trip_member(trip_id));
+  using (public.can_see_content(trip_id, visibility));
 
 create policy "members can write expenses they pay"
   on public.expenses for insert
@@ -634,37 +687,35 @@ create policy "payers can write splits for their expenses"
 -- ---- trip_member_days ---------------------------------------
 alter table public.trip_member_days enable row level security;
 
-create policy "members read own days; organizers read all"
+-- SELECT: any member of the trip can read ALL trip_member_days rows for
+-- that trip (so attendees can see who's around on which day, build a
+-- "Thursday roster" view, etc.). Writes are still owner/organizer-only.
+drop policy if exists "members read own days; organizers read all" on public.trip_member_days;
+
+create policy "members can read days for their trips"
   on public.trip_member_days for select
   to authenticated
   using (
-    public.is_trip_member_by_member_id(trip_member_id)
-    and (
-      exists (
-        select 1 from public.trip_members tm
-        where tm.id = trip_member_id and tm.user_id = auth.uid()
-      )
-      or public.is_trip_organizer(
-        (select tm.trip_id from public.trip_members tm where tm.id = trip_member_id)
-      )
+    public.is_trip_member(
+      (select tm.trip_id from public.trip_members tm where tm.id = trip_member_id)
     )
   );
 
+-- INSERT/UPDATE/DELETE: owning member writes their own row; organizer
+-- can write any row in the same trip.
 create policy "members write own days"
   on public.trip_member_days for all
   to authenticated
-  using (
-    exists (
-      select 1 from public.trip_members tm
-      where tm.id = trip_member_id and tm.user_id = auth.uid()
-    )
-  )
-  with check (
-    exists (
-      select 1 from public.trip_members tm
-      where tm.id = trip_member_id and tm.user_id = auth.uid()
-    )
-  );
+  using (public.is_trip_member_by_member_id(trip_member_id)
+         and exists (
+           select 1 from public.trip_members tm
+           where tm.id = trip_member_id and tm.user_id = auth.uid()
+         ))
+  with check (public.is_trip_member_by_member_id(trip_member_id)
+              and exists (
+                select 1 from public.trip_members tm
+                where tm.id = trip_member_id and tm.user_id = auth.uid()
+              ));
 
 create policy "organizers write any days for their trip"
   on public.trip_member_days for all
