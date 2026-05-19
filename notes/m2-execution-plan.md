@@ -33,7 +33,11 @@
 - **No same-file collisions across parallel PRs.** Every parallel agent
   claims its file paths explicitly in its wave row below. Test-file
   claims are listed inline — *no agent writes to a test file claimed
-  by another agent in the same wave*.
+  by another agent in the same wave*. Cross-wave file overlap is
+  permitted **only** when the later wave is sequential-gated on the
+  earlier wave merging first (e.g., Wave 2b edits the dashboard page
+  Wave 2a creates — Wave 2b cannot dispatch until 2a is merged into
+  `main` and `git pull` is clean).
 - **`.env.example`** if touched — agents append at the bottom only,
   never modify existing lines (M1 learning).
 
@@ -71,11 +75,12 @@ wave depends on. Already done locally; needs PR.
 - `eslint.config.mjs` — add `.claude/**` to globalIgnores (was failing
   lint on leftover agent worktree `.next/` artifacts)
 - `notes/m2-execution-plan.md` — this file
-- `components/ui/{button,input,label,form,card,badge,avatar,separator}.tsx` —
-  scaffold shadcn primitives Wave 1+ needs. Run
-  `pnpm dlx shadcn@latest add button input label form card badge avatar separator`
-  *before* dispatching Wave 1 so parallel agents don't race to add the
-  same primitive.
+- `components/ui/{badge,separator}.tsx` — newly scaffolded. M1 already
+  shipped `button, input, label, card, avatar, dropdown-menu`. The
+  shadcn `form` primitive is **not** in the `base-nova` registry and
+  is intentionally not added — Wave 1a uses `react-hook-form` + `zod`
+  directly with `<Input>` / `<Label>` / `<Button>` primitives, which
+  is the same wiring under the hood.
 
 **Verification gate:**
 ```
@@ -159,9 +164,13 @@ Author order inside the SQL (dependency-correct):
    - Decrements `uses_left` if non-null
    - Returns `trip_members.id`
 5. `create function public.invite_preview(p_token uuid)
-   returns table(trip_name text, starts_at timestamptz, ends_at timestamptz, host_display_name text, attendee_count int)
+   returns table(trip_name text, starts_at timestamptz, ends_at timestamptz, host_display_name text, attendee_count_bucket text)
    security definer stable` — for logged-out preview; locks down columns
-   exposed to anonymous callers (no celebrant flag, no member emails)
+   exposed to anonymous callers (no celebrant flag, no member emails).
+   **`attendee_count_bucket` is bucketed** (`'just-getting-started'`
+   for 0-1, `'small-crew'` for 2-5, `'full-house'` for 6-15,
+   `'big-group'` for 15+) to prevent the raw integer from acting as an
+   enumeration oracle when a single-use invite is forwarded.
 
 **Companion edits in the same PR:**
 
@@ -316,7 +325,13 @@ Single branch: `feat/m2-date-poll`. Single PR. Closes #75 + #76.
 5. RLS for all three tables in the same migration:
    - **Candidates:** read = members of trip; write = organizers (organizer + co_organizer) or celebrant
    - **Celebrant marks:** read = members; write = the celebrant only (`auth.uid() = trip_member.user_id and is_celebrant`)
-   - **Votes:** read = aggregate-visible to members (per-name visibility opt-in only — ADR); insert/update permitted only if the candidate's mark is null OR != 'no-go' (enforced via trigger because RLS WITH CHECK can't reference a sibling table cleanly)
+   - **Votes:**
+     - read = aggregate-visible to members (per-name visibility opt-in only — ADR)
+     - `with check` clause **must bind `trip_member_id` to the caller**:
+       `trip_member_id in (select id from trip_members where trip_id = (select trip_id from date_poll_candidates where id = candidate_id) and user_id = auth.uid())`
+       — without this, any member can stuff votes on behalf of others by passing a spoofed `trip_member_id`
+     - the candidate-not-vetoed gate is enforced by a separate trigger
+       (RLS `with check` can't cleanly reference a sibling table)
 6. Trigger `assert_candidate_not_vetoed_before_vote` on
    `date_poll_votes` INSERT/UPDATE: raise exception if the
    `date_poll_celebrant_marks.mark` for the candidate is `no-go`
@@ -359,12 +374,18 @@ Single branch: `feat/m2-date-poll`. Single PR. Closes #75 + #76.
 
 **Verification gate after Wave 3:**
 ```
+# Gate-0: Appendix A must be populated. If still "(populated at Wave 3 start)",
+# the architect agent has not signed off — Wave 3 cannot merge.
+grep -q "(populated at Wave 3 start)" notes/m2-execution-plan.md && echo BLOCK_MERGE && exit 1
+
 pnpm dlx supabase db reset && pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm exec playwright test --project=mobile-safari e2e/date-poll-bach.spec.ts
 # Manual: with two browser windows (one celebrant, one member), prove
 # realtime: celebrant marks no-go → member's UI removes that candidate
 # Manual: airplane-mode the member browser, cast a vote, restore
 # network, prove the vote lands
+# Manual security: try POSTing a vote with someone else's trip_member_id
+# in the request body — must 403 (the with-check clause does the work)
 ```
 
 **Risk: HIGH.** Realtime + offline reconcile + the no-go-veto gate are
@@ -414,7 +435,8 @@ gh issue list --milestone "M2 — Trip is real" --json state -q '[.[] | select(.
       for declines)
 - [ ] 3-state RSVP UI (going / maybe / declined) on dashboard (#74)
 - [ ] `co_organizer` enum value; `is_trip_organizer()` returns true
-      for both — no spend cap yet (deferred to M5)
+      for both. **No spend cap yet** (deferred to M5 — do NOT add a
+      cap column or check; roadmap explicitly defers)
 - [ ] Trip date selection — celebrant-weighted for bach kind: 2–4
       candidate windows, celebrant marks works /
       works-with-effort / no-go, others vote only on non-vetoed (#75)
@@ -423,6 +445,27 @@ gh issue list --milestone "M2 — Trip is real" --json state -q '[.[] | select(.
 - [ ] Header with avatar + sign-out
 - [ ] Every M2 UI string sourced from `lib/copy/*` palettes; PR
       template microcopy review enforced
+
+---
+
+## Explicitly out of scope (do not build in M2)
+
+These were killed or deferred per `notes/killed-and-deferred.md` /
+`notes/roadmap.md` §M2. Re-proposing any of these in an M2 PR is a
+review-blocker. The list exists to prevent scope creep mid-wave (M1
+learning material).
+
+- Fear List 3-card swipe ceremony (#29 killed)
+- Crew Cards / member directory with "how do you know" field (#31 killed)
+- Dietary as a profile column on `trip_members` (moved to M3 as per-item flag)
+- OG share cards (M5)
+- Co-organizer **spend cap** (deferred to M5)
+- Per-name "going / declining" visibility on poll components by
+  default — must be voter-opt-in
+- Push notification preferences settings screen
+- Tooltips / onboarding banners / progress bars / completion scores
+- Required fields with asterisks
+- Notification outbox / dispatcher (#33 killed)
 
 ---
 
