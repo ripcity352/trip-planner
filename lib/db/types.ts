@@ -189,3 +189,62 @@ export interface TripMemberDay {
   created_at: string;
   updated_at: string;
 }
+
+// =============================================================
+// Wave 3 — Date poll (celebrant-weighted, PulsePoll)
+// =============================================================
+// Mirrors `20260519204313_m2_date_poll.sql`. See `notes/m2-execution
+// -plan.md` Appendix A for the architect-signed contract.
+
+/**
+ * Celebrant's chip for a given candidate window.
+ *
+ * - `works`             — green-light, voting proceeds normally
+ * - `works-with-effort` — voting proceeds; UI surfaces a "could work
+ *                         for the celebrant" badge so members weigh it
+ * - `no-go`             — vetoes the candidate; hidden from member
+ *                         voting UI; SQL trigger blocks vote inserts
+ */
+export type DatePollCelebrantMark = "works" | "works-with-effort" | "no-go";
+
+export interface DatePollCandidate {
+  id: string;
+  trip_id: string;
+  label: string;
+  /** ISO date — `YYYY-MM-DD`. */
+  starts_on: string;
+  /** ISO date — `YYYY-MM-DD`. */
+  ends_on: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface DatePollCelebrantMarkRow {
+  candidate_id: string;
+  mark: DatePollCelebrantMark;
+  marked_by: string;
+  marked_at: string;
+}
+
+export interface DatePollVote {
+  candidate_id: string;
+  trip_member_id: string;
+  vote: boolean;
+  voted_at: string;
+  idempotency_key: string | null;
+}
+
+/**
+ * Composite view-model for one candidate, the load-bearing shape the
+ * dates page renders. Vote counts are aggregate-only — voter names
+ * are intentionally NOT threaded through this surface per the
+ * aggregate-only ADR. `my_vote` is the caller's own vote (or null
+ * if they haven't voted yet).
+ */
+export interface DatePollCandidateView {
+  candidate: DatePollCandidate;
+  mark: DatePollCelebrantMark | null;
+  yes_votes: number;
+  no_votes: number;
+  my_vote: boolean | null;
+}
