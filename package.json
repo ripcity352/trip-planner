@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps",
+    "test:visual": "playwright test -c playwright.visual.config.ts",
     "types:gen": "pnpm dlx supabase gen types typescript --linked > lib/db/database.types.ts && prettier --write lib/db/database.types.ts"
   },
   "dependencies": {
