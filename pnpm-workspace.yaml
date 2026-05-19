@@ -3,6 +3,9 @@ allowBuilds:
   unrs-resolver: true
   "@tailwindcss/oxide": true
   msw: true
+  # @sentry/cli's postinstall fetches a native binary used for sourcemap
+  # upload. Enabled so CI builds with SENTRY_AUTH_TOKEN can upload maps.
+  '@sentry/cli': true
 
 # Force-resolve transitive deps with known issues. Add a comment per
 # entry so future maintainers know what's holding them.
