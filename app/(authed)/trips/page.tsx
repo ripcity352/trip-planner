@@ -10,9 +10,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { listMyTrips } from "@/lib/db/trips";
-import { EMPTY_STATES } from "@/lib/copy/empty-states";
+import { EMPTY_STATES, EMPTY_STATE_CTAS } from "@/lib/copy/empty-states";
 import { createClient } from "@/lib/supabase/server";
 import type { Trip } from "@/lib/db/types";
+
+// Defensive fallback: if the CTA palette is ever stripped down, the
+// page still renders a sensible label rather than an empty button.
+const TRIPS_MINE_CTA_FALLBACK = "Start a trip";
 
 /**
  * `/trips` — list of trips the signed-in user is a member of. The
@@ -59,7 +63,7 @@ function EmptyState() {
             href="/trips/new"
             className={buttonVariants({ variant: "default", size: "lg" })}
           >
-            Start a trip
+            {EMPTY_STATE_CTAS.trips_mine ?? TRIPS_MINE_CTA_FALLBACK}
           </Link>
         </CardContent>
       </Card>

@@ -5,7 +5,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { EMPTY_STATES, type EmptyStateKey } from "@/lib/copy/empty-states";
+import {
+  EMPTY_STATES,
+  EMPTY_STATE_CTAS,
+  type EmptyStateKey,
+} from "@/lib/copy/empty-states";
 
 const EXPECTED_KEYS: readonly EmptyStateKey[] = [
   "itinerary",
@@ -42,5 +46,18 @@ describe("EMPTY_STATES", () => {
     for (const key of EXPECTED_KEYS) {
       expect(EMPTY_STATES[key].length).toBeLessThanOrEqual(MAX_LENGTH);
     }
+  });
+});
+
+// CTA buttons sit on the mobile target (~375px); much longer than this
+// and they wrap or get truncated.
+const CTA_MAX_LENGTH = 40;
+
+describe("EMPTY_STATE_CTAS", () => {
+  it("has a non-empty trips_mine CTA <= 40 chars", () => {
+    const cta = EMPTY_STATE_CTAS.trips_mine;
+    expect(typeof cta).toBe("string");
+    expect(cta?.trim().length).toBeGreaterThan(0);
+    expect(cta?.length ?? 0).toBeLessThanOrEqual(CTA_MAX_LENGTH);
   });
 });

@@ -65,4 +65,24 @@ describe("signOut server action", () => {
 
     expect(callOrder).toEqual(["signOut", "redirect"]);
   });
+
+  it("logs the error and still redirects when supabase.signOut returns an error", async () => {
+    // Refresh-token revocation race etc. — we'd rather strand the user
+    // on /login than freeze the page mid-action.
+    signOutSpy.mockResolvedValueOnce({ error: { message: "boom" } });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    const { signOut } = await import("@/lib/actions/auth");
+    await expect(signOut()).rejects.toThrow("NEXT_REDIRECT:/login");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[auth] signOut failed:",
+      "boom"
+    );
+    expect(redirectMock).toHaveBeenCalledWith("/login");
+
+    consoleErrorSpy.mockRestore();
+  });
 });

@@ -13,8 +13,14 @@ import { createClient } from "@/lib/supabase/server";
  * authenticated layout in a loop. Wire this from the header's account
  * menu (see `components/trip/header-menu.tsx`).
  */
-export async function signOut(): Promise<void> {
+export async function signOut(): Promise<never> {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    // Better to send the user away than strand them mid-redirect. Log
+    // so we see this in Sentry if it happens; the cookie clear failure
+    // mode is rare but real (refresh-token revocation race).
+    console.error("[auth] signOut failed:", error.message);
+  }
   redirect("/login");
 }
