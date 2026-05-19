@@ -235,6 +235,76 @@ curl -s -X PATCH \
 - **`upsert=true`** on Vercel's env POST avoids "already exists"
   errors when re-running the script.
 
+## M1 foundation conventions
+
+Codified in `supabase/migrations/20260519123255_m1_foundation.sql`. Every
+new table/migration that lands after M1 must respect these or update the
+section to record the deliberate exception.
+
+### FK convention — attendee identity goes through `trip_member_id`
+
+Any feature table that references *an attendee of the trip* uses
+`trip_member_id uuid references trip_members(id) on delete cascade`,
+**never** `user_id uuid references auth.users(id)`. The exception is
+**author** columns (`announcements.author_id`, `expenses.payer_id`,
+`itinerary_items.created_by`) — those record who *acted* and continue to
+reference `auth.users(id)`.
+
+Rationale: accountless attendees (invited by email/phone before they
+sign in) have no `auth.users` row. A `trip_member_id` FK keeps the
+relationship intact through the claim-the-seat flow.
+
+RLS for retargeted tables uses `is_trip_member_by_member_id(p_member_id)`
+instead of `is_trip_member(trip_id)` since the table no longer carries
+`trip_id` directly.
+
+### Idempotency-key scope
+
+Every mutation server action accepts a client-generated
+`idempotency_key`. The scope of the partial unique index follows who can
+act:
+
+- **Organizer-acting-on-behalf tables** — scope `(trip_id, idempotency_key)`.
+  Applies to `announcements`, `expenses`. An organizer might post the
+  same announcement on behalf of someone else; the (trip, key) tuple
+  guarantees they don't double-post even if their client retries.
+- **Strictly user-scoped tables** — scope
+  `(trip_member_id, idempotency_key)` (or table-equivalent). Applies to
+  `availability`, `trip_member_days`. Only the member writes their own
+  row, so the key scope mirrors that.
+
+All idempotency indexes are *partial* (`where idempotency_key is not
+null`) so legacy rows without keys are unaffected.
+
+### Currency convention
+
+Every money column ships with a sibling
+`currency char(3) not null default 'USD'`. Applied to
+`expenses.amount_cents`, `expense_splits.amount_cents`,
+`itinerary_items.cost_cents`. Cheap now, no migration pain at the first
+international trip.
+
+### Declining-RSVP visibility
+
+Never expose `rsvp_status='declined'` per-row to non-organizers; non-
+declined statuses (`pending`, `going`, `maybe`) flow through unchanged.
+App code reads RSVP from the `trip_members_visible_rsvp` view, which
+returns `null` for the declined-status field when the viewer is not an
+organizer and not the row's own user. The view is declared
+`security_invoker = true` so RLS on the underlying table runs against
+the caller's identity.
+
+### Visibility column convention
+
+Every new user-content table ships with
+`visibility trip_visibility not null default 'everyone'`. The enum is
+`everyone | organizers_only | hide_from_celebrant | custom`. RLS SELECT
+policies on those tables call `can_see_content(trip_id, visibility)`.
+
+The `content_visibility_grants` join table for `custom` audiences is
+deferred — for M1 `custom` falls back to membership (same as
+`everyone`).
+
 ## Future: Supabase branch DBs
 
 Supabase has a "branch database" feature where each PR gets an
