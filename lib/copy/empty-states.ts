@@ -128,6 +128,35 @@ export const M2_UI_STRINGS = {
   // non-organizers never see per-name decline data.
   dashboard_rsvp_count_template: "{going} going, {maybe} maybe, {invited} invited",
   dashboard_rsvp_count_declined_suffix: " ({count} can't make it)",
+  // /trips/[tripId] — link to the dates page (Wave 3 #75 #76)
+  dashboard_dates_link_label: "Pick the dates",
+  // /trips/[tripId]/dates — celebrant-weighted poll (Wave 3 #75 #76).
+  // Voice test: would I say this out loud at the pre-trip dinner?
+  // Mark labels are the celebrant's own voice; vote labels are a
+  // member's. "Hard pass" because we don't want clinical SaaS
+  // ("Reject"); "I'm in" / "Skip me" because they sound human.
+  datePoll_heading: "Pick the dates",
+  datePoll_celebrant_subhead:
+    "You tell us what works. Everyone else votes on what's left.",
+  datePoll_member_subhead: "Vote on the windows still in play.",
+  datePoll_celebrant_chip_works: "Works",
+  datePoll_celebrant_chip_works_with_effort: "Could work",
+  datePoll_celebrant_chip_no_go: "Hard pass",
+  datePoll_member_vote_yes: "I'm in",
+  datePoll_member_vote_no: "Skip me",
+  datePoll_add_window_cta: "Add a window",
+  datePoll_max_windows_reached:
+    "4 windows is the cap — drop one before adding.",
+  datePoll_celebrant_unmarked_badge: "Celebrant hasn't weighed in",
+  datePoll_celebrant_effort_badge: "Could work for the celebrant",
+  datePoll_no_candidates_yet:
+    "No windows proposed yet. Drop one and we'll start voting.",
+  datePoll_add_form_label_label: "Window name",
+  datePoll_add_form_start_label: "From",
+  datePoll_add_form_end_label: "To",
+  datePoll_add_form_submit: "Add it",
+  datePoll_add_form_cancel: "Cancel",
+  datePoll_unsynced_badge: "Syncing…",
 } as const;
 
 export type M2UIStringKey = keyof typeof M2_UI_STRINGS;

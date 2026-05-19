@@ -108,3 +108,41 @@ describe("M2_UI_STRINGS", () => {
     });
   });
 });
+
+// Wave 3 — date-poll surface strings. The sweep above already covers
+// shape + length; we additionally pin specific keys exist with non-empty
+// values, so a future refactor doesn't accidentally drop a chip label
+// (the M2_UI_STRINGS object loses no compile-time exhaustiveness when
+// a key is removed without an updated consumer). Chip labels are kept
+// under ~24 chars so they fit a 375px chip without wrapping.
+const DATE_POLL_CHIP_KEYS = [
+  "datePoll_celebrant_chip_works",
+  "datePoll_celebrant_chip_works_with_effort",
+  "datePoll_celebrant_chip_no_go",
+  "datePoll_member_vote_yes",
+  "datePoll_member_vote_no",
+] as const;
+const DATE_POLL_CHIP_MAX = 24;
+
+describe("M2_UI_STRINGS — date-poll keys", () => {
+  it("date-poll chips fit a 375px chip without wrapping", () => {
+    for (const key of DATE_POLL_CHIP_KEYS) {
+      const value = M2_UI_STRINGS[key];
+      expect(value, `${key} length`).toBeDefined();
+      expect(value.length, `${key} length`).toBeLessThanOrEqual(
+        DATE_POLL_CHIP_MAX
+      );
+    }
+  });
+
+  it("date-poll heading + subheads exist", () => {
+    expect(M2_UI_STRINGS.datePoll_heading.length).toBeGreaterThan(0);
+    expect(M2_UI_STRINGS.datePoll_celebrant_subhead.length).toBeGreaterThan(
+      0
+    );
+    expect(M2_UI_STRINGS.datePoll_member_subhead.length).toBeGreaterThan(0);
+    expect(
+      M2_UI_STRINGS.datePoll_no_candidates_yet.length
+    ).toBeGreaterThan(0);
+  });
+});
