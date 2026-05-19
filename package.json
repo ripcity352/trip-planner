@@ -15,13 +15,16 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps",
+    "test:visual": "playwright test -c playwright.visual.config.ts",
     "types:gen": "pnpm dlx supabase gen types typescript --linked > lib/db/database.types.ts && prettier --write lib/db/database.types.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",
     "@hookform/resolvers": "^5.2.2",
+    "@sentry/nextjs": "^10.53.1",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
+    "@vercel/analytics": "^2.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
