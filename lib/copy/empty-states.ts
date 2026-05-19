@@ -53,3 +53,29 @@ export const EMPTY_STATE_CTAS: Partial<Record<EmptyStateKey, string>> = {
   trips_mine: "Start a trip",
   // Other keys add their CTA strings here as features land.
 };
+
+/**
+ * Attendee-count bucket labels for the logged-out invite preview
+ * (`/invite/[token]`). The underlying RPC returns a bucket name (not
+ * the raw integer — that would be an enumeration oracle) and we render
+ * the corresponding string. Voice test on each: would I describe it
+ * this way out loud?
+ *
+ * Wave 2a only — if more bucket consumers land, hoist this into its
+ * own palette file. For now the two-palette discipline holds.
+ */
+export type AttendeeCountBucketLabelKey =
+  | "just-getting-started"
+  | "small-crew"
+  | "full-house"
+  | "big-group";
+
+export const ATTENDEE_COUNT_BUCKET_LABELS: Record<
+  AttendeeCountBucketLabelKey,
+  string
+> = {
+  "just-getting-started": "Just getting going",
+  "small-crew": "Small crew so far",
+  "full-house": "Full house",
+  "big-group": "Big group",
+};

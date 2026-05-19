@@ -1,0 +1,98 @@
+/**
+ * `POST /invite/[token]/accept` — Route Handler that accepts an invite.
+ *
+ * Why a Route Handler and not a Server Action: the public preview page
+ * submits a real `<form action="..." method="post">` (no JS required),
+ * which means the entry point has to be an HTTP endpoint, not a server
+ * action wired to a client component. Anonymous visitors who landed on
+ * the preview without JS can still complete the flow.
+ *
+ * GET is treated identically to POST so the `/login?next=...` bounce
+ * path (which lands as a GET after Supabase code-exchange) works the
+ * same way.
+ *
+ * Idempotency: we derive the idempotency key DETERMINISTICALLY from
+ * `(userId, token)` — both fixed strings the server can read at call
+ * time. That means two POSTs from the same user with the same token
+ * produce the same key, and the DB-side partial unique on
+ * `trip_members (trip_id, idempotency_key)` short-circuits the second
+ * insert.
+ */
+
+import { NextResponse, type NextRequest } from "next/server";
+import crypto from "node:crypto";
+
+import { acceptInviteAction } from "@/lib/actions/invites";
+import { createClient } from "@/lib/supabase/server";
+
+/**
+ * Deterministic uuid derived from `(userId, token)`. We hash via SHA-256
+ * (Node's built-in), grab the first 16 bytes, and reshape into a v5-
+ * style uuid (`xxxxxxxx-xxxx-5xxx-yxxx-xxxxxxxxxxxx`). Same inputs →
+ * same output, no need to persist anything client-side. We do NOT use
+ * the standard uuid v5 algorithm because pulling the `uuid` package
+ * just for one helper isn't worth a new dep.
+ */
+function deterministicIdempotencyKey(userId: string, token: string): string {
+  const hash = crypto
+    .createHash("sha256")
+    .update(`${userId}::${token}`)
+    .digest("hex");
+  // Pull out 32 hex chars and format as uuid.
+  const hex = hash.slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+async function handle(
+  request: NextRequest,
+  { params }: { params: Promise<{ token: string }> }
+): Promise<NextResponse> {
+  const { token } = await params;
+  void request; // No body needed; we read auth from cookies via the server client.
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    // Bounce through login with the original accept URL as `next`.
+    const url = new URL(
+      `/login?next=/invite/${token}/accept`,
+      request.nextUrl.origin
+    );
+    return NextResponse.redirect(url, { status: 303 });
+  }
+
+  const idempotencyKey = deterministicIdempotencyKey(authData.user.id, token);
+
+  // The action calls `redirect()` on success — Next.js converts that
+  // into a thrown NEXT_REDIRECT digest that the framework catches at
+  // the route boundary and turns into a 30x. We let it propagate.
+  // On failure, we map the errorKey to a query string so `/invite/[token]`
+  // (which doesn't currently render errors) at least lands the user
+  // somewhere they can read the toast.
+  const result = await acceptInviteAction(token, idempotencyKey);
+
+  // `acceptInviteAction` throws NEXT_REDIRECT on success; if we get
+  // here, it returned an error envelope.
+  if (result && !result.ok) {
+    const errorUrl = new URL(`/invite/${token}`, request.nextUrl.origin);
+    errorUrl.searchParams.set("error", result.errorKey);
+    return NextResponse.redirect(errorUrl, { status: 303 });
+  }
+
+  // Defensive: should never reach this branch.
+  return NextResponse.redirect(new URL("/", request.nextUrl.origin));
+}
+
+export async function POST(
+  request: NextRequest,
+  ctx: { params: Promise<{ token: string }> }
+): Promise<NextResponse> {
+  return handle(request, ctx);
+}
+
+export async function GET(
+  request: NextRequest,
+  ctx: { params: Promise<{ token: string }> }
+): Promise<NextResponse> {
+  return handle(request, ctx);
+}
