@@ -103,7 +103,6 @@ export const M2_UI_STRINGS = {
   newTrip_vibePromptLabel: "What's the vibe?",
   // /trips/[tripId] dashboard
   dashboard_section_rsvp_heading: "Who's in",
-  dashboard_section_rsvp_body: "RSVPs roll in here.",
   dashboard_section_invite_heading: "Share the link",
   dashboard_section_invite_body:
     "Pop a link in the group chat. People click it, they're in.",
@@ -115,6 +114,20 @@ export const M2_UI_STRINGS = {
   invitePreview_cta_anon: "Sign in to join",
   invitePreview_back_link: "Back home",
   invitePreview_dates_unset: "Dates TBD",
+  // /trips/[tripId] — RSVP 3-state chips (#74). "Can't make it" is the
+  // voice-tested decline label; never "Declined" (corporate SaaS) per
+  // notes/research/persona-edge-attendees.md (opt INTO participation,
+  // never frame as a clinical no).
+  rsvp_chip_going: "Going",
+  rsvp_chip_maybe: "Maybe",
+  rsvp_chip_declined: "Can't make it",
+  // /trips/[tripId] — glanceable count templates. Simple {placeholder}
+  // substitution; we don't pull in a full i18n lib for this. The
+  // organizer-only declined suffix is gated at the call site by an
+  // `is_trip_organizer()` RPC check — per the declining-whispers ADR,
+  // non-organizers never see per-name decline data.
+  dashboard_rsvp_count_template: "{going} going, {maybe} maybe, {invited} invited",
+  dashboard_rsvp_count_declined_suffix: " ({count} can't make it)",
 } as const;
 
 export type M2UIStringKey = keyof typeof M2_UI_STRINGS;

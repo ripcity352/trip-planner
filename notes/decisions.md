@@ -5,6 +5,16 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-19 (PM) — Unify trip_members idempotency-key scope to (trip_id, user_id, idempotency_key)
+
+**Decision:** Drop the original Wave-2a `(trip_id, idempotency_key)` partial unique on `trip_members.idempotency_key` and replace with `(trip_id, user_id, idempotency_key)`. Update `accept_invite()` lookup to include `user_id`.
+
+**Rationale:** The original Wave-2a index was correct for `accept_invite` (one row per trip per actor) but violated the 2026-05-19 idempotency-scope ADR for `setRsvpAction` (strictly user-scoped). The per-(trip, user, key) scope satisfies both operations: accept_invite still has unique semantics per actor, and setRsvp gets its correct per-user scope. Practical collision risk is zero either way; this fix aligns implementation with the ADR.
+
+**Caught by:** code-reviewer agent during PR #109 review.
+
+---
+
 ## 2026-05-19 — M1 foundation + schema — all PRs open, awaiting merge
 
 **Decision:** The M1 execution plan from the same date completed authoring.

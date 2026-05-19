@@ -72,6 +72,10 @@ export const RATE_LIMIT_SCOPES = {
   CREATE_TRIP: "createTrip",
   ACCEPT_INVITE: "acceptInvite",
   AUTH_MAGIC_LINK: "authMagicLink",
+  // `setRsvp` (#74) gets its own bucket so a user spamming RSVP taps
+  // doesn't starve their `createTrip` / `acceptInvite` budget. Default
+  // 30/60s is generous for the drunk-double-tap pattern.
+  SET_RSVP: "setRsvp",
 } as const;
 
 export type RateLimitScope =
