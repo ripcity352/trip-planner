@@ -87,7 +87,10 @@ export async function listMyTrips(supabase: SupabaseClient): Promise<Trip[]> {
 
 /**
  * Input shape for creating a trip. `created_by` is filled in server-side
- * from `auth.uid()` to prevent spoofing.
+ * from `auth.uid()` inside the RPC, so the userId argument is no longer
+ * passed by the caller — the M1 stub signature is preserved here only
+ * for documentation; the M2 implementation routes through
+ * `public.create_trip_with_organizer(...)`.
  */
 export interface CreateTripInput {
   slug: string;
@@ -96,28 +99,45 @@ export interface CreateTripInput {
   location?: string | null;
   starts_at?: string | null;
   ends_at?: string | null;
+  vibe_tags?: string[] | null;
 }
 
 /**
- * Create a trip and return the persisted row. The caller is also added
- * to `trip_members` as `organizer` via a SECURITY DEFINER function in
- * the Goal 2 migration; this stub assumes that side-effect is wired
- * separately.
+ * Create a trip atomically with the caller as `organizer`. Wraps
+ * `public.create_trip_with_organizer(...)` (SECURITY DEFINER) so the
+ * trip insert + the organizer trip_member insert run in a single
+ * transaction — without this, a brief window exists where a trip has
+ * no members and is therefore invisible to its own creator under RLS.
+ *
+ * Per the M2 DoD: creator is `organizer`, NOT `celebrant`. The
+ * celebrant flag is set in a separate flow (later milestone).
  */
 export async function createTrip(
   supabase: SupabaseClient,
-  userId: string,
   input: CreateTripInput
 ): Promise<Trip> {
-  const { data, error } = await supabase
-    .from("trips")
-    .insert({ ...input, created_by: userId })
-    .select(TRIP_COLUMNS)
-    .single();
+  const { data, error } = await supabase.rpc("create_trip_with_organizer", {
+    p_slug: input.slug,
+    p_name: input.name,
+    p_description: input.description ?? null,
+    p_location: input.location ?? null,
+    p_starts_at: input.starts_at ?? null,
+    p_ends_at: input.ends_at ?? null,
+    p_vibe_tags: input.vibe_tags ?? [],
+  });
 
   if (error) {
     throw new Error(`createTrip failed: ${error.message}`);
   }
 
+  // The RPC returns a single `public.trips` row; Supabase deserializes
+  // a SETOF-of-one-record return as either the bare row or a 1-element
+  // array depending on the driver. Defensive: handle both.
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      throw new Error("createTrip failed: empty response");
+    }
+    return data[0] as Trip;
+  }
   return data as Trip;
 }

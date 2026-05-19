@@ -1,10 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
+import { safeNext } from "@/lib/auth/safe-next";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/trips";
+  // safeNext() collapses `null`, protocol-relative (`//evil.com/x`),
+  // off-origin (`https://evil.com`), and scheme-prefixed
+  // (`javascript:alert(1)`) inputs to the default `/trips` target. See
+  // `lib/auth/safe-next.ts` for the threat model.
+  const next = safeNext(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();

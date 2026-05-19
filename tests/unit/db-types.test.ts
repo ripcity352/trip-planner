@@ -22,7 +22,9 @@ import type {
 
 describe("lib/db types", () => {
   it("narrows enum unions to the exact migration values", () => {
-    expectTypeOf<TripRole>().toEqualTypeOf<"organizer" | "attendee">();
+    expectTypeOf<TripRole>().toEqualTypeOf<
+      "organizer" | "co_organizer" | "attendee"
+    >();
     expectTypeOf<RsvpStatus>().toEqualTypeOf<
       "pending" | "going" | "maybe" | "declined"
     >();

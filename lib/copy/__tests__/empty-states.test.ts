@@ -8,7 +8,10 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_STATES,
   EMPTY_STATE_CTAS,
+  ATTENDEE_COUNT_BUCKET_LABELS,
+  M2_UI_STRINGS,
   type EmptyStateKey,
+  type AttendeeCountBucketLabelKey,
 } from "@/lib/copy/empty-states";
 
 const EXPECTED_KEYS: readonly EmptyStateKey[] = [
@@ -59,5 +62,49 @@ describe("EMPTY_STATE_CTAS", () => {
     expect(typeof cta).toBe("string");
     expect(cta?.trim().length).toBeGreaterThan(0);
     expect(cta?.length ?? 0).toBeLessThanOrEqual(CTA_MAX_LENGTH);
+  });
+});
+
+// Bucket labels sit under an attendee-count chip on the logged-out
+// invite preview. ~40 chars is plenty — anything longer wraps.
+const BUCKET_LABEL_MAX_LENGTH = 40;
+const EXPECTED_BUCKET_KEYS: readonly AttendeeCountBucketLabelKey[] = [
+  "just-getting-started",
+  "small-crew",
+  "full-house",
+  "big-group",
+];
+
+describe("ATTENDEE_COUNT_BUCKET_LABELS", () => {
+  it("covers every bucket key returned by invite_preview", () => {
+    for (const key of EXPECTED_BUCKET_KEYS) {
+      expect(ATTENDEE_COUNT_BUCKET_LABELS).toHaveProperty(key);
+    }
+    expect(Object.keys(ATTENDEE_COUNT_BUCKET_LABELS).sort()).toEqual(
+      [...EXPECTED_BUCKET_KEYS].sort()
+    );
+  });
+
+  it("has a non-empty string of reasonable length for every bucket", () => {
+    for (const key of EXPECTED_BUCKET_KEYS) {
+      const value = ATTENDEE_COUNT_BUCKET_LABELS[key];
+      expect(typeof value).toBe("string");
+      expect(value.trim().length).toBeGreaterThan(0);
+      expect(value.length).toBeLessThanOrEqual(BUCKET_LABEL_MAX_LENGTH);
+    }
+  });
+});
+
+// M2 surface strings — paging-title, button labels, body copy on the
+// /trips/new, /trips/[tripId], and /invite/[token] surfaces. We don't
+// enumerate every key by name here (the type already pins exhaustiveness
+// at compile time); we just sweep the recorded palette for shape.
+describe("M2_UI_STRINGS", () => {
+  it("every value is a non-empty string under 120 chars", () => {
+    Object.values(M2_UI_STRINGS).forEach((value) => {
+      expect(typeof value).toBe("string");
+      expect(value.trim().length).toBeGreaterThan(0);
+      expect(value.length).toBeLessThanOrEqual(MAX_LENGTH);
+    });
   });
 });
