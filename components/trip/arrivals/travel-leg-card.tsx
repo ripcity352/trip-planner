@@ -11,6 +11,8 @@
  */
 
 import { format, parseISO } from "date-fns";
+import { Plane, Train, Car, Luggage } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import type { TravelLeg, TravelLegKind } from "@/lib/db/types";
@@ -22,12 +24,13 @@ const KIND_LABELS: Record<TravelLegKind, string> = {
   other: M3_UI_STRINGS.arrivals_leg_form_kind_other,
 };
 
-// Kind → simple text icon. No emoji deps — text keeps it accessible.
-const KIND_ICON: Record<TravelLegKind, string> = {
-  flight: "✈️",
-  train: "🚆",
-  drive: "🚗",
-  other: "🧳",
+// Kind → SVG icon (lucide-react). Replaces emoji icons per design-system
+// §581: emoji reserved for reactions / user-generated copy, app icons are SVG.
+const KIND_ICON: Record<TravelLegKind, LucideIcon> = {
+  flight: Plane,
+  train: Train,
+  drive: Car,
+  other: Luggage,
 };
 
 export interface TravelLegCardProps {
@@ -49,9 +52,16 @@ export function TravelLegCard({
     <article className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3">
       {/* Header: kind icon + label + owner name + edit affordance */}
       <div className="flex items-center gap-2">
-        <span aria-hidden className="text-base leading-none">
-          {KIND_ICON[leg.kind]}
-        </span>
+        {(() => {
+          const Icon = KIND_ICON[leg.kind];
+          return (
+            <Icon
+              aria-hidden
+              className="h-4 w-4 text-muted-foreground"
+              strokeWidth={2}
+            />
+          );
+        })()}
         <span className="text-sm font-semibold">{KIND_LABELS[leg.kind]}</span>
         <span className="text-muted-foreground ml-auto text-xs">
           {ownerName}
@@ -108,7 +118,10 @@ export function TravelLegCard({
 function formatDatetime(iso: string): string {
   try {
     return format(parseISO(iso), "MMM d, h:mm a");
-  } catch {
+  } catch (err) {
+    // Bad-data fallback — surface to logs so the orchestrator notices, but
+    // don't let a single malformed timestamp blow up the manifest render.
+    console.error("[arrivals] formatDatetime failed:", { iso, err });
     return iso;
   }
 }

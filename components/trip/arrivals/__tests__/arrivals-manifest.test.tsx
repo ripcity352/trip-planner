@@ -4,14 +4,16 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ArrivalsManifest } from "../arrivals-manifest";
 import type { TravelLeg, TripMember } from "@/lib/db/types";
 
-// Mock next/navigation — ArrivalsManifest calls useRouter for refresh
+// Mock next/navigation — ArrivalsManifest calls useRouter for refresh.
+// Capture the refresh spy via module-scoped mock so a test can assert it.
+const mockRefresh = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn() }),
+  useRouter: () => ({ refresh: mockRefresh }),
   usePathname: () => "/",
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -32,10 +34,21 @@ vi.mock("../travel-leg-card", () => ({
   ),
 }));
 
-// Mock TravelLegFormSheet
+// Mock TravelLegFormSheet — exposes a hook on the rendered button that the
+// test can fire to verify ArrivalsManifest's onMutated wires to router.refresh().
 vi.mock("../travel-leg-form-sheet", () => ({
-  TravelLegFormSheet: ({ tripId }: { tripId: string }) => (
-    <button data-testid="add-leg-sheet" data-trip-id={tripId}>
+  TravelLegFormSheet: ({
+    tripId,
+    onMutated,
+  }: {
+    tripId: string;
+    onMutated?: () => void;
+  }) => (
+    <button
+      data-testid="add-leg-sheet"
+      data-trip-id={tripId}
+      onClick={() => onMutated?.()}
+    >
       Add a leg
     </button>
   ),
@@ -72,6 +85,23 @@ const makeMember = (overrides: Partial<TripMember> = {}): TripMember => ({
 });
 
 describe("ArrivalsManifest", () => {
+  beforeEach(() => {
+    mockRefresh.mockReset();
+  });
+
+  it("calls router.refresh() when the form sheet fires onMutated (the reason this is a client component)", () => {
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[]}
+        myTripMemberId="member-1"
+        tripMembers={[makeMember()]}
+      />
+    );
+    fireEvent.click(screen.getByTestId("add-leg-sheet"));
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the empty state when no legs exist", () => {
     render(
       <ArrivalsManifest

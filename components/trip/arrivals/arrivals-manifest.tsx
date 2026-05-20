@@ -48,12 +48,7 @@ export function ArrivalsManifest({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Heading */}
-      <h2 className="text-lg font-semibold">
-        {M3_UI_STRINGS.arrivals_heading}
-      </h2>
-
-      {/* Leg list or empty state */}
+      {/* Leg list or empty state (heading lives on the page <h1>) */}
       {legs.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           {M3_UI_STRINGS.arrivals_empty}

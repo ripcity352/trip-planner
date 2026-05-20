@@ -68,8 +68,7 @@ export function TravelLegFormSheet({
           "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         )}
       >
-        {/* No arrivals-specific edit label — closest key is itinerary_edit_item_cta */}
-        {M3_UI_STRINGS.itinerary_edit_item_cta}
+        {M3_UI_STRINGS.arrivals_edit_cta}
       </button>
     );
   }
