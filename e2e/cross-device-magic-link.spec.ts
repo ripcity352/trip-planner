@@ -75,11 +75,20 @@ test.describe("cross-device magic-link (token-hash flow)", () => {
       const admin = makeAdminClient();
 
       // ── Step 1: ensure the test user exists ────────────────────────────
-      // createUser is idempotent-ish: if the email is taken, we proceed.
-      await admin.auth.admin.createUser({
+      // Make this genuinely idempotent: against a fresh `supabase db
+      // reset` createUser succeeds; against a long-lived staging DB the
+      // second run hits "already registered" and we want to proceed.
+      // Any other error still surfaces.
+      const { error: createErr } = await admin.auth.admin.createUser({
         email: CROSS_DEVICE_TEST_EMAIL,
         email_confirm: true,
       });
+      if (
+        createErr &&
+        !/already (registered|exists)/i.test(createErr.message)
+      ) {
+        throw createErr;
+      }
 
       // ── Step 2: generate a token-hash magic link via the Admin API ─────
       // `generateLink` with type "magiclink" mints a one-time link and

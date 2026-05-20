@@ -240,12 +240,65 @@ describe("resolveCallbackResult()", () => {
       expect(result).toEqual({ ok: false });
       expect(verifyOtpSpy).not.toHaveBeenCalled();
       expect(exchangeCodeForSessionSpy).not.toHaveBeenCalled();
+      // Per-branch createClient — when no params match, the Supabase
+      // client is never allocated.
+      expect(createClientMock).not.toHaveBeenCalled();
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "[auth] callback missing required params",
         expect.any(Object),
       );
 
       consoleErrorSpy.mockRestore();
+    });
+  });
+
+  // ── unknown OTP type ──────────────────────────────────────────────────────
+
+  describe("type allowlist", () => {
+    it("rejects an unknown OTP type before calling Supabase", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      const params: CallbackParams = {
+        token_hash: "abc123",
+        // Intentionally not in the ALLOWED_OTP_TYPES allowlist.
+        type: "not-a-real-otp-type",
+        code: null,
+        next: "/trips",
+      };
+
+      const result = await resolveCallbackResult(params);
+
+      expect(result).toEqual({ ok: false });
+      expect(verifyOtpSpy).not.toHaveBeenCalled();
+      expect(createClientMock).not.toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[auth] callback got unknown OTP type",
+        { type: "not-a-real-otp-type" },
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("accepts all six documented OTP types", async () => {
+      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
+      for (const type of [
+        "email",
+        "magiclink",
+        "recovery",
+        "invite",
+        "email_change",
+        "signup",
+      ] as const) {
+        const result = await resolveCallbackResult({
+          token_hash: "h",
+          type,
+          code: null,
+          next: "/trips",
+        });
+        expect(result).toEqual({ ok: true, next: "/trips" });
+      }
     });
   });
 });

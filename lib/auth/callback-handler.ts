@@ -38,20 +38,48 @@ export interface CallbackParams {
 export type CallbackResult = { ok: true; next: string } | { ok: false };
 
 /**
+ * Allowlist for OTP `type` query param. Supabase rejects unknown
+ * values at runtime, but pre-filtering keeps junk out of the network
+ * call and out of error-log noise. Mirrors the union @supabase/ssr
+ * exports for `verifyOtp({ type })`.
+ */
+const ALLOWED_OTP_TYPES = [
+  "email",
+  "magiclink",
+  "recovery",
+  "invite",
+  "email_change",
+  "signup",
+] as const;
+
+type AllowedOtpType = (typeof ALLOWED_OTP_TYPES)[number];
+
+function isAllowedOtpType(value: string): value is AllowedOtpType {
+  return (ALLOWED_OTP_TYPES as readonly string[]).includes(value);
+}
+
+/**
  * Resolves an auth callback to either a success (with redirect target)
  * or a failure.
  *
- * Precedence: token_hash + type → PKCE code → error.
+ * Precedence: token_hash + type → PKCE code → error. Each branch
+ * instantiates the Supabase client only when it actually needs it so
+ * a malformed callback (no params at all) doesn't waste a client
+ * allocation just to bounce to `/login?error=auth`.
  */
 export async function resolveCallbackResult(
   params: CallbackParams,
 ): Promise<CallbackResult> {
   const { token_hash, type, code, next } = params;
-  const supabase = await createClient();
 
   // ── token-hash path (preferred, cross-device) ──────────────────────────
   if (token_hash && type) {
-    const { error } = await supabase.auth.verifyOtp({ token_hash, type: type as Parameters<typeof supabase.auth.verifyOtp>[0]["type"] });
+    if (!isAllowedOtpType(type)) {
+      console.error("[auth] callback got unknown OTP type", { type });
+      return { ok: false };
+    }
+    const supabase = await createClient();
+    const { error } = await supabase.auth.verifyOtp({ token_hash, type });
     if (!error) {
       return { ok: true, next };
     }
@@ -65,6 +93,7 @@ export async function resolveCallbackResult(
 
   // ── PKCE code path (backward compat) ───────────────────────────────────
   if (code) {
+    const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       return { ok: true, next };
