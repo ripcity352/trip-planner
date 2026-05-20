@@ -5,6 +5,79 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-20 (late PM) — Tab-based IA locked + 3-axis labeling scheme
+
+**Decision:** The trip surface ships as a **5-tab bottom navigation**:
+`home / plans / posts / crew / me`. Mirrors the Claude Design mockup
+(external Figma, not versioned in repo). Money does **not** get a 6th
+tab — it surfaces as a "your move" CTA on `home` (e.g. "Send Dave
+$312"). Settlement detail is a deep-link route or bottom-sheet, never
+a top-level tab. Closes the IA gap the nine open expenses issues
+(#46–#54, #57) have been carrying.
+
+**3-axis issue labeling — `milestone × area × tab`:**
+
+- **`milestone:Mx`** — when we ship it. Already in use.
+- **`area:*`** — engineering/feature domain. Already in use; expanding
+  with `area:copy` for microcopy-only changes.
+- **`tab:*`** — where the user encounters it. **New axis, optional.**
+  Use only when an issue has a clear user-facing home. `tab:none` for
+  genuinely cross-cutting work (RLS, infra, auth, design system).
+
+**Triage rule:** every issue gets `milestone` + `area` required;
+`tab` optional. Multiple `tab:*` labels allowed for issues that span
+tabs (e.g. #45 RSVP color+icon touches `home` + `plans` + `crew`).
+
+**Code structure stays as-is.** Next.js App Router routes (already
+organized by feature under `app/(authed)/trips/[tripId]/...`) remain
+the source of truth. Do not bend folder structure to tab labels — the
+URL tree and the nav tree are allowed to diverge.
+
+**Why not promote `tab` to a milestone axis:** milestones today answer
+*"what does this unlock for a real trip?"* — a stable framing that's
+survived three closures (M1, M2, M3). Tab-keyed milestones would
+force *placement* questions (the wrong unit) and couple the schedule
+to the IA (the least stable layer in this stack). Tab IA may shift
+(e.g. `crew` could split into `roster` + `invites`); a label retag is
+cheap, a milestone restructure isn't.
+
+**Why money lives on `home`, not its own tab:** money is the #1 asked
+feature per audience research, but the user-action shape is "settle
+one balance, then forget about it." It belongs in the "your move"
+slot on `home` alongside RSVP nudges and itinerary acks, not in a
+permanent IA position that promises ongoing engagement we won't
+deliver. Aligns with the 2026-05-18 "no real-money handling" ADR —
+informational settlement doesn't warrant tab-level real estate.
+
+**What unlocks next (files separately, post-merge):**
+
+- **Nav-refactor M4 carry-back issue** — `components/BottomTabBar.tsx`
+  + `app/(authed)/trips/[tripId]/layout.tsx` + new `/me` route.
+  ~200 LOC. `milestone:M4`, `area:nav`, `tab:none`.
+- **`/me` composition issue** — what surfaces on the new self-tab
+  (profile, my RSVPs, my expenses, leave-trip). `milestone:M4`,
+  `area:me`, `tab:me`.
+- **7-issue Claude Design feedback batch** — Prompts 1–5, 7, 10 from
+  the mockup walkthrough. Each filed with appropriate `tab:*` label.
+
+**Out of scope for this ADR:** the actual tab-bar component, the
+`/me` route, the visual treatment of the "your move" home CTA. Those
+ship as code in the issues above.
+
+**Alternatives considered:**
+
+- **6-tab IA with `money` as a peer:** rejected per money-shape
+  argument above. Also pushes tab targets below the 44pt mobile-tap
+  comfort zone on 375px screens.
+- **`tab` as a required label:** rejected — most infra and design-
+  system work has no user-facing home. `tab:none` is honest;
+  required-everywhere would force false placement.
+- **Drop the `area` axis, use only `milestone` + `tab`:** rejected —
+  `area` is what the engineering side queries on; `tab` is what
+  product/UX queries on. Both audiences need their own slice.
+
+---
+
 ## 2026-05-20 (PM) — M3 — Trip is useful — milestone closed
 
 **Decision:** M3 closed. The MVP-target trio is now reachable from one
