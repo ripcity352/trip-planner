@@ -35,9 +35,15 @@ const VISIBILITY_OPTIONS = [
 ] as const;
 
 const formSchema = z.object({
-  title: z.string().trim().min(1, "Title is required").max(200),
+  title: z
+    .string()
+    .trim()
+    .min(1, M3_UI_STRINGS.itineraryForm_validation_title_required)
+    .max(200),
   kind: z.enum(ITEM_KINDS),
-  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+  day: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, M3_UI_STRINGS.itineraryForm_validation_day_format),
   address: z.string().trim().max(500).optional(),
   dressCode: z.string().trim().max(200).optional(),
   visibility: z.enum(VISIBILITY_OPTIONS),

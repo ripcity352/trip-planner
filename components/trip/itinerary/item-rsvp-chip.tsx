@@ -101,7 +101,7 @@ export function ItemRsvpChip({ itemId, initialStatus }: ItemRsvpChipProps) {
               disabled={isPending}
               onClick={() => handleClick(chip.status)}
               className={cn(
-                "focus-visible:ring-ring inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+                "focus-visible:ring-ring inline-flex h-11 items-center rounded-full border px-3 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
                 isActive
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-border bg-muted text-muted-foreground hover:bg-muted/80"

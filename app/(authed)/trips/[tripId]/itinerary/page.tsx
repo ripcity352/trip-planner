@@ -21,12 +21,12 @@
 
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getTripBySlug } from "@/lib/db/trips";
-import { getItineraryByTrip, getMyItemRsvps } from "@/lib/db/itinerary";
+import { getTripBySlug, getViewerMember, getCelebrantName, getTripMembers } from "@/lib/db/trips";
+import { getItineraryByTrip, getMyItemRsvps, getLodgingAssignmentsByTrip } from "@/lib/db/itinerary";
 import { M3_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
 import { DaySection } from "@/components/trip/itinerary/day-section";
 import { AddItemFormSheet } from "./add-item-form-sheet";
-import type { TripRole, ItineraryItemRsvpStatus } from "@/lib/db/types";
+import type { ItineraryItemRsvpStatus } from "@/lib/db/types";
 
 type PageProps = {
   params: Promise<{ tripId: string }>;
@@ -48,45 +48,26 @@ export default async function ItineraryPage({ params }: PageProps) {
     notFound();
   }
 
-  // Viewer's member row — role + is_celebrant
-  const { data: memberRow } = await supabase
-    .from("trip_members")
-    .select("id, role, is_celebrant, display_name")
-    .eq("trip_id", trip.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!memberRow) {
+  const viewer = await getViewerMember(supabase, trip.id, user.id);
+  if (!viewer) {
     notFound();
   }
 
-  const viewer = memberRow as {
-    id: string;
-    role: TripRole;
-    is_celebrant: boolean;
-    display_name: string | null;
-  };
   const isOrganizer =
     viewer.role === "organizer" || viewer.role === "co_organizer";
   const isCelebrant = viewer.is_celebrant;
 
-  // Fetch celebrant name for the visibility badge (organizer view)
-  let celebrantName: string | undefined;
-  if (isOrganizer) {
-    const { data: celebrantRow } = await supabase
-      .from("trip_members")
-      .select("display_name")
-      .eq("trip_id", trip.id)
-      .eq("is_celebrant", true)
-      .maybeSingle();
-    celebrantName = (celebrantRow as { display_name: string | null } | null)
-      ?.display_name ?? undefined;
-  }
+  // Fetch celebrant name only when needed (organizer visibility badge)
+  const celebrantName = isOrganizer
+    ? (await getCelebrantName(supabase, trip.id)) ?? undefined
+    : undefined;
 
-  // Fan out: items + my RSVPs in parallel
-  const [items, myRsvps] = await Promise.all([
+  // Fan out: items + my RSVPs + lodging assignments + trip members in parallel
+  const [items, myRsvps, lodgingAssignmentsMap, tripMembers] = await Promise.all([
     getItineraryByTrip(supabase, trip.id),
     getMyItemRsvps(supabase, trip.id),
+    getLodgingAssignmentsByTrip(supabase, trip.id),
+    getTripMembers(supabase, trip.id),
   ]);
 
   // Build a quick-lookup map of itemId → my RSVP status
@@ -128,6 +109,8 @@ export default async function ItineraryPage({ params }: PageProps) {
               isOrganizer={isOrganizer}
               isCelebrant={isCelebrant}
               celebrantName={celebrantName}
+              lodgingAssignmentsMap={lodgingAssignmentsMap}
+              tripMembers={tripMembers}
             />
           ))}
         </div>

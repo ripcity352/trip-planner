@@ -15,6 +15,7 @@
 
 import { buildMapsDeepLinks } from "@/lib/utils/maps-deep-link";
 import { cn } from "@/lib/utils";
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 
 export interface MapsLinkProps {
   address: string;
@@ -33,7 +34,7 @@ export function MapsLink({ address, className }: MapsLinkProps) {
         className="text-primary underline-offset-2 hover:underline"
         aria-label={`Open "${address}" in Apple Maps`}
       >
-        Apple Maps
+        {M3_UI_STRINGS.itinerary_maps_apple}
       </a>
       <span aria-hidden className="text-muted-foreground">
         ·
@@ -45,7 +46,7 @@ export function MapsLink({ address, className }: MapsLinkProps) {
         className="text-primary underline-offset-2 hover:underline"
         aria-label={`Open "${address}" in Google Maps`}
       >
-        Google Maps
+        {M3_UI_STRINGS.itinerary_maps_google}
       </a>
     </div>
   );

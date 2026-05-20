@@ -12,7 +12,7 @@
 import { format, parseISO } from "date-fns";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ItemCard } from "./item-card";
-import type { ItineraryItem, ItineraryItemRsvpStatus } from "@/lib/db/types";
+import type { ItineraryItem, ItineraryItemRsvpStatus, LodgingAssignment, TripMember } from "@/lib/db/types";
 
 export interface DaySectionProps {
   day: string; // ISO YYYY-MM-DD
@@ -22,6 +22,10 @@ export interface DaySectionProps {
   isOrganizer: boolean;
   isCelebrant: boolean;
   celebrantName?: string;
+  /** Map of itemId → lodging assignments. Populated only for lodging items. */
+  lodgingAssignmentsMap: Map<string, LodgingAssignment[]>;
+  /** All trip members — used by LodgingRoster to display names. */
+  tripMembers: TripMember[];
 }
 
 export function DaySection({
@@ -31,6 +35,8 @@ export function DaySection({
   isOrganizer,
   isCelebrant,
   celebrantName,
+  lodgingAssignmentsMap,
+  tripMembers,
 }: DaySectionProps) {
   // parseISO treats the string as local midnight — keeps the weekday
   // consistent with what you'd expect for the trip date.
@@ -53,6 +59,8 @@ export function DaySection({
               isOrganizer={isOrganizer}
               isCelebrant={isCelebrant}
               celebrantName={celebrantName}
+              lodgingAssignments={lodgingAssignmentsMap.get(item.id) ?? []}
+              tripMembers={tripMembers}
             />
           </li>
         ))}

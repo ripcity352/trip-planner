@@ -148,7 +148,7 @@ export function LodgingRoster({
                 "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               )}
             >
-              <option value="">— Pick a person —</option>
+              <option value="">{M3_UI_STRINGS.lodging_assign_pick_person}</option>
               {unassignedMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.display_name ?? m.email ?? m.id}

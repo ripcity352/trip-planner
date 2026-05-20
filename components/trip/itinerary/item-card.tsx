@@ -2,7 +2,7 @@
  * ItemCard — renders a single itinerary item.
  *
  * Server Component. Mounts client sub-components for interactive surfaces
- * (ItemRsvpChip, ItemFlagForm, MapsLink).
+ * (ItemRsvpChip, ItemFlagForm, MapsLink, EditItemFormSheet, LodgingRoster).
  *
  * Visibility rules:
  *   - `hide_from_celebrant` + viewer is celebrant → show placeholder only
@@ -16,7 +16,14 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { MapsLink } from "./maps-link";
 import { ItemRsvpChip } from "./item-rsvp-chip";
 import { ItemFlagForm } from "./item-flag-form";
-import type { ItineraryItem, ItineraryItemRsvpStatus } from "@/lib/db/types";
+import { EditItemFormSheet } from "./edit-item-form-sheet";
+import { LodgingRoster } from "./lodging-roster";
+import type {
+  ItineraryItem,
+  ItineraryItemRsvpStatus,
+  LodgingAssignment,
+  TripMember,
+} from "@/lib/db/types";
 
 // Kind → emoji icon mapping. No dep — just a lookup.
 const KIND_ICON: Record<ItineraryItem["kind"], string> = {
@@ -35,6 +42,10 @@ export interface ItemCardProps {
   isCelebrant: boolean;
   /** Celebrant display name — used in the organizer visibility badge. */
   celebrantName?: string;
+  /** Pre-fetched lodging assignments for this item (empty array for non-lodging items). */
+  lodgingAssignments: LodgingAssignment[];
+  /** All trip members — used by LodgingRoster to display names. */
+  tripMembers: TripMember[];
 }
 
 export function ItemCard({
@@ -43,6 +54,8 @@ export function ItemCard({
   isOrganizer,
   isCelebrant,
   celebrantName,
+  lodgingAssignments,
+  tripMembers,
 }: ItemCardProps) {
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
 
@@ -61,7 +74,7 @@ export function ItemCard({
 
   return (
     <article className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3">
-      {/* Header row: kind icon + title + time */}
+      {/* Header row: kind icon + title + time + edit affordance (organizer) */}
       <div className="flex items-start gap-2">
         <span aria-hidden className="mt-0.5 text-base leading-none">
           {KIND_ICON[item.kind]}
@@ -72,6 +85,9 @@ export function ItemCard({
             <p className="text-muted-foreground mt-0.5 text-xs">{timeLabel}</p>
           ) : null}
         </div>
+        {isOrganizer ? (
+          <EditItemFormSheet item={item} />
+        ) : null}
       </div>
 
       {/* Organizer visibility badge */}
@@ -111,6 +127,16 @@ export function ItemCard({
             </span>
           ))}
         </div>
+      ) : null}
+
+      {/* Lodging room roster — only for lodging items */}
+      {item.kind === "lodging" ? (
+        <LodgingRoster
+          itemId={item.id}
+          assignments={lodgingAssignments}
+          tripMembers={tripMembers}
+          isOrganizer={isOrganizer}
+        />
       ) : null}
 
       {/* Per-item RSVP chip */}

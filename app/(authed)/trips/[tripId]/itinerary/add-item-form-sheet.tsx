@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { AddItemForm } from "@/components/trip/itinerary/add-item-form";
@@ -22,13 +23,14 @@ export interface AddItemFormSheetProps {
 }
 
 export function AddItemFormSheet({ tripId }: AddItemFormSheetProps) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
 
   const handleSuccess = () => {
     setOpen(false);
     // Trigger a route refresh so the new item appears in the server-rendered
-    // DaySection list.
-    window.location.reload();
+    // DaySection list without a full page reload.
+    router.refresh();
   };
 
   return (

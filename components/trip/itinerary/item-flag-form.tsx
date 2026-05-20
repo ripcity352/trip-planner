@@ -9,6 +9,9 @@
  *
  * The `flag` field is freeform text, not an enum, per CLAUDE.md rule #8:
  * "don't encode a default — non-default attendees opt INTO participation."
+ *
+ * The optional `note` textarea feeds the `note` field on the action —
+ * organizers see it alongside the flag label.
  */
 
 import * as React from "react";
@@ -87,6 +90,30 @@ export function ItemFlagForm({ itemId, className }: ItemFlagFormProps) {
           "disabled:cursor-not-allowed disabled:opacity-60"
         )}
       />
+      <label
+        className="text-muted-foreground text-xs font-medium"
+        htmlFor={`flag-note-${itemId}`}
+      >
+        {M3_UI_STRINGS.itinerary_item_flag_note_label}
+      </label>
+      <textarea
+        id={`flag-note-${itemId}`}
+        value={note}
+        onChange={(e) => {
+          setNote(e.target.value);
+          setSaved(false);
+        }}
+        placeholder={M3_UI_STRINGS.itinerary_item_flag_note_placeholder}
+        maxLength={500}
+        rows={2}
+        disabled={isPending}
+        className={cn(
+          "rounded-md border border-border bg-background px-3 py-1.5 text-sm resize-none",
+          "placeholder:text-muted-foreground",
+          "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+          "disabled:cursor-not-allowed disabled:opacity-60"
+        )}
+      />
       <button
         type="submit"
         disabled={isPending || !flag.trim()}
@@ -100,7 +127,9 @@ export function ItemFlagForm({ itemId, className }: ItemFlagFormProps) {
         {M3_UI_STRINGS.itinerary_item_flag_save}
       </button>
       {saved ? (
-        <p className="text-muted-foreground text-xs">Saved.</p>
+        <p className="text-muted-foreground text-xs">
+          {M3_UI_STRINGS.itinerary_item_flag_saved}
+        </p>
       ) : null}
       {errorKey ? (
         <p role="alert" className="text-destructive text-xs">

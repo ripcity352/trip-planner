@@ -164,3 +164,35 @@ export async function getLodgingAssignments(
 
   return (data ?? []) as LodgingAssignment[];
 }
+
+/**
+ * Return all lodging assignments for all lodging items in a trip.
+ * Uses an inner join through itinerary_items to scope by trip_id.
+ * Returns a map of itemId → assignments for O(1) lookup in the render tree.
+ */
+export async function getLodgingAssignmentsByTrip(
+  supabase: SupabaseClient,
+  tripId: string
+): Promise<Map<string, LodgingAssignment[]>> {
+  const { data, error } = await supabase
+    .from("lodging_assignments")
+    .select(
+      "id, item_id, trip_member_id, room_label, created_at, itinerary_items!inner(trip_id, kind)"
+    )
+    .eq("itinerary_items.trip_id", tripId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`getLodgingAssignmentsByTrip failed: ${error.message}`);
+  }
+
+  const result = new Map<string, LodgingAssignment[]>();
+  for (const row of data ?? []) {
+    const { itinerary_items: _itemJoin, ...assignment } = row as typeof row & {
+      itinerary_items: unknown;
+    };
+    const existing = result.get(assignment.item_id) ?? [];
+    result.set(assignment.item_id, [...existing, assignment as LodgingAssignment]);
+  }
+  return result;
+}

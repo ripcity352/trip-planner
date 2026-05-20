@@ -196,7 +196,15 @@ export const M3_UI_STRINGS = {
   itinerary_item_flag_label: "Heads up to the organizers",
   itinerary_item_flag_placeholder: "Allergic, vegetarian, leaving early…",
   itinerary_item_flag_save: "Save the heads-up",
+  itinerary_item_flag_saved: "Saved.",
+  itinerary_item_flag_note_label: "Extra detail (optional)",
+  itinerary_item_flag_note_placeholder: "More context for the organizers…",
   itinerary_item_flag_empty_organizer: "No heads-ups from anyone yet.",
+  // Maps links
+  itinerary_maps_apple: "Apple Maps",
+  itinerary_maps_google: "Google Maps",
+  // Edit item sheet CTA (organizer affordance on ItemCard)
+  itinerary_edit_item_cta: "Edit",
   // Add-item / edit-item forms
   itineraryForm_title_label: "What is it?",
   itineraryForm_kind_label: "Kind",
@@ -215,11 +223,16 @@ export const M3_UI_STRINGS = {
   itineraryForm_delete: "Delete",
   itineraryForm_cancel: "Cancel",
   itineraryForm_delete_confirm: "Delete this item? Can't undo.",
+  itineraryForm_tags_placeholder: "beach, nightlife, adventure",
+  // Validation messages (zod schema errors — user-visible)
+  itineraryForm_validation_title_required: "Title is required",
+  itineraryForm_validation_day_format: "Must be YYYY-MM-DD",
   // Lodging assignments (#36, Wave 2)
   lodging_assignments_heading: "Who's in which room",
   lodging_room_label_placeholder: "Master, bunk room, the loft, …",
   lodging_assign_cta: "Assign a room",
   lodging_unassign_cta: "Unassign",
+  lodging_assign_pick_person: "— Pick a person —",
   // Now/next card (#77, Wave 3b)
   nowNext_pretrip_template: "Trip starts in {days}.",
   nowNext_today_label: "Today",

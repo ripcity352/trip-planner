@@ -41,15 +41,21 @@ const makeItem = (
   ...overrides,
 });
 
+const sharedProps = {
+  myRsvpMap: {},
+  isOrganizer: false,
+  isCelebrant: false,
+  lodgingAssignmentsMap: new Map(),
+  tripMembers: [],
+};
+
 describe("DaySection", () => {
   it("renders the day heading with weekday and formatted date", () => {
     render(
       <DaySection
         day="2026-08-01"
         items={[makeItem()]}
-        myRsvpMap={{}}
-        isOrganizer={false}
-        isCelebrant={false}
+        {...sharedProps}
       />
     );
     // Saturday · Aug 1 format
@@ -65,9 +71,7 @@ describe("DaySection", () => {
           makeItem({ id: "i1", title: "Lunch" }),
           makeItem({ id: "i2", title: "Dinner" }),
         ]}
-        myRsvpMap={{}}
-        isOrganizer={false}
-        isCelebrant={false}
+        {...sharedProps}
       />
     );
     const cards = screen.getAllByTestId("item-card");
@@ -81,9 +85,7 @@ describe("DaySection", () => {
       <DaySection
         day="2026-08-01"
         items={[]}
-        myRsvpMap={{}}
-        isOrganizer={false}
-        isCelebrant={false}
+        {...sharedProps}
       />
     );
     // No item cards
