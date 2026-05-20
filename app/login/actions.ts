@@ -145,6 +145,18 @@ export async function requestMagicLink(
         }),
     );
 
+    if (error) {
+      // Diagnostic logging — surfaces the underlying Supabase failure in
+      // Vercel/Sentry so we can distinguish per-IP throttle vs per-email
+      // throttle vs PKCE mismatch vs allowlist rejection. Never logs the
+      // email or any other PII at this layer.
+      console.error("[auth] signInWithOtp failed", {
+        status: error.status,
+        code: (error as { code?: string }).code,
+        name: error.name,
+        message: error.message,
+      });
+    }
     const mapped = mapAuthErrorToKey(error);
     if (mapped) {
       return { ok: false, errorKey: mapped };
@@ -153,10 +165,17 @@ export async function requestMagicLink(
     return { ok: true };
   } catch (err) {
     if (err instanceof RateLimitError) {
+      console.error("[auth] app-layer rate-limit fired", {
+        scope: RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK,
+      });
       return { ok: false, errorKey: "rate_limit" };
     }
     // Network failures, misconfigured env vars, etc. We never throw to
     // the caller — `_form.tsx` reads `errorKey` and renders a toast.
+    console.error("[auth] requestMagicLink threw", {
+      name: err instanceof Error ? err.name : "unknown",
+      message: err instanceof Error ? err.message : String(err),
+    });
     return { ok: false, errorKey: "network" };
   }
 }
