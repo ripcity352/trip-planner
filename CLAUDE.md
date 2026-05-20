@@ -258,9 +258,11 @@ CLI prints them at startup. See `notes/database-workflow.md`.
 ## Current phase
 
 See `/notes/roadmap.md` for the milestone plan (M1–M5). We are currently
-on **M1 — Foundation + Schema**. Roadmap was restructured 2026-05-19
-after a multi-perspective review; see `notes/decisions.md` (top entry)
-and `notes/killed-and-deferred.md` for what was cut and why.
+on **M3 — Trip is useful**. M1 closed 2026-05-19 (foundation + schema).
+M2 closed 2026-05-19 (auth, trip creation, invites, RSVP, celebrant-
+weighted date poll, PulsePoll). See `notes/decisions.md` for the M1 +
+M2 closure entries and the load-bearing decisions made during execution;
+`notes/killed-and-deferred.md` for what was cut and why.
 
 **MVP target:** ship M1 → M4 for one real bachelor party. Stop at M4.
 M5 is gated on a real-trip retrospective.
