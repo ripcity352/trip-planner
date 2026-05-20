@@ -165,19 +165,39 @@ balance-audit nudges, notification-outbox seam (#33 killed).
 The ship moment. Polish + the bright line marked **STOP HERE.**
 
 **Definition of done:**
-- Custom domain wired up in Vercel
+- Custom domain wired up in Vercel (#83)
 - Theming pass: party-specific colors, hero image, party name
+  (#90, #121)
 - Mobile QA across iOS Safari and Android Chrome
 - **Microcopy review** enforced as PR-template checklist for any UI string
-- **`/legal/terms` and `/legal/privacy` stub pages** — pass the voice test
-- **axe-core + Lighthouse a11y pass** per UI route
+- **`/legal/terms` and `/legal/privacy` stub pages** — pass the voice
+  test (#81)
+- **axe-core + Lighthouse a11y pass** per UI route (#82)
 - **Color is never the only signal** — RSVP/state icons accompany color
+  (#45)
+- **Structured inputs with freeform fallback** — chip pickers + datetime
+  widgets replace the M3 freeform fields where it's cheap to do so
+  without violating the "don't encode a default" ADR (rule #8). Six
+  surfaces:
+  - Dress-code preset chips (#163)
+  - Activity-tag chip picker (#164)
+  - Per-item member-flag chips with custom fallback (#165)
+  - Address autocomplete via Places API (#166) — new API-key dep
+  - `datetime-local` widget on non-lodging itinerary items (#167)
+  - Airline + flight-number picker for travel legs (#168)
+- **M2/M3 carry-back follow-ups** — trip-local TZ (#108), invites RLS
+  tightening (#154, #155), invite idempotency-key (#158), trip-notes
+  revalidate (#159), itinerary emoji→SVG (#156), dead helper cleanup
+  (#157), three prod-walk UX fixes (#160, #161, #162), rate-limit
+  hardening (#139, #140, #141)
 - **Send invite link to actual party attendees**
 - **Stop here.** Use it for the real trip. Come back to M5 only after a
   retrospective surfaces what the trip actually needed.
 
 **Out of scope:** every delight mechanic deferred to M5 (Drumroll,
 Lock-In Day, Hot Seat — all killed; can earn back via retro).
+Pure-enum replacements for the freeform text fields are out — the ADR
+rules that out; M4 structured-inputs scope is *suggest-with-fallback*.
 
 ---
 
