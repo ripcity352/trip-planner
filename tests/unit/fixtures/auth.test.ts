@@ -1,22 +1,28 @@
 /**
- * Smoke tests for the auth fixture module (vitest unit tests, NOT Playwright).
+ * Smoke tests for the auth fixture surface (vitest unit tests, NOT
+ * Playwright).
  *
  * We verify:
- *   1. The fixture module exports the expected symbols.
- *   2. STORAGE_STATE_PATH resolves to the expected relative location.
- *   3. seedTestUser throws a descriptive error when env vars are missing.
- *   4. cleanupTestUser is exported as a callable function.
+ *   1. STORAGE_STATE_PATH points at the gitignored
+ *      `playwright/.auth/storage-state.json`.
+ *   2. seedTestUser throws a descriptive error when env vars are
+ *      missing (so a developer running e2e locally without setup
+ *      sees a clear message instead of a hard crash).
+ *   3. TEST_USER_EMAIL / TEST_USER_PASSWORD defaults exist for the
+ *      deterministic test user (`e2e-test@example.com`).
+ *   4. cleanupTestUser is callable so a future global teardown can
+ *      wire it without contract drift.
  *
- * These tests run in the normal vitest unit suite (no browser needed).
- * Playwright-level behaviour is exercised by e2e/_setup/auth.setup.ts
- * as part of `pnpm exec playwright test --project=setup`.
+ * These tests run in the normal vitest unit suite (no browser
+ * needed). Playwright-level behaviour is exercised by
+ * e2e/_setup/auth.setup.ts as part of
+ * `pnpm exec playwright test --project=setup`.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 
-// Import from the actual module path relative to this test file.
-// tests/fixtures/__tests__/ → ../../../e2e/_setup/
+import { STORAGE_STATE_PATH } from "../../fixtures/auth";
 import {
   TEST_USER_EMAIL,
   TEST_USER_PASSWORD,
@@ -24,18 +30,15 @@ import {
   cleanupTestUser,
 } from "../../../e2e/_setup/seed-test-user";
 
-describe("STORAGE_STATE_PATH shape", () => {
-  it("resolves to playwright/.auth/storage-state.json under the repo root", () => {
+describe("STORAGE_STATE_PATH (single source of truth)", () => {
+  it("points at playwright/.auth/storage-state.json under the repo root", () => {
     const expectedSuffix = path.join(
       "playwright",
       ".auth",
       "storage-state.json"
     );
-    // Compute independently of the module under test.
-    const repoRoot = path.resolve(__dirname, "../../.."); // repo root
-    const expectedPath = path.join(repoRoot, expectedSuffix);
-    expect(expectedPath).toContain(expectedSuffix);
-    expect(path.isAbsolute(expectedPath)).toBe(true);
+    expect(STORAGE_STATE_PATH.endsWith(expectedSuffix)).toBe(true);
+    expect(path.isAbsolute(STORAGE_STATE_PATH)).toBe(true);
   });
 });
 

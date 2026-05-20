@@ -19,19 +19,21 @@
  *   3. Navigate to a protected route and verify the session is live.
  *   4. Save the storage state (cookies).
  *
- * The storage state is then used by the `authedPage` fixture
- * (tests/fixtures/auth.ts) and by specs that set `storageState`
- * directly on the test.use() call.
+ * The storage state is then read by e2e specs via `test.use({
+ * storageState: STORAGE_STATE_PATH })`. STORAGE_STATE_PATH is owned by
+ * `tests/fixtures/auth.ts` to keep the path in one place.
+ *
+ * Cleanup: the seeded user is deterministic (same email across runs)
+ * so we deliberately do NOT delete it after each run. The next run
+ * reuses the same user. If you need to wipe it manually, call
+ * `cleanupTestUser` from `seed-test-user.ts` against your local
+ * Supabase project.
  */
 
-import path from "node:path";
 import { test as setup, expect } from "@playwright/test";
-import { seedTestUser, cleanupTestUser } from "./seed-test-user";
 
-export const STORAGE_STATE_PATH = path.resolve(
-  __dirname,
-  "../../playwright/.auth/storage-state.json"
-);
+import { seedTestUser } from "./seed-test-user";
+import { STORAGE_STATE_PATH } from "../../tests/fixtures/auth";
 
 /**
  * Derive the Supabase project reference from the Supabase URL.
@@ -110,15 +112,16 @@ setup("authenticate test user", async ({ browser }) => {
 
   if (currentUrl.includes("/login")) {
     // Cookie injection didn't work — the middleware couldn't decode the
-    // session from the cookie. This is a blocker: log it and skip so
-    // the dependent tests skip rather than fail with confusing errors.
+    // session from the cookie. Tear down the context WITHOUT writing
+    // the storage-state file — leaving a non-authed file on disk would
+    // poison every dependent spec (`test.use({ storageState })`
+    // silently loads the unauthed state and the specs fail with
+    // redirect-loop errors instead of clean skips).
     console.error(
       `[auth.setup] Auth cookie was not accepted by the middleware. ` +
         `The session cookie format may not match what @supabase/ssr expects. ` +
         `Cookie name: ${cookieName}, value length: ${cookieValue.length}`
     );
-    // Save the state anyway so the fixture can inspect it, then skip.
-    await context.storageState({ path: STORAGE_STATE_PATH });
     await context.close();
     setup.skip(
       true,
@@ -130,7 +133,7 @@ setup("authenticate test user", async ({ browser }) => {
   // Verify we're on an authenticated page.
   await expect(page).not.toHaveURL(/\/login/);
 
-  // Save the storage state.
+  // Save the storage state ONLY after the auth was verified.
   await context.storageState({ path: STORAGE_STATE_PATH });
   console.log(`[auth.setup] Storage state saved to: ${STORAGE_STATE_PATH}`);
   console.log(
@@ -141,11 +144,4 @@ setup("authenticate test user", async ({ browser }) => {
 
   // Retain userId for downstream test reference.
   setup.info().annotations.push({ type: "testUserId", description: userId });
-
-  void cleanupTestUser; // exported for spec afterAll use
 });
-
-/**
- * Export the cleanup helper so test files can call it in afterAll.
- */
-export { cleanupTestUser as teardownTestUser };

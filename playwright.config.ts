@@ -1,10 +1,4 @@
-import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
-
-export const STORAGE_STATE = path.resolve(
-  __dirname,
-  "playwright/.auth/storage-state.json"
-);
 
 export default defineConfig({
   testDir: "./e2e",
