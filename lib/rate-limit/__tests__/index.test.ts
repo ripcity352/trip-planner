@@ -322,3 +322,102 @@ describe("rateLimitRequest", () => {
     expect(res?.headers.get("retry-after")).toBeTruthy();
   });
 });
+
+describe("production-mode in-memory shim (#130)", () => {
+  // Pins the post-#125 contract: when Upstash creds are absent in
+  // production, the limiter is allow-with-warning (NOT fail-closed).
+  // PR #125 fixed the production bricking; this test pins it so a
+  // future refactor can't silently flip the posture back.
+  //
+  // Strategy: stub `NODE_ENV=production`, ensure Upstash env is empty,
+  // reset the module cache, dynamically re-import. The module reads
+  // `process.env.NODE_ENV` inside `buildInMemoryLimiter` so the stub
+  // must be set BEFORE the dynamic import resolves.
+
+  const SAVED_ENV: Record<string, string | undefined> = {};
+  const RELEVANT_KEYS = [
+    "NODE_ENV",
+    "KV_REST_API_URL",
+    "KV_REST_API_TOKEN",
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+  ];
+
+  beforeEach(() => {
+    for (const key of RELEVANT_KEYS) {
+      SAVED_ENV[key] = process.env[key];
+    }
+    // The test-only seam at the top of this file calls
+    // `__setLimiterForTest(null)` in the file-wide afterEach — that
+    // resets the module-cached limiter. Re-importing the module here
+    // would also work; we use vi.stubEnv + resetModules + dynamic
+    // import for clean isolation.
+    vi.resetModules();
+    vi.stubEnv("NODE_ENV", "production");
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  });
+
+  afterEach(() => {
+    for (const key of RELEVANT_KEYS) {
+      const v = SAVED_ENV[key];
+      if (v === undefined) delete process.env[key];
+      else process.env[key] = v;
+    }
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("rateLimitedAction returns the wrapped fn result without throwing", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { rateLimitedAction: fresh, RATE_LIMIT_SCOPES: SCOPES } =
+      await import("@/lib/rate-limit");
+    const fn = vi.fn().mockResolvedValue("ok");
+
+    const result = await fresh(SCOPES.AUTH_MAGIC_LINK, "user-1", fn);
+
+    expect(result).toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(1);
+    // The warning fires once per process boot — we expect it at least
+    // once across the call, never zero.
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    const msg = consoleErrorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/Upstash creds unset in production/);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("warns only once across repeated calls (warned-flag latches)", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { rateLimitedAction: fresh, RATE_LIMIT_SCOPES: SCOPES } =
+      await import("@/lib/rate-limit");
+    const fn = vi.fn().mockResolvedValue("ok");
+
+    await fresh(SCOPES.AUTH_MAGIC_LINK, "user-1", fn);
+    await fresh(SCOPES.AUTH_MAGIC_LINK, "user-1", fn);
+    await fresh(SCOPES.CREATE_TRIP, "user-1", fn);
+
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("rateLimitRequest passes the request through (no 429) without throwing", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const { rateLimitRequest: fresh } = await import("@/lib/rate-limit");
+    const req = makeReq("http://localhost/login", {
+      method: "POST",
+      headers: { "x-forwarded-for": "10.10.10.10" },
+    });
+    const res = await fresh(req);
+    // Allow-with-warning: no 429 surfaced.
+    expect(res).toBeNull();
+    consoleErrorSpy.mockRestore();
+  });
+});

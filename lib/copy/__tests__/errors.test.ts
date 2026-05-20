@@ -19,6 +19,18 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "invite_not_found",
   "trip_create_failed",
   "rsvp_save_failed",
+  // M3 keys (Wave 0a)
+  "itinerary_save_failed",
+  "itinerary_delete_failed",
+  "item_rsvp_save_failed",
+  "item_flag_save_failed",
+  "announcement_post_failed",
+  "trip_notes_save_failed",
+  "travel_leg_save_failed",
+  "travel_leg_delete_failed",
+  "lodging_assign_failed",
+  "invite_mint_failed",
+  "invite_revoke_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

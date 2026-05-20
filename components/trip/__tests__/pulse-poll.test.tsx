@@ -246,4 +246,90 @@ describe("<PulsePoll />", () => {
     unmount();
     expect(client.removeChannel).toHaveBeenCalled();
   });
+
+  // #116 — TIMED_OUT must trigger the same disconnect-then-reconnect
+  // refetch path as CLOSED / CHANNEL_ERROR. Supabase Realtime emits it
+  // for slow heartbeats, not just hard failures.
+  it("TIMED_OUT → SUBSCRIBED triggers a post-reconnect refetch (#116)", async () => {
+    const ch = buildFakeChannel();
+    const client = buildFakeClient(ch);
+    const fetchData = vi.fn(async () => "v2");
+    render(
+      <PulsePoll<string>
+        channelKey="k"
+        initialData="v1"
+        fetchData={fetchData}
+        subscribeTableConfig={[{ table: "t1" }]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        __supabaseClient={client as any}
+        render={(d, isStale) => (
+          <span data-testid="payload">
+            {d}|{isStale ? "stale" : "fresh"}
+          </span>
+        )}
+      />
+    );
+    // Drain the initial SUBSCRIBED — first subscribe is not a
+    // reconnect, so fetchData must be untouched until we cycle.
+    await waitFor(() => {
+      expect(screen.getByTestId("payload").textContent).toBe("v1|fresh");
+    });
+    expect(fetchData).not.toHaveBeenCalled();
+
+    await act(async () => {
+      ch.triggerStatus("TIMED_OUT");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("payload").textContent).toContain("stale");
+    });
+
+    await act(async () => {
+      ch.triggerStatus("SUBSCRIBED");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("payload").textContent).toBe("v2|fresh");
+    });
+    expect(fetchData).toHaveBeenCalledTimes(1);
+  });
+
+  // #117 — runtime guard ignores the test-injection seam in production
+  // builds. Vitest's NODE_ENV is "test"; we stubEnv per-test to
+  // exercise the production branch. Next.js inlines NODE_ENV at build
+  // time, so the production bundle is the load-bearing case this
+  // unit test pins.
+  //
+  // The effect's fallback path calls the real `createClient()` (browser
+  // Supabase client), which would throw without `NEXT_PUBLIC_*` vars in
+  // a vitest environment. We stub those env vars so the fallback
+  // succeeds and we can observe the injected fake stayed untouched —
+  // the load-bearing signal that the guard rejected the prop.
+  it("ignores __supabaseClient in production builds (#117)", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv(
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "https://test.supabase.co"
+    );
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "test-anon-key");
+    try {
+      const ch = buildFakeChannel();
+      const client = buildFakeClient(ch);
+      const { container } = render(
+        <PulsePoll<string>
+          channelKey="k"
+          initialData="initial"
+          fetchData={async () => "updated"}
+          subscribeTableConfig={[{ table: "t1" }]}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          __supabaseClient={client as any}
+          render={(d) => <span>{d}</span>}
+        />
+      );
+      // Initial paint still uses initialData (render runs before
+      // effect). The injected fake client must NOT have been used.
+      expect(container.textContent).toBe("initial");
+      expect(client.channel).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
