@@ -47,17 +47,19 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
   }
 
   // Post-trip state: items exist, none are in progress, none are upcoming,
-  // and the trip has an ends_at in the past.
+  // and the trip ended at least a full calendar day ago. We use
+  // `differenceInCalendarDays >= 1` (not raw `< now`) so the trip-end day
+  // itself doesn't render "Trip wrapped 0 days ago." — voice-test fail.
+  const daysSinceEnd =
+    trip.ends_at !== null
+      ? differenceInCalendarDays(now, new Date(trip.ends_at))
+      : -1;
   const isPostTrip =
-    currentItem === null &&
-    nextItem === null &&
-    trip.ends_at !== null &&
-    new Date(trip.ends_at) < now;
+    currentItem === null && nextItem === null && daysSinceEnd >= 1;
 
   if (isPostTrip) {
-    const daysAgo = differenceInCalendarDays(now, new Date(trip.ends_at!));
     const daysLabel =
-      daysAgo === 1 ? "1 day" : `${daysAgo} days`;
+      daysSinceEnd === 1 ? "1 day" : `${daysSinceEnd} days`;
 
     return (
       <div className="rounded-xl border border-border bg-card px-4 py-3 space-y-1">

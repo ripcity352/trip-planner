@@ -195,6 +195,61 @@ describe("TripNotesEditor", () => {
     });
   });
 
+  it("gives the textarea an accessible name via aria-labelledby", async () => {
+    const { TripNotesEditor } = await import(
+      "@/components/trip/trip-notes-editor"
+    );
+    render(
+      <TripNotesEditor
+        tripId={TRIP_ID}
+        initialNotes="Some notes"
+        isOrganizer={true}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: M3_UI_STRINGS.tripNotes_edit_cta })
+    );
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveAttribute("aria-labelledby", "trip-notes-heading");
+    // The headline that the textarea references must exist with the matching id
+    const heading = document.getElementById("trip-notes-heading");
+    expect(heading).not.toBeNull();
+    expect(heading?.textContent).toBe(M3_UI_STRINGS.tripNotes_heading);
+  });
+
+  it("cancel restores the form so a typed-then-cancelled edit does not leak into the next session", async () => {
+    const { TripNotesEditor } = await import(
+      "@/components/trip/trip-notes-editor"
+    );
+    render(
+      <TripNotesEditor
+        tripId={TRIP_ID}
+        initialNotes="Original notes"
+        isOrganizer={true}
+      />
+    );
+
+    // First edit session: type a value, then cancel.
+    fireEvent.click(
+      screen.getByRole("button", { name: M3_UI_STRINGS.tripNotes_edit_cta })
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Half-typed draft" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: M3_UI_STRINGS.tripNotes_cancel_cta })
+    );
+
+    // Second edit session: textarea should show the original notes, not the half-typed draft.
+    fireEvent.click(
+      screen.getByRole("button", { name: M3_UI_STRINGS.tripNotes_edit_cta })
+    );
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(textarea.value).toBe("Original notes");
+  });
+
   it("shows error copy on save failure", async () => {
     setTripNotesMock.mockResolvedValue({
       ok: false,

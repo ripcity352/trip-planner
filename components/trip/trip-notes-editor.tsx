@@ -48,7 +48,7 @@ export function TripNotesEditor({
   const [notes, setNotes] = useState<string | null>(initialNotes);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const { register, handleSubmit, formState: { isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { notes: initialNotes ?? "" },
   });
@@ -60,6 +60,7 @@ export function TripNotesEditor({
     const result = await setTripNotes({ tripId, notes: values.notes });
     if (result.ok) {
       setNotes(values.notes);
+      reset({ notes: values.notes });
       setEditing(false);
     } else {
       setErrorMessage(ERRORS[result.errorKey] ?? ERRORS.trip_notes_save_failed);
@@ -68,22 +69,28 @@ export function TripNotesEditor({
 
   function handleCancel() {
     setErrorMessage(null);
+    // Restore the form to the last-saved value so a typed-then-cancelled
+    // edit doesn't leak into the next edit session.
+    reset({ notes: notes ?? "" });
     setEditing(false);
   }
 
   return (
     <div>
-      <h2 className="text-base font-semibold">{M3_UI_STRINGS.tripNotes_heading}</h2>
+      <h2 id="trip-notes-heading" className="text-base font-semibold">
+        {M3_UI_STRINGS.tripNotes_heading}
+      </h2>
 
       {editing ? (
         <form onSubmit={handleSubmit(onSubmit)} className="mt-2 space-y-2">
           <textarea
             {...register("notes")}
+            aria-labelledby="trip-notes-heading"
             className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
             placeholder={M3_UI_STRINGS.tripNotes_placeholder}
           />
           {errorMessage ? (
-            <p className="text-destructive text-sm" role="alert">
+            <p className="text-destructive text-sm" role="status" aria-live="polite">
               {errorMessage}
             </p>
           ) : null}

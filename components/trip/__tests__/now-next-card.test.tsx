@@ -207,4 +207,72 @@ describe("NowNextCard", () => {
     );
     expect(recapEl.tagName.toLowerCase()).not.toBe("a");
   });
+
+  it("substitutes {days} with a pluralised label in the post-trip template", async () => {
+    const { whatsHappeningNow } = await import(
+      "@/lib/utils/whats-happening-now"
+    );
+    vi.mocked(whatsHappeningNow).mockReturnValue({ now: null, next: null });
+
+    const { NowNextCard } = await import("@/components/trip/now-next-card");
+    const pastItem = makeItem("a", "2025-03-01", "Pool party");
+    // ends_at well in the past so daysSinceEnd is plural.
+    const trip = makeTrip({
+      starts_at: "2025-03-01",
+      ends_at: "2025-03-03",
+    });
+
+    render(await NowNextCard({ trip, items: [pastItem] }));
+
+    // The template "Trip wrapped {days} ago." should have been substituted —
+    // no literal "{days}" left in the DOM, and the plural form is rendered.
+    expect(screen.queryByText(/\{days\}/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Trip wrapped \d+ days ago\./)).toBeInTheDocument();
+  });
+
+  it("uses singular '1 day' when trip ended exactly one day ago", async () => {
+    const { whatsHappeningNow } = await import(
+      "@/lib/utils/whats-happening-now"
+    );
+    const dateFns = await import("date-fns");
+    vi.mocked(whatsHappeningNow).mockReturnValue({ now: null, next: null });
+    // Stub differenceInCalendarDays to deterministically return 1
+    vi.mocked(dateFns.differenceInCalendarDays).mockReturnValue(1);
+
+    const { NowNextCard } = await import("@/components/trip/now-next-card");
+    const pastItem = makeItem("a", "2025-03-01", "Pool party");
+    const trip = makeTrip({
+      starts_at: "2025-03-01",
+      ends_at: "2025-03-03",
+    });
+
+    render(await NowNextCard({ trip, items: [pastItem] }));
+
+    expect(screen.getByText("Trip wrapped 1 day ago.")).toBeInTheDocument();
+    vi.mocked(dateFns.differenceInCalendarDays).mockRestore();
+  });
+
+  it("does NOT render the post-trip state on the trip-end day (daysSinceEnd=0)", async () => {
+    const { whatsHappeningNow } = await import(
+      "@/lib/utils/whats-happening-now"
+    );
+    const dateFns = await import("date-fns");
+    vi.mocked(whatsHappeningNow).mockReturnValue({ now: null, next: null });
+    vi.mocked(dateFns.differenceInCalendarDays).mockReturnValue(0);
+
+    const { NowNextCard } = await import("@/components/trip/now-next-card");
+    const item = makeItem("a", "2026-05-20", "Last brunch");
+    const trip = makeTrip({
+      starts_at: "2026-05-18",
+      ends_at: "2026-05-20",
+    });
+
+    render(await NowNextCard({ trip, items: [item] }));
+
+    // The trip-wrapped template must not appear when the trip ended today.
+    expect(
+      screen.queryByText(/Trip wrapped \d+ days? ago\./)
+    ).not.toBeInTheDocument();
+    vi.mocked(dateFns.differenceInCalendarDays).mockRestore();
+  });
 });
