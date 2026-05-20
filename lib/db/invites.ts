@@ -96,6 +96,9 @@ export async function getInvitePreview(
  * Lists every invite for a trip, newest first. RLS on `invites`
  * already gates this to organizers + co-organizers — we don't add an
  * app-level check.
+ *
+ * Alias: `getInvitesByTrip` — same function, exported under the name
+ * used by Wave 4c pages per `notes/m3-execution-plan.md` §"Wave 4".
  */
 export async function getTripInvites(
   supabase: SupabaseClient,
@@ -113,6 +116,12 @@ export async function getTripInvites(
 
   return (data ?? []) as Invite[];
 }
+
+/**
+ * Alias for `getTripInvites` — Wave 4c pages use this name per the
+ * execution plan's file ownership table.
+ */
+export const getInvitesByTrip = getTripInvites;
 
 /**
  * Inserts a new invite row. RLS gates writes to organizers; the M1

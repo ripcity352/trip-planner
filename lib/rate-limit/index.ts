@@ -98,6 +98,11 @@ export const RATE_LIMIT_SCOPES = {
   SET_ITEM_FLAG: "setItemFlag",
   UPSERT_TRAVEL_LEG: "upsertTravelLeg",
   ASSIGN_LODGING: "assignLodging",
+  // M3 Wave 4c — issue #107: minting invite links now has its own bucket
+  // separate from `ACCEPT_INVITE` so a burst of organizer mints cannot
+  // starve a member's accept attempt (or vice versa). Both paths default
+  // to the standard 30 req / 60s sliding window.
+  MINT_INVITE: "mintInvite",
 } as const;
 
 export type RateLimitScope =

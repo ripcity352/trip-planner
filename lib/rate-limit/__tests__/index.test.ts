@@ -136,6 +136,19 @@ describe("RATE_LIMIT_SCOPES (catalogue)", () => {
     // at CI time instead.
     expect(RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK).toBe("authMagicLink");
   });
+
+  it("has a MINT_INVITE scope distinct from ACCEPT_INVITE (#107)", () => {
+    // Issue #107: minting invite links and accepting invite links were
+    // sharing the same `acceptInvite` bucket. A burst of mints could
+    // starve accepts (or vice versa). The fix adds a dedicated bucket
+    // for the mint path so each gets its own 30 req/60s budget.
+    expect(RATE_LIMIT_SCOPES.MINT_INVITE).toBe("mintInvite");
+    // Explicit inequality: the two scopes must be different strings so
+    // rateLimitedAction creates separate Upstash bucket keys.
+    expect(RATE_LIMIT_SCOPES.MINT_INVITE).not.toBe(
+      RATE_LIMIT_SCOPES.ACCEPT_INVITE,
+    );
+  });
 });
 
 describe("getClientId", () => {

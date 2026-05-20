@@ -201,9 +201,9 @@ export async function acceptInviteAction(
 
 /**
  * Create an invite link for a trip. RLS gates this to organizers.
- * Rate-limited under the `acceptInvite` scope — the bucket is shared
- * with the accept path, which is the right call for now (a burst of
- * mint/accept activity is the same throttle target).
+ * Rate-limited under the dedicated `MINT_INVITE` scope (#107) — split
+ * from `ACCEPT_INVITE` so a burst of organizer mints cannot exhaust the
+ * accept budget for incoming members (or vice versa).
  */
 export async function createInviteAction(
   input: CreateInviteActionInput
@@ -226,7 +226,7 @@ export async function createInviteAction(
 
   try {
     const invite = await rateLimitedAction(
-      RATE_LIMIT_SCOPES.ACCEPT_INVITE,
+      RATE_LIMIT_SCOPES.MINT_INVITE,
       userId,
       () =>
         createInviteRecord(
