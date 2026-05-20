@@ -285,6 +285,12 @@ export const M3_UI_STRINGS = {
   roster_copy_numbers_cta: "Copy all numbers",
   roster_copy_numbers_done: "Copied — paste into iMessage.",
   roster_no_numbers: "No phone numbers in the roster yet.",
+  // Roster member fallback + role labels (Wave 4b fix-up — inline JSX
+  // literals flagged in code review)
+  roster_member_fallback_name: "Guest",
+  roster_role_celebrant: "celebrant",
+  roster_role_organizer: "organizer",
+  roster_role_co_organizer: "co-organizer",
   // Invite issuance UI (#129, Wave 4c)
   invitesPage_pageTitle: "Invite links",
   invitesPage_heading: "Invite links",

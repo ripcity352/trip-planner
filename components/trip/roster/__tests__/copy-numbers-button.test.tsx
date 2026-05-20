@@ -59,8 +59,10 @@ describe("CopyNumbersButton", () => {
       fireEvent.click(screen.getByRole("button"));
     });
     // M3_UI_STRINGS.roster_copy_numbers_done = "Copied — paste into iMessage."
+    // The label appears both on the button and in the sr-only status span;
+    // assert via the button role so we get a unique match.
     expect(
-      screen.getByText("Copied — paste into iMessage.")
+      screen.getByRole("button", { name: /Copied — paste into iMessage\./i })
     ).toBeInTheDocument();
   });
 
@@ -72,13 +74,17 @@ describe("CopyNumbersButton", () => {
       fireEvent.click(screen.getByRole("button"));
     });
 
-    expect(screen.getByText("Copied — paste into iMessage.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Copied — paste into iMessage\./i })
+    ).toBeInTheDocument();
 
     await act(async () => {
       vi.advanceTimersByTime(3000);
     });
 
-    expect(screen.getByText("Copy all numbers")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Copy all numbers/i })
+    ).toBeInTheDocument();
     vi.useRealTimers();
   });
 
@@ -94,5 +100,28 @@ describe("CopyNumbersButton", () => {
     render(<CopyNumbersButton phones={phones} />);
     const btn = screen.getByRole("button");
     expect(btn.className).toMatch(/min-h-11|h-11|h-12/);
+  });
+
+  it("renders a polite status announcement after a successful copy", async () => {
+    render(<CopyNumbersButton phones={phones} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    const status = screen.getByRole("status");
+    expect(status).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("renders an error message when clipboard.writeText rejects (no silent failure)", async () => {
+    mockWriteText.mockRejectedValueOnce(new Error("permission denied"));
+    render(<CopyNumbersButton phones={phones} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button"));
+    });
+    // ERRORS.network = "Couldn't reach the server. Pull to retry."
+    expect(screen.getByRole("status")).toHaveTextContent(/couldn't reach/i);
+    // Should NOT show the success label after a rejection
+    expect(
+      screen.queryByText("Copied — paste into iMessage.")
+    ).not.toBeInTheDocument();
   });
 });

@@ -28,26 +28,26 @@ interface RosterListProps {
   tripName: string;
 }
 
-/** Returns a human-readable role label. */
+/** Returns a human-readable role label from the copy palette, or null. */
 function roleLabel(role: TripRole, isCelebrant: boolean): string | null {
   if (isCelebrant) {
-    return "celebrant";
+    return M3_UI_STRINGS.roster_role_celebrant;
   }
   if (role === "organizer") {
-    return "organizer";
+    return M3_UI_STRINGS.roster_role_organizer;
   }
   if (role === "co_organizer") {
-    return "co-organizer";
+    return M3_UI_STRINGS.roster_role_co_organizer;
   }
   return null;
 }
 
 export function RosterList({ members, tripName }: RosterListProps) {
-  // Members with a stored phone — used for both export paths
+  // Members with a stored phone — used for both export paths.
   const membersWithPhone = members
     .filter((m): m is RosterMember & { phone: string } => m.phone !== null)
     .map((m) => ({
-      name: m.displayName ?? "Guest",
+      name: m.displayName ?? M3_UI_STRINGS.roster_member_fallback_name,
       phone: m.phone,
     }));
 
@@ -66,6 +66,13 @@ export function RosterList({ members, tripName }: RosterListProps) {
         <CopyNumbersButton phones={phoneNumbers} />
       </div>
 
+      {/* "No phones in roster" hint shown when both CTAs are disabled. */}
+      {membersWithPhone.length === 0 && members.length > 0 ? (
+        <p className="text-xs text-muted-foreground mb-4">
+          {M3_UI_STRINGS.roster_no_numbers}
+        </p>
+      ) : null}
+
       {/* Member list */}
       {members.length === 0 ? (
         <p className="text-sm text-muted-foreground">{EMPTY_STATES.members}</p>
@@ -79,7 +86,7 @@ export function RosterList({ members, tripName }: RosterListProps) {
                 className="flex items-center justify-between rounded-lg border border-border px-4 py-3 min-h-11"
               >
                 <span className="font-medium text-sm">
-                  {member.displayName ?? "Guest"}
+                  {member.displayName ?? M3_UI_STRINGS.roster_member_fallback_name}
                 </span>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {member.phone && (

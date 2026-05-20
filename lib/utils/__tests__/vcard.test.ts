@@ -130,4 +130,37 @@ describe("buildVCard", () => {
       );
     });
   });
+
+  describe("CRLF / header-injection defence", () => {
+    it("escapes embedded CRLF in display names so a malicious name cannot inject a forged BEGIN/END block", () => {
+      const malicious =
+        "Innocent\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:3.0\r\nFN:Forged Contact\r\nTEL;TYPE=CELL:+19999999999\r\nEND:VCARD";
+      const vcf = buildVCard([{ name: malicious, phone: "+15555550100" }]);
+
+      // The output must contain exactly ONE END:VCARD line — the forged
+      // one in the malicious payload must have been escaped, not surfaced.
+      const endCount = (vcf.match(/^END:VCARD$/gm) ?? []).length;
+      expect(endCount).toBe(1);
+
+      // The escaped representation should contain literal "\n" (backslash-n),
+      // not raw newlines, inside the FN field.
+      expect(vcf).toMatch(/FN:Innocent\\nEND:VCARD\\nBEGIN:VCARD/);
+    });
+
+    it("escapes lone \\r and \\n in name fields", () => {
+      expect(buildVCard([{ name: "A\nB", phone: "+1" }])).toContain("FN:A\\nB");
+      expect(buildVCard([{ name: "A\rB", phone: "+1" }])).toContain("FN:A\\nB");
+    });
+
+    it("strips CR/LF from phone values so a malformed phone cannot inject lines", () => {
+      const vcf = buildVCard([
+        { name: "Mallory", phone: "+1\r\nEND:VCARD\r\nBEGIN:VCARD\r\nFN:Forged" },
+      ]);
+      const endCount = (vcf.match(/^END:VCARD$/gm) ?? []).length;
+      expect(endCount).toBe(1);
+      // Phone field should still contain the legitimate prefix, just with
+      // newlines removed.
+      expect(vcf).toContain("TEL;TYPE=CELL:+1END:VCARDBEGIN:VCARDFN:Forged");
+    });
+  });
 });

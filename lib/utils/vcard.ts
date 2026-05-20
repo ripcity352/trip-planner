@@ -17,14 +17,27 @@ export interface VCardMember {
 
 /**
  * Escape special characters in a vCard text field value per RFC 2426 §4.
- * The three characters that require escaping: backslash, comma, semicolon.
- * Order matters: backslash must be escaped first.
+ * Order matters: backslash must be escaped first, before the others insert
+ * backslashes of their own. Newlines (CR / LF / CRLF) MUST be escaped — a
+ * raw newline in a field value would otherwise terminate the line, letting
+ * a user-controlled `display_name` inject forged contacts via
+ * `END:VCARD\r\nBEGIN:VCARD\r\nFN:attacker`.
  */
 function escapeVCardText(value: string): string {
   return value
     .replace(/\\/g, "\\\\")
+    .replace(/\r\n|\r|\n/g, "\\n")
     .replace(/,/g, "\\,")
     .replace(/;/g, "\\;");
+}
+
+/**
+ * Sanitise a phone-number value for the TEL field. We trust the stored
+ * format (E.164) and don't reformat — but we DO strip newlines as a defence
+ * against malformed data injecting CRLF into the output.
+ */
+function sanitisePhone(value: string): string {
+  return value.replace(/[\r\n]/g, "");
 }
 
 /**
@@ -36,7 +49,7 @@ function buildSingleVCard(member: VCardMember): string {
     "BEGIN:VCARD",
     "VERSION:3.0",
     `FN:${escapeVCardText(member.name)}`,
-    `TEL;TYPE=CELL:${member.phone}`,
+    `TEL;TYPE=CELL:${sanitisePhone(member.phone)}`,
     "END:VCARD",
   ].join(CRLF) + CRLF;
 }
