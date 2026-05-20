@@ -26,6 +26,7 @@
  */
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -147,6 +148,11 @@ export async function setRsvpAction(
     // narrow defensively all the same.
     const stored = existingRow.rsvp_status;
     if (stored === "going" || stored === "maybe" || stored === "declined") {
+      // #110: revalidate the trips layout so the dashboard RSVP count
+      // stays fresh even on replay. Broader-path revalidation is simpler
+      // than fetching the slug for a single-path revalidate, and the
+      // extra cache miss is negligible for this low-frequency path.
+      revalidatePath("/trips", "layout");
       return { ok: true, status: stored };
     }
     // pending-with-idempotency-key shouldn't happen — but if it does,
@@ -192,6 +198,11 @@ export async function setRsvpAction(
       }
     );
 
+    // #110: revalidate so the dashboard RSVP aggregate count refreshes.
+    // Using layout-wide revalidation avoids a separate slug lookup while
+    // still invalidating the relevant cache entry. Called only on the
+    // success branch — a failed write must not trigger a cache miss.
+    revalidatePath("/trips", "layout");
     return { ok: true, status: updatedStatus };
   } catch (err) {
     if (err instanceof RateLimitError) {

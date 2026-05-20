@@ -36,13 +36,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { RsvpToggle } from "@/components/trip/rsvp-toggle";
+import { NowNextCard } from "@/components/trip/now-next-card";
+import { TripNotesEditor } from "@/components/trip/trip-notes-editor";
 import { getTripBySlug } from "@/lib/db/trips";
 import {
   getMyRsvp,
   getOrganizerDeclinedCount,
   getRsvpCountsForTrip,
 } from "@/lib/db/rsvp";
-import { getNextUpcomingItem } from "@/lib/db/itinerary";
+import { getItineraryByTrip } from "@/lib/db/itinerary";
+import { getTripNotes } from "@/lib/db/trip-notes";
 import { createClient } from "@/lib/supabase/server";
 import { M2_UI_STRINGS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Trip } from "@/lib/db/types";
@@ -77,11 +80,15 @@ export default async function TripDashboardPage({ params }: PageProps) {
   }
 
   // Fan out independent reads in parallel.
-  const [counts, myRsvp, organizerCheck, nextItem] = await Promise.all([
+  // Wave 3b: replaced getNextUpcomingItem with getItineraryByTrip so the
+  // now/next pure function has the full item list. getTripNotes is a
+  // focused read of trips.notes without pulling the full Trip row again.
+  const [counts, myRsvp, organizerCheck, allItems, tripNotes] = await Promise.all([
     getRsvpCountsForTrip(supabase, trip.id),
     getMyRsvp(supabase, trip.id, user.id),
     supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
-    getNextUpcomingItem(supabase, trip.id),
+    getItineraryByTrip(supabase, trip.id),
+    getTripNotes(supabase, trip.id),
   ]);
 
   const isOrganizer = organizerCheck.data === true;
@@ -111,6 +118,9 @@ export default async function TripDashboardPage({ params }: PageProps) {
       </header>
 
       <div className="grid grid-cols-1 gap-4">
+        {/* Now/next card — Wave 3b (#77) */}
+        <NowNextCard trip={trip} items={allItems} />
+
         <Card>
           <CardHeader>
             <CardTitle>{M2_UI_STRINGS.dashboard_section_rsvp_heading}</CardTitle>
@@ -129,17 +139,20 @@ export default async function TripDashboardPage({ params }: PageProps) {
           <Card className="hover:bg-muted/40 transition-colors">
             <CardHeader>
               <CardTitle>{M3_UI_STRINGS.itinerary_heading}</CardTitle>
-              {nextItem ? (
-                <CardDescription>
-                  {nextItem.title}
-                  {nextItem.start_time
-                    ? ` · ${formatTimeShort(nextItem.start_time)}`
-                    : null}
-                </CardDescription>
-              ) : null}
             </CardHeader>
           </Card>
         </Link>
+
+        {/* Trip notes — Wave 3b (#78) */}
+        <Card>
+          <CardContent className="pt-4">
+            <TripNotesEditor
+              tripId={trip.id}
+              initialNotes={tripNotes}
+              isOrganizer={isOrganizer}
+            />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -181,15 +194,6 @@ function formatTripDates(trip: Trip): string {
     return format(new Date(trip.starts_at), "MMM d");
   }
   return M2_UI_STRINGS.dashboard_dates_unset;
-}
-
-/**
- * Format HH:MM as "3:00 PM" for the dashboard preview snippet.
- */
-function formatTimeShort(time: string): string {
-  const [h, m] = time.split(":").map(Number);
-  const d = new Date(2000, 0, 1, h, m);
-  return format(d, "h:mm a");
 }
 
 /**
