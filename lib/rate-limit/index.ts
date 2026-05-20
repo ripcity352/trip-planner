@@ -145,21 +145,46 @@ interface InMemoryLimiter {
 }
 
 function buildInMemoryLimiter(): InMemoryLimiter {
-  // Fail-closed in production: if we got here without Upstash creds,
-  // the deploy is misconfigured. We deliberately don't crash imports
-  // (that would brick cold-starts on every request); instead each call
-  // returns `success: false` so guarded paths 429 visibly until the
-  // operator fixes the env vars. Dev / test still get the always-allow
-  // path so local work and CI don't need real creds.
-  const failClosed = process.env.NODE_ENV === "production";
+  // History on this shim:
+  //   v1: always-allow (any env)
+  //   v2: fail-closed in production (PR #105 security finding) — correct
+  //       in spirit, wrong in practice during bootstrap. Production-
+  //       without-real-users-yet (MVP) has no Upstash provisioned and
+  //       fail-closed bricks magic-link login.
+  //   v3 (this): allow-with-loud-warning when Upstash is unconfigured,
+  //       regardless of NODE_ENV. The warning routes through Sentry via
+  //       console.error and tracks via the follow-up issue. When Upstash
+  //       IS configured but transiently fails, the upstream `Ratelimit`
+  //       throws and the caller catches as a `RateLimitError` — that
+  //       path is still fail-closed (correct).
+  //
+  // Tracking the "provision Upstash before real users" requirement at
+  // gh issue link in the rationale below — DO NOT remove this warning
+  // without also flipping the dependency or accepting the no-rate-limit
+  // posture explicitly.
+  const isProd = process.env.NODE_ENV === "production";
+  let warned = false;
   return {
-    limit: async (): Promise<RateLimitResult> => ({
-      success: !failClosed,
-      limit: DEFAULT_LIMIT,
-      remaining: failClosed ? 0 : DEFAULT_LIMIT,
-      reset: Date.now() + 60_000,
-      pending: Promise.resolve(),
-    }),
+    limit: async (): Promise<RateLimitResult> => {
+      if (isProd && !warned) {
+        warned = true;
+        // Sentry picks this up. Once per process boot.
+        console.error(
+          "[rate-limit] Upstash creds unset in production — limiter is " +
+            "ALWAYS-ALLOW. This is acceptable only during bootstrap " +
+            "(no real users yet). Provision Upstash and set " +
+            "UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN before " +
+            "sending the invite link to real attendees."
+        );
+      }
+      return {
+        success: true,
+        limit: DEFAULT_LIMIT,
+        remaining: DEFAULT_LIMIT,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+      };
+    },
   };
 }
 
