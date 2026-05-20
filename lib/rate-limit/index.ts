@@ -76,6 +76,10 @@ export const RATE_LIMIT_SCOPES = {
   // doesn't starve their `createTrip` / `acceptInvite` budget. Default
   // 30/60s is generous for the drunk-double-tap pattern.
   SET_RSVP: "setRsvp",
+  // `castDateVote` (#75 / #76 — Wave 3) gets its own bucket. PulsePoll
+  // is a high-tap surface (drunk user reconsidering on bad signal) and
+  // we want it isolated from RSVP / createTrip budgets.
+  CAST_DATE_VOTE: "castDateVote",
 } as const;
 
 export type RateLimitScope =

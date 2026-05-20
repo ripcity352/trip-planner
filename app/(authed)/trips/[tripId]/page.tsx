@@ -21,6 +21,7 @@
  */
 
 import { format } from "date-fns";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
@@ -133,6 +134,15 @@ export default async function TripDashboardPage({ params }: PageProps) {
             </p>
           </CardContent>
         </Card>
+
+        {/* Wave 3 link — drops the date-poll surface one click away
+            from the dashboard. Server Component, no client behavior. */}
+        <Link
+          href={`/trips/${trip.slug}/dates`}
+          className="text-primary text-sm underline-offset-4 hover:underline"
+        >
+          {M2_UI_STRINGS.dashboard_dates_link_label}
+        </Link>
       </div>
     </section>
   );

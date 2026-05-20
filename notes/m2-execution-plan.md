@@ -496,11 +496,211 @@ learning material).
 
 ## Appendix A — Celebrant-weighted poll algorithm (architect-signed)
 
-> Filled in by the `architect` agent in Wave 3 *before* any code is
-> written. Pseudocode + invariants. ADR alignment with
-> `notes/decisions.md` 2026-05-19 entry on celebrant-weighted dates.
+> Architect-signed Wave 3 contract for the celebrant-weighted date poll
+> + the reusable `<PulsePoll>` Realtime component. Pseudocode +
+> invariants + RLS + API surface. Aligned with the
+> `notes/decisions.md` 2026-05-19 entries on celebrant-weighted dates,
+> declining-whispers (aggregate-only voting), per-voter opt-in, and
+> the unified trip_members idempotency-key scope.
 
-*(populated at Wave 3 start)*
+### A.1 Invariants
+
+Constraints that must hold across the entire system (schema-enforced
+where possible; app-level checks only when SQL can't express them):
+
+1. **At most one celebrant per trip** — enforced by the M1
+   `trip_members_one_celebrant` partial unique index.
+2. **Organizers (`organizer` or `co_organizer`) and the celebrant can
+   propose candidates.** Maximum 4 active candidates per trip — enforced
+   at the action layer (cheap, no migration cost; a later wave can
+   promote to a check function if needed).
+3. **Only the celebrant can set celebrant marks** — RLS WITH CHECK
+   binds `auth.uid()` to a `trip_members` row with `is_celebrant = true`
+   on the candidate's trip.
+4. **Members vote only on candidates whose celebrant mark is not
+   `no-go`** — defended in three places, layered:
+   1. UI filters `no-go` candidates out of the member view-model
+   2. Server action mirrors the filter as defense-in-depth
+   3. SQL trigger `assert_candidate_not_vetoed_before_vote` raises
+      P0001 if anyone tries to bypass the upper layers
+5. **Vote idempotency.** Same `(candidate_id, trip_member_id,
+   idempotency_key)` tuple is a no-op on replay — partial unique index.
+   Composite PK `(candidate_id, trip_member_id)` guarantees one vote
+   per member per candidate regardless of replay; the idempotency
+   surface is purely for the network-flake retry path.
+6. **Aggregate-only voting by default.** `date_poll_votes` reads to
+   members surface vote *counts*, never voter names. The
+   `vote_visibility` per-voter-opt-in column is reserved for a future
+   wave; Wave 3 ships the aggregate path only.
+7. **Vote stuffing is structurally impossible.** The `date_poll_votes`
+   INSERT/UPDATE policies' WITH CHECK binds `trip_member_id` to a
+   `trip_members` row owned by `auth.uid()` on the candidate's trip.
+   Without this clause, any member could spoof a peer's
+   `trip_member_id`; the Wave 2a security review (H1 finding) flagged
+   this pattern explicitly.
+
+### A.2 Weighting algorithm (pseudocode)
+
+The algorithm only *ranks* candidates — it never auto-decides. The
+organizer manually locks in the winner (stretch action
+`lockInCandidate`).
+
+```
+function buildDatePollViewModel(candidates, marks, voteCounts, myVotes):
+  // Aggregate-only by design. Per-voter names are not threaded through
+  // this surface.
+  let viewModel = []
+  for candidate in candidates:
+    let mark = marks[candidate.id]            // works | works-with-effort | no-go | null
+    viewModel.push({
+      candidate,
+      mark,
+      yes_votes: voteCounts[candidate.id]?.yes ?? 0,
+      no_votes:  voteCounts[candidate.id]?.no  ?? 0,
+      my_vote:   myVotes[candidate.id] ?? null,
+    })
+  return viewModel
+
+function filterForMemberView(viewModel):
+  // Members never see vetoed candidates — keeps the celebrant's hard
+  // pass invisible to peers (avoids social pressure on the celebrant).
+  return viewModel.filter(row => row.mark !== 'no-go')
+
+function rankCandidates(viewModel):
+  // Stable sort by: (a) celebrant mark priority, (b) yes-vote count
+  // descending, (c) candidate.created_at ascending (oldest first wins
+  // ties — proposers don't get penalized for moving first).
+  const markPriority = { 'works': 3, 'works-with-effort': 2, null: 1, 'no-go': 0 }
+  return [...viewModel].sort((a, b) => {
+    const dp = markPriority[b.mark] - markPriority[a.mark]
+    if (dp !== 0) return dp
+    const dv = b.yes_votes - a.yes_votes
+    if (dv !== 0) return dv
+    return a.candidate.created_at.localeCompare(b.candidate.created_at)
+  })
+```
+
+Notes:
+
+- Pure function — fully unit-testable without a DB. The ranking lives
+  in TS (not SQL) so tests can pin the comparator without spinning up
+  a database. The SQL layer only enforces invariants.
+- `null` (unmarked) sorts above `no-go` and below explicit
+  `works-with-effort` — surfaces "celebrant hasn't weighed in" with a
+  voice-tested badge instead of hiding the candidate.
+- Tiebreaker is `created_at ascending`, NOT `updated_at` — the proposer
+  who moved first keeps the tie. Stable across re-renders.
+
+### A.3 PulsePoll Realtime + offline reconcile
+
+The `<PulsePoll>` component is the reusable Realtime primitive; the
+date-poll page is the first consumer, but the contract holds for
+future Pulse-Poll-style features (lodging vote, time-of-day poll,
+etc.).
+
+```
+on mount:
+  1. render `initialData` (server-side)
+  2. open channel `supabase.channel(channelKey)`
+  3. for each table in subscribeTableConfig:
+       channel.on('postgres_changes', { event: '*', schema: 'public',
+                  table, filter }, _ => refetch())
+  4. channel.subscribe(status => {
+       if status === 'CLOSED': mark isStale = true
+       if status === 'SUBSCRIBED' after a CLOSED: refetch()
+     })
+
+on user vote:
+  1. set optimistic local state immediately
+  2. mint a fresh `idempotency_key = crypto.randomUUID()`
+  3. send to server via castDateVoteAction
+  4a. action succeeds → do NOT mutate state; the realtime broadcast
+       will refresh us. Ours is one of N votes the channel sees.
+  4b. action fails (network) → keep optimistic state, mark as
+       "queued"; surface a small "unsynced — will retry" indicator
+       at the row level.
+  5. on Realtime reconnect (CLOSED → SUBSCRIBED): replay queued votes
+     with the SAME idempotency_key (server-side replay is a no-op
+     thanks to the partial unique index).
+```
+
+Local-wins-vs-server-wins:
+
+- Wave 3 deliberately keeps the local cache in-memory only (no
+  IndexedDB) — page reload drops queued votes. That's acceptable
+  because the server idempotency check is the load-bearing guarantee:
+  if the user lost their queue but the request landed once, the
+  server is the source of truth. If neither landed, the user re-taps.
+- A future wave can promote the queue to IndexedDB if real-world data
+  shows ghost-tap loss is common.
+
+The `voted_at`-vs-server-touch comparison is intentionally NOT
+implemented at this layer — the server's partial unique on
+`(candidate_id, trip_member_id, idempotency_key)` makes replay
+deterministic without an explicit timestamp compare. The simpler
+contract is the more durable one.
+
+### A.4 Security & RLS
+
+Every access path is gated by RLS in the migration; the action layer
+is defense-in-depth. The full SQL is in Phase 1; the contract is:
+
+| Table | SELECT | INSERT / UPDATE / DELETE |
+|---|---|---|
+| `date_poll_candidates` | `is_trip_member(trip_id)` | INSERT/UPDATE/DELETE only for organizers (`is_trip_organizer`) or the celebrant (USING+WITH CHECK on a `trip_members` row with `is_celebrant`) |
+| `date_poll_celebrant_marks` | members of the candidate's trip | only the celebrant (`auth.uid()` matches a `trip_members` row with `is_celebrant` on the candidate's trip) |
+| `date_poll_votes` | members of the candidate's trip (aggregate-only enforced at app layer; per-name reserved for future opt-in) | WITH CHECK binds `trip_member_id` to caller's own `trip_members.id` on the candidate's trip — vote stuffing structurally impossible |
+
+The trigger `assert_candidate_not_vetoed_before_vote` fires
+BEFORE INSERT OR UPDATE on `date_poll_votes` and raises P0001 if the
+celebrant mark for the candidate is `'no-go'`. The action layer maps
+P0001 from this code path to the generic `validation_failed` ErrorKey
+so a non-celebrant can't enumerate vetoed-vs-non-existent candidates
+by probing the action.
+
+### A.5 API surface
+
+Exports from `lib/actions/date-poll.ts`. Every action returns a
+discriminated union; nothing throws to the caller.
+
+```
+proposeDateCandidates(
+  tripId: string,
+  candidates: Array<{ label: string; starts_on: string; ends_on: string }>,
+  idempotencyKey: string,
+): Promise<{ ok: true; created: number } | { ok: false; errorKey }>
+  - Organizer OR celebrant only (RLS gate is the authoritative check)
+  - Rate-limited under CREATE_TRIP scope (organizer activity profile)
+  - Validates: 1..4 candidates, ends_on >= starts_on per row,
+    total active candidates <= 4 per trip (app-level pre-flight)
+
+setCelebrantMark(
+  candidateId: string,
+  mark: 'works' | 'works-with-effort' | 'no-go',
+  idempotencyKey: string,
+): Promise<{ ok: true; mark } | { ok: false; errorKey }>
+  - Celebrant only (RLS WITH CHECK enforces it)
+  - Upserts the marks row by candidate_id PK
+  - Rate-limited under CREATE_TRIP scope
+
+castDateVote(
+  candidateId: string,
+  vote: boolean,
+  idempotencyKey: string,
+): Promise<{ ok: true; vote } | { ok: false; errorKey }>
+  - Member only; RLS binds trip_member_id to auth.uid()
+  - Rejects if candidate is `no-go` (trigger), mapped to validation_failed
+  - Idempotent on (candidate_id, trip_member_id, idempotency_key)
+  - Rate-limited under CAST_DATE_VOTE scope (its own bucket; drunk
+    double-tap doesn't starve other actions)
+
+lockInCandidate(candidateId: string): Promise<...>  // STRETCH
+  - Organizer only
+  - Sets trips.starts_at / ends_at from the candidate
+  - Deferred from Wave 3 if time-boxed; see PR body
+```
+
+— architect sign-off, 2026-05-19, Wave 3.
 
 ---
 
