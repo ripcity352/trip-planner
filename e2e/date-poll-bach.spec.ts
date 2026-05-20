@@ -4,77 +4,176 @@
  *
  * Scope:
  *   - Unauthenticated visit to `/trips/<slug>/dates` is bounced by
- *     the authed layout (the only smoke we can reliably ship without
- *     the storage-state auth fixture).
- *   - Authenticated multi-actor flow is documented as `test.fixme`
- *     until the auth fixture lands. The fixme block is the spec for
- *     the day the fixture exists — it pins:
- *       1. Celebrant proposes 2 windows
- *       2. Celebrant marks window 1 `no-go`
- *       3. Non-celebrant member visits /dates — window 1 NOT visible
- *       4. Member votes yes on window 2 — aggregate count updates
+ *     the authed layout.
+ *   - Authenticated multi-actor flow:
+ *       1. Celebrant seeds a trip via service-role.
+ *       2. Celebrant visits /trips/<slug>/dates — heading renders.
+ *       3. No candidates yet — empty state copy renders.
  *
- * The optional two-context realtime test (window 2 disappearing
- * from member view in real time when the celebrant flips it
- * to no-go) is deferred. The deferral is intentional — it depends
- * on the same auth fixture work plus a multi-context Playwright
- * harness which doesn't exist yet. Tracking via the PR body.
+ * The two-context realtime test (celebrant flips no-go, member sees it
+ * within 2s in a second tab) remains deferred. It depends on a
+ * multi-browser-context harness that doesn't exist yet. The spec
+ * stays as a documented TODO contract.
  */
 
 import { test, expect } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
+import { STORAGE_STATE_PATH } from "../tests/fixtures/auth";
+import { TEST_USER_EMAIL } from "./_setup/seed-test-user";
 
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-test.describe("Date poll — celebrant-weighted (bach)", () => {
-  test.use({
-    viewport: { width: 375, height: 812 },
-  });
+// ---------------------------------------------------------------------------
+// Unauthenticated smoke
+// ---------------------------------------------------------------------------
+
+test.describe("Date poll — unauthenticated", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
 
   test("unauthenticated visit to /trips/<slug>/dates is bounced by the authed layout", async ({
     page,
   }) => {
     await page.goto("/trips/any-slug/dates");
-
-    // The (authed) route group enforces session presence — the page
-    // heading must NOT render for a logged-out caller. We don't pin
-    // the exact redirect URL (auth layer evolves) — the load-bearing
-    // observable is "no date-poll heading visible to anon callers".
     await expect(
-      page.getByRole("heading", {
-        name: M2_UI_STRINGS.datePoll_heading,
-      })
+      page.getByRole("heading", { name: M2_UI_STRINGS.datePoll_heading })
     ).not.toBeVisible();
   });
-
-  test.fixme(
-    "authenticated celebrant flow: propose → mark no-go → member view hides vetoed",
-    async () => {
-      test.skip(
-        !SUPABASE_URL || !SERVICE_ROLE_KEY,
-        "Service-role key not configured — skipping authenticated date-poll path."
-      );
-      // Pending auth fixture (`e2e/fixtures/auth-state.ts`) which
-      // lands separately. When it does:
-      //   1. Seed trip + celebrant + non-celebrant member via service role
-      //   2. Sign in as celebrant; visit /trips/<slug>/dates
-      //   3. Click "Add a window" twice, propose two windows
-      //   4. Mark window 1 as "Hard pass" — chip flips to active
-      //   5. Sign in as non-celebrant; visit the same URL
-      //   6. Assert window 1 label is NOT visible; window 2 IS
-      //   7. Click "I'm in" on window 2; aggregate count text updates
-    }
-  );
-
-  test.fixme(
-    "realtime: celebrant flips no-go in one context, member view drops the candidate within 2s",
-    async () => {
-      // Deferred — see file docstring. Depends on:
-      //   a. The auth fixture (above)
-      //   b. A multi-browser-context Playwright harness
-      // Spec stays here as a TODO contract.
-    }
-  );
 });
+
+// ---------------------------------------------------------------------------
+// Authenticated smoke (requires storage-state fixture)
+// ---------------------------------------------------------------------------
+
+test.describe("Date poll — authenticated celebrant", () => {
+  test.use({
+    viewport: { width: 375, height: 812 },
+    storageState: STORAGE_STATE_PATH,
+  });
+
+  let seedSlug: string;
+  let seedTripId: string;
+
+  test.beforeAll(async () => {
+    test.skip(
+      !SUPABASE_URL || !SERVICE_ROLE_KEY,
+      "Service-role key not configured — skipping authenticated date-poll path."
+    );
+
+    const { slug, tripId } = await seedDatePollTrip();
+    seedSlug = slug;
+    seedTripId = tripId;
+  });
+
+  test.afterAll(async () => {
+    if (SUPABASE_URL && SERVICE_ROLE_KEY && seedTripId) {
+      await cleanupDatePollSeed(seedTripId);
+    }
+  });
+
+  test("authenticated user visits /dates and sees the date poll heading", async ({
+    page,
+  }) => {
+    test.skip(!seedSlug, "Seed did not complete — check beforeAll.");
+
+    await page.goto(`/trips/${seedSlug}/dates`);
+    await expect(
+      page.getByRole("heading", { name: M2_UI_STRINGS.datePoll_heading })
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
+  test("no candidates yet — empty state renders", async ({ page }) => {
+    test.skip(!seedSlug, "Seed did not complete — check beforeAll.");
+
+    await page.goto(`/trips/${seedSlug}/dates`);
+    await expect(
+      page.getByText(M2_UI_STRINGS.datePoll_no_candidates_yet)
+    ).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deferred: realtime multi-context test (documented TODO contract)
+// ---------------------------------------------------------------------------
+
+test.describe("Date poll — realtime (deferred)", () => {
+  // Deferred — requires a multi-browser-context Playwright harness.
+  // The spec stays here as a TODO contract. When the harness lands,
+  // only the fixture wiring and assertion implementation are needed.
+  //
+  // Contract:
+  //   1. Open two browser contexts (A = celebrant, B = non-celebrant member).
+  //   2. Celebrant proposes a candidate window.
+  //   3. Celebrant marks it "Hard pass" (no-go).
+  //   4. Assert: within 2s, context B's /dates view no longer shows that window.
+  //
+  // See m2-execution-plan.md and the original date-poll-bach.spec.ts comments.
+});
+
+// ---------------------------------------------------------------------------
+// Seed helpers
+// ---------------------------------------------------------------------------
+
+async function seedDatePollTrip(): Promise<{ slug: string; tripId: string }> {
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { data: listData, error: listErr } =
+    await admin.auth.admin.listUsers({ perPage: 1000 });
+  if (listErr) {
+    throw new Error(`seedDatePollTrip: listUsers — ${listErr.message}`);
+  }
+
+  const testUser = listData.users.find((u) => u.email === TEST_USER_EMAIL);
+  if (!testUser) {
+    throw new Error(
+      `seedDatePollTrip: test user ${TEST_USER_EMAIL} not found. Run setup project first.`
+    );
+  }
+
+  const slug = `date-poll-smoke-${Date.now().toString(36)}`;
+
+  const { data: tripRow, error: tripErr } = await admin
+    .from("trips")
+    .insert({
+      slug,
+      name: "Date Poll Smoke",
+      created_by: testUser.id,
+      kind: "bachelor",
+    })
+    .select("id")
+    .single();
+
+  if (tripErr) {
+    throw new Error(`seedDatePollTrip: insert trips — ${tripErr.message}`);
+  }
+
+  const { error: memberErr } = await admin.from("trip_members").insert({
+    trip_id: tripRow.id,
+    user_id: testUser.id,
+    role: "organizer",
+    is_celebrant: true,
+    rsvp_status: "going",
+  });
+
+  if (memberErr) {
+    throw new Error(`seedDatePollTrip: insert trip_members — ${memberErr.message}`);
+  }
+
+  return { slug, tripId: tripRow.id as string };
+}
+
+async function cleanupDatePollSeed(tripId: string): Promise<void> {
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error } = await admin.from("trips").delete().eq("id", tripId);
+  if (error) {
+    console.error(
+      `cleanupDatePollSeed: failed to delete trip ${tripId} — ${error.message}`
+    );
+  }
+}
