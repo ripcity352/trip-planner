@@ -5,6 +5,51 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-19 (PM) — M2 — Trip is real — milestone closed
+
+**Decision:** M2's seven planned PRs all landed on `main` with CI + code-reviewer + (where applicable) security-reviewer approval:
+
+- #101 — Wave 0 bootstrap (plan, eslint ignore, shadcn primitives, copy palette M2 keys)
+- #102 — Wave 1a magic-link login flow (closes #71)
+- #103 — Wave 1b authed layout + header + /trips index
+- #105 — Wave 2a trip creation + invite flow with logged-out preview (closes #72 #73)
+- #109 — Wave 2b 3-state RSVP UI + glanceable count from declining-whispers view (closes #74)
+- #114 — Wave 3 celebrant-weighted date poll + reusable PulsePoll Realtime component (closes #75 #76)
+
+**Load-bearing decisions made during execution (not in the original plan):**
+
+- **invite_preview bucket cutoffs widened to 3/8/20** (originally 1/5/15) to remove the single-attendee enumeration oracle. Caught by security-reviewer on Wave 2a.
+- **lib/auth/safe-next.ts** introduced to close a protocol-relative open-redirect (`next=//evil.com`) on `/auth/callback`. Caught on Wave 2a.
+- **`AUTH_MAGIC_LINK` rate-limit scope** added on the login server action (originally relied on Supabase server-side throttle; reviewer rejected as inadequate).
+- **`trip_members.idempotency_key` unique scope rescoped** from `(trip_id, idempotency_key)` to `(trip_id, user_id, idempotency_key)` to satisfy the per-table ADR for both `accept_invite` and `setRsvpAction`. New migration in Wave 2b.
+- **PulsePoll's `subscribeTableConfig` hash-stable dep array** — defensive backstop so an unstable caller (inline literal config) doesn't tear down the Realtime channel on every render. JSDoc'd the stable-reference contract.
+- **`/login` deep-link preservation deferred to a follow-up** (#104) — the `x-invoke-path` header sniff was unreliable in Next.js 16 App Router; dropped from Wave 1b in favor of literal `redirect("/login")`.
+
+**Follow-ups filed during M2 (open, milestoned M2):**
+- #104 deep-link preservation via middleware
+- #106 drop GET on /invite/[token]/accept
+- #107 split MINT_INVITE rate-limit scope
+- #108 trip-local TZ for date rendering
+- #110 revalidatePath on setRsvpAction success
+- #111 perf: count exact head:true for organizer declined count
+- #112 mint deterministic test user in rsvp e2e
+- #113 multi-row coverage for getMyRsvp narrow
+- #115 enforce MAX_CANDIDATES_PER_TRIP at DB layer
+- #116 handle TIMED_OUT in PulsePoll
+- #117 scope PulsePoll __supabaseClient injection seam
+
+Plus the broad e2e auth-fixture gap (storage-state setup that would unblock authenticated e2e in Waves 2b + 3). Recommend filing a meta-issue if not already.
+
+**Out of scope (deferred to M5, per killed-and-deferred.md and the M2 plan):**
+- Co-organizer spend cap
+- Per-name vote visibility opt-in UI (Wave 3 reserved the prop, but the toggle isn't built)
+- Full invite-management UI (currently a placeholder copy block; tokens minted via DB)
+- Authenticated multi-actor e2e covering the full create-trip → invite → accept → RSVP → vote loop on mobile-safari (auth fixture blocker)
+
+**Still-open follow-ups (post-M2):** the 11 issues above + any new ones surfaced by the real-trip retrospective (M5 is gated on that).
+
+---
+
 ## 2026-05-19 (PM) — proposeDateCandidates 4-cap is app-level; TOCTOU race deferred
 
 **Decision:** The `proposeDateCandidatesAction` enforces

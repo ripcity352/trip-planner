@@ -426,26 +426,45 @@ gh issue list --milestone "M2 — Trip is real" --json state -q '[.[] | select(.
 
 ## M2 DoD checklist (the source of truth — check as work lands)
 
-- [ ] Magic-link auth at `/login` + `/auth/callback` (#71)
-- [ ] `/trips/new` creates a trip with `kind = 'bachelor'`; creator is
-      organizer, **not celebrant** (#72)
-- [ ] `/invite/[token]` shows a logged-out preview before forcing
-      login; accept decrements `uses_left` via SECURITY DEFINER (#73)
-- [ ] Trip dashboard shows trip name, dates, invite link, glanceable
+- [x] Magic-link auth at `/login` + `/auth/callback` (#71) — #102
+- [x] `/trips/new` creates a trip with `kind = 'bachelor'`; creator is
+      organizer, **not celebrant** (#72) — #105
+- [x] `/invite/[token]` shows a logged-out preview before forcing
+      login; accept decrements `uses_left` via SECURITY DEFINER (#73) — #105
+- [x] Trip dashboard shows trip name, dates, invite link, glanceable
       confirmed-count ("3 going, 1 maybe, 4 invited" — never per-name
-      for declines)
-- [ ] 3-state RSVP UI (going / maybe / declined) on dashboard (#74)
-- [ ] `co_organizer` enum value; `is_trip_organizer()` returns true
+      for declines) — #109
+- [x] 3-state RSVP UI (going / maybe / declined) on dashboard (#74) — #109
+- [x] `co_organizer` enum value; `is_trip_organizer()` returns true
       for both. **No spend cap yet** (deferred to M5 — do NOT add a
-      cap column or check; roadmap explicitly defers)
-- [ ] Trip date selection — celebrant-weighted for bach kind: 2–4
+      cap column or check; roadmap explicitly defers) — #105
+- [x] Trip date selection — celebrant-weighted for bach kind: 2–4
       candidate windows, celebrant marks works /
-      works-with-effort / no-go, others vote only on non-vetoed (#75)
-- [ ] Reusable `<PulsePoll>` component with Realtime, aggregate-only
-      default; per-name visibility opt-in by voter (#76)
-- [ ] Header with avatar + sign-out
-- [ ] Every M2 UI string sourced from `lib/copy/*` palettes; PR
+      works-with-effort / no-go, others vote only on non-vetoed (#75) — #114
+- [x] Reusable `<PulsePoll>` component with Realtime, aggregate-only
+      default; per-name visibility opt-in by voter (#76) — #114.
+      Note: the `revealVoterNames` prop is reserved on the component
+      contract but the user-facing toggle UI ships in M5 (no consumer
+      surface in M2 needs it).
+- [x] Header with avatar + sign-out — #103
+- [x] Every M2 UI string sourced from `lib/copy/*` palettes; PR
       template microcopy review enforced
+- [~] Mobile-Safari mobile-first verification on every screen —
+      **partial**. Anonymous routes (`/`, `/login`, `/auth/callback`,
+      `/invite/[token]` preview, `/trips/<slug>` unauthenticated bounce,
+      `/trips/<slug>/dates` unauthenticated bounce) verified via the
+      `mobile-safari` Playwright project at 375x812. Authenticated
+      screens (RSVP toggle, date-poll multi-actor flow, full create
+      loop) are deferred behind the storage-state auth-fixture gap
+      tracked as a Wave-4 meta follow-up (see closure ADR).
+- [~] 375px screenshot evidence on every UI PR — **partial** for the
+      same reason. Anon surfaces have evidence; authenticated screens
+      were exercised in unit + RTL tests in lieu of mobile-safari
+      screenshots until the auth fixture lands.
+- [ ] Logged-in user can complete the full loop on mobile Safari
+      preview — **deferred** (auth-fixture blocker). Stub spec lives
+      in `e2e/m2-golden-path.spec.ts` as `test.fixme(...)` so the
+      assertions are ready the day the fixture lands.
 
 ---
 
