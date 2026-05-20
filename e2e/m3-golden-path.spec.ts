@@ -71,17 +71,13 @@ test.describe("authenticated M3 golden path", () => {
     await page.goto("/trips");
 
     const tripLink = page.locator('a[href*="/trips/"]').first();
-    if (!(await tripLink.isVisible())) {
-      test.info().annotations.push({
-        type: "note",
-        description: "No trips found for test user — skipping link-card assertions",
-      });
-      return;
-    }
-
+    test.skip(
+      !(await tripLink.isVisible()),
+      "No trips found for test user — fixture has not been seeded with a trip"
+    );
     const tripHref = await tripLink.getAttribute("href");
-    if (!tripHref) return;
-    await page.goto(tripHref);
+    test.skip(!tripHref, "Trip link has no href attribute");
+    await page.goto(tripHref!);
 
     // The dashboard should render link cards for the five M3 sub-routes.
     // Itinerary + Announcements + Arrivals + Roster are visible to every
@@ -106,9 +102,12 @@ test.describe("authenticated M3 golden path", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
     const tripLink = page.locator('a[href*="/trips/"]').first();
-    if (!(await tripLink.isVisible())) return;
+    test.skip(
+      !(await tripLink.isVisible()),
+      "No trips found for test user — fixture has not been seeded with a trip"
+    );
     const tripHref = await tripLink.getAttribute("href");
-    if (!tripHref) return;
+    test.skip(!tripHref, "Trip link has no href attribute");
     await page.goto(`${tripHref}/announcements`);
     await expect(
       page.getByRole("heading", { name: /announcements/i }),
@@ -119,9 +118,12 @@ test.describe("authenticated M3 golden path", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
     const tripLink = page.locator('a[href*="/trips/"]').first();
-    if (!(await tripLink.isVisible())) return;
+    test.skip(
+      !(await tripLink.isVisible()),
+      "No trips found for test user — fixture has not been seeded with a trip"
+    );
     const tripHref = await tripLink.getAttribute("href");
-    if (!tripHref) return;
+    test.skip(!tripHref, "Trip link has no href attribute");
     await page.goto(`${tripHref}/arrivals`);
     await expect(
       page.getByRole("heading", { name: /who's landing when/i }),
@@ -132,9 +134,12 @@ test.describe("authenticated M3 golden path", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
     const tripLink = page.locator('a[href*="/trips/"]').first();
-    if (!(await tripLink.isVisible())) return;
+    test.skip(
+      !(await tripLink.isVisible()),
+      "No trips found for test user — fixture has not been seeded with a trip"
+    );
     const tripHref = await tripLink.getAttribute("href");
-    if (!tripHref) return;
+    test.skip(!tripHref, "Trip link has no href attribute");
     await page.goto(`${tripHref}/roster`);
     await expect(
       page.getByRole("heading", { name: /who's coming/i }),
@@ -154,9 +159,12 @@ test.describe("authenticated M3 golden path", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
     const tripLink = page.locator('a[href*="/trips/"]').first();
-    if (!(await tripLink.isVisible())) return;
+    test.skip(
+      !(await tripLink.isVisible()),
+      "No trips found for test user — fixture has not been seeded with a trip"
+    );
     const tripHref = await tripLink.getAttribute("href");
-    if (!tripHref) return;
+    test.skip(!tripHref, "Trip link has no href attribute");
 
     for (const sub of ["", "/itinerary", "/announcements", "/arrivals", "/roster"]) {
       await page.goto(`${tripHref}${sub}`);

@@ -19,9 +19,16 @@
  * suffix is gated by an `is_trip_organizer()` RPC check; RLS does the
  * same gating at the row level as defense-in-depth.
  *
- * Wave 2 (M3) addition: Itinerary link card shows the next upcoming
- * item as a preview using getNextUpcomingItem (append-only addition to
- * lib/db/itinerary.ts — no existing exports touched).
+ * Wave 3b (M3) addition: NowNextCard + TripNotesEditor wired into the
+ * dashboard. The single-item-preview helper (`getNextUpcomingItem`) was
+ * superseded by `getItineraryByTrip` so the now/next pure function has
+ * the full item list to compute the current/next pair.
+ *
+ * Wave 5 (M3) closure addition: link cards for the five M3 sub-routes
+ * (Itinerary, Announcements, Arrivals, Roster, Invites). Invites is
+ * organizer-only — the dashboard hides the affordance for non-organizers
+ * so a member dashboard isn't peppered with dead-end links. Page-level
+ * RPC gate on /invites/page.tsx is the load-bearing security check.
  */
 
 import { format } from "date-fns";
