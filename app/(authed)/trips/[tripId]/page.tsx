@@ -18,6 +18,10 @@
  * the declining-whispers ADR. The organizer-only "(N can't make it)"
  * suffix is gated by an `is_trip_organizer()` RPC check; RLS does the
  * same gating at the row level as defense-in-depth.
+ *
+ * Wave 2 (M3) addition: Itinerary link card shows the next upcoming
+ * item as a preview using getNextUpcomingItem (append-only addition to
+ * lib/db/itinerary.ts — no existing exports touched).
  */
 
 import { format } from "date-fns";
@@ -38,8 +42,9 @@ import {
   getOrganizerDeclinedCount,
   getRsvpCountsForTrip,
 } from "@/lib/db/rsvp";
+import { getNextUpcomingItem } from "@/lib/db/itinerary";
 import { createClient } from "@/lib/supabase/server";
-import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
+import { M2_UI_STRINGS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Trip } from "@/lib/db/types";
 
 type PageProps = {
@@ -71,12 +76,12 @@ export default async function TripDashboardPage({ params }: PageProps) {
     notFound();
   }
 
-  // Glanceable counts always source from the view — see file docstring.
-  // We fan out the three reads in parallel; they're independent.
-  const [counts, myRsvp, organizerCheck] = await Promise.all([
+  // Fan out independent reads in parallel.
+  const [counts, myRsvp, organizerCheck, nextItem] = await Promise.all([
     getRsvpCountsForTrip(supabase, trip.id),
     getMyRsvp(supabase, trip.id, user.id),
     supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
+    getNextUpcomingItem(supabase, trip.id),
   ]);
 
   const isOrganizer = organizerCheck.data === true;
@@ -119,6 +124,23 @@ export default async function TripDashboardPage({ params }: PageProps) {
           </CardContent>
         </Card>
 
+        {/* Itinerary link card — M3 Wave 2 (#35) */}
+        <Link href={`/trips/${trip.slug}/itinerary`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.itinerary_heading}</CardTitle>
+              {nextItem ? (
+                <CardDescription>
+                  {nextItem.title}
+                  {nextItem.start_time
+                    ? ` · ${formatTimeShort(nextItem.start_time)}`
+                    : null}
+                </CardDescription>
+              ) : null}
+            </CardHeader>
+          </Card>
+        </Link>
+
         <Card>
           <CardHeader>
             <CardTitle>
@@ -159,6 +181,15 @@ function formatTripDates(trip: Trip): string {
     return format(new Date(trip.starts_at), "MMM d");
   }
   return M2_UI_STRINGS.dashboard_dates_unset;
+}
+
+/**
+ * Format HH:MM as "3:00 PM" for the dashboard preview snippet.
+ */
+function formatTimeShort(time: string): string {
+  const [h, m] = time.split(":").map(Number);
+  const d = new Date(2000, 0, 1, h, m);
+  return format(d, "h:mm a");
 }
 
 /**
