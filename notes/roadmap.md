@@ -21,10 +21,11 @@ Use it for the trip. Come back to M5 only after a real-trip retro.
 Infrastructure + the schema primitives that every later milestone keys
 off. PWA / Sentry / rate-limiting are infra, not polish, so they land here.
 
-**Status (2026-05-19):** All PRs authored and green on CI. Awaiting merge:
-#86, #87, #88, #89, #91, #92, #93. Merge order documented in
-`notes/m1-execution-plan.md`. Milestone closes when all checkboxes in the
-DoD section of the execution plan are checked.
+**Status (2026-05-19):** **Closed.** All PRs (#86–#93) merged to `main`;
+DoD checklist in `notes/m1-execution-plan.md` is fully ticked. See
+`notes/decisions.md` "M1 foundation + schema — all PRs open, awaiting
+merge" entry (the title is from the in-flight phase; closure is recorded
+in the same block). Closes #99.
 
 **Definition of done:**
 - Next.js 16 app with strict TypeScript, deployed to Vercel preview
