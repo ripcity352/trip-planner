@@ -9,18 +9,12 @@
  *      `createTrip`, `acceptInvite`, etc. Throws `RateLimitError` instead of
  *      returning an HTTP response so callers can surface a friendly toast.
  *
- * Upstash Redis is configured via `UPSTASH_REDIS_REST_URL` +
- * `UPSTASH_REDIS_REST_TOKEN`. When BOTH are present we wire the real
- * limiter. When either is missing:
- *
- *   - In dev / test (`NODE_ENV !== "production"`) we fall back to an
- *     in-memory shim that always allows. This keeps `pnpm build` green
- *     without secrets and lets unit tests run without network.
- *   - In production we still build the same shim at import time (so the
- *     deploy doesn't crash on cold-start), but every `.limit()` call
- *     FAILS CLOSED — `success: false`. The deploy will then surface
- *     rate-limit errors on every guarded path, which is the loud
- *     signal we want: "rate limit creds are missing from the env."
+ * Upstash Redis credentials are read via `__resolveUpstashCreds`, which
+ * accepts either naming scheme (Vercel Marketplace's `KV_REST_API_*`
+ * takes precedence over the legacy `UPSTASH_REDIS_REST_*`; see #124).
+ * When BOTH a URL and token are present we wire the real limiter. When
+ * either is missing we fall back to the in-memory shim documented at
+ * `buildInMemoryLimiter`.
  *
  * Importing this module must never throw.
  */
@@ -151,17 +145,19 @@ function buildInMemoryLimiter(): InMemoryLimiter {
   //       in spirit, wrong in practice during bootstrap. Production-
   //       without-real-users-yet (MVP) has no Upstash provisioned and
   //       fail-closed bricks magic-link login.
-  //   v3 (this): allow-with-loud-warning when Upstash is unconfigured,
+  //   v3: allow-with-loud-warning when Upstash is unconfigured,
   //       regardless of NODE_ENV. The warning routes through Sentry via
-  //       console.error and tracks via the follow-up issue. When Upstash
-  //       IS configured but transiently fails, the upstream `Ratelimit`
-  //       throws and the caller catches as a `RateLimitError` — that
-  //       path is still fail-closed (correct).
-  //
-  // Tracking the "provision Upstash before real users" requirement at
-  // gh issue link in the rationale below — DO NOT remove this warning
-  // without also flipping the dependency or accepting the no-rate-limit
-  // posture explicitly.
+  //       console.error and tracks via the follow-up issue.
+  //   v4 (this): #124 closed — Upstash for Redis is now provisioned via
+  //       the Vercel Marketplace, injected as `KV_REST_API_URL` +
+  //       `KV_REST_API_TOKEN`. This shim is therefore the *exception
+  //       path* in production: if it fires, it means either an env-var
+  //       regression on Vercel or a fresh fork running with no creds.
+  //       The warning stays loud so a future regression is caught
+  //       immediately. When Upstash IS configured but transiently
+  //       fails, the upstream `Ratelimit` throws and the caller catches
+  //       as a `RateLimitError` — that path is still fail-closed
+  //       (correct).
   const isProd = process.env.NODE_ENV === "production";
   let warned = false;
   return {
@@ -201,12 +197,41 @@ function buildUpstashLimiter(url: string, token: string): Ratelimit {
 function getLimiter(): Ratelimit | InMemoryLimiter {
   if (cachedLimiter) return cachedLimiter;
 
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const creds = __resolveUpstashCreds(process.env);
 
-  cachedLimiter =
-    url && token ? buildUpstashLimiter(url, token) : buildInMemoryLimiter();
+  cachedLimiter = creds
+    ? buildUpstashLimiter(creds.url, creds.token)
+    : buildInMemoryLimiter();
   return cachedLimiter;
+}
+
+/**
+ * Resolves Upstash REST creds from the environment, accepting both the
+ * Vercel-Marketplace naming (`KV_REST_API_URL` / `KV_REST_API_TOKEN`,
+ * auto-injected by the "Upstash for Redis" integration since #124) and
+ * the legacy direct-Upstash naming (`UPSTASH_REDIS_REST_URL` /
+ * `UPSTASH_REDIS_REST_TOKEN`, still used in `.env.local` for devs who
+ * provisioned outside the Marketplace).
+ *
+ * Precedence: `KV_*` wins when both pairs are present. The production
+ * deploy is the source of truth, and Vercel always populates the `KV_*`
+ * pair from the Marketplace install — a stray `UPSTASH_*` left behind
+ * in an older env file must not shadow it.
+ *
+ * Returns `null` if either half (url or token) is missing — half-config
+ * is broken-config, and the in-memory shim's loud warning is the
+ * correct signal.
+ *
+ * Exported with the `__` prefix to mark it as test-surface; consumers
+ * should use `rateLimitedAction` / `rateLimitRequest` instead.
+ */
+export function __resolveUpstashCreds(
+  env: Readonly<Record<string, string | undefined>>,
+): { url: string; token: string } | null {
+  const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
+  const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  return { url, token };
 }
 
 /**

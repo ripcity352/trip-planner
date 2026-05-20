@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
+  __resolveUpstashCreds,
   __setLimiterForTest,
   getClientId,
   rateLimitRequest,
@@ -33,6 +34,82 @@ describe("module import safety", () => {
     // throwing is the assertion. Add a sanity check so the test is non-trivial.
     expect(process.env.UPSTASH_REDIS_REST_URL).toBeFalsy();
     expect(typeof rateLimitedAction).toBe("function");
+  });
+});
+
+describe("__resolveUpstashCreds (env-var precedence, #124)", () => {
+  // The Vercel Marketplace "Upstash for Redis" integration auto-injects
+  // KV_REST_API_URL / KV_REST_API_TOKEN. Local dev and direct-Upstash
+  // setups historically used UPSTASH_REDIS_REST_URL /
+  // UPSTASH_REDIS_REST_TOKEN. Both must work; KV_* wins when present
+  // because that's the live prod configuration after #124 closed.
+
+  const empty = {};
+
+  it("returns null when no creds are present", () => {
+    expect(__resolveUpstashCreds(empty)).toBeNull();
+  });
+
+  it("returns null when only the URL half is present", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "https://example.upstash.io",
+      }),
+    ).toBeNull();
+    expect(
+      __resolveUpstashCreds({
+        UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when only the token half is present", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_TOKEN: "tok",
+      }),
+    ).toBeNull();
+  });
+
+  it("resolves KV_* names (Vercel Marketplace auto-injection)", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "https://kv.upstash.io",
+        KV_REST_API_TOKEN: "kv-tok",
+      }),
+    ).toEqual({ url: "https://kv.upstash.io", token: "kv-tok" });
+  });
+
+  it("resolves UPSTASH_REDIS_REST_* names (direct-Upstash / local dev)", () => {
+    expect(
+      __resolveUpstashCreds({
+        UPSTASH_REDIS_REST_URL: "https://up.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "up-tok",
+      }),
+    ).toEqual({ url: "https://up.upstash.io", token: "up-tok" });
+  });
+
+  it("prefers KV_* over UPSTASH_* when both are present", () => {
+    // Vercel Marketplace KV_* are the production source of truth after
+    // #124; an inherited UPSTASH_* in the same environment must not
+    // shadow them.
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "https://kv.upstash.io",
+        KV_REST_API_TOKEN: "kv-tok",
+        UPSTASH_REDIS_REST_URL: "https://up.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "up-tok",
+      }),
+    ).toEqual({ url: "https://kv.upstash.io", token: "kv-tok" });
+  });
+
+  it("treats empty-string values as absent", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "",
+        KV_REST_API_TOKEN: "",
+      }),
+    ).toBeNull();
   });
 });
 

@@ -5,6 +5,35 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-19 (late PM) — M2 follow-up — Upstash provisioned via Vercel Marketplace (#124)
+
+**Decision:** Provisioned Upstash for Redis through the Vercel Marketplace ("Upstash for Redis" integration, `upstash/upstash-kv` product slug), region `us-east-1`. Auto-injects `KV_REST_API_URL` + `KV_REST_API_TOKEN` (plus `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN`) into Production, Preview, and Development environments.
+
+**Why this matters:** Closes the M2 follow-up gate that blocked sending the invite link to real attendees. Until #124, the rate-limit module fell through to the in-memory always-allow shim on prod — `AUTH_MAGIC_LINK`, `CREATE_TRIP`, `ACCEPT_INVITE`, `SET_RSVP`, `CAST_DATE_VOTE` had no per-user budget, and email-bombing was technically possible against any inbox. Real users gate.
+
+**Load-bearing implementation details:**
+
+- **Dual-name env var resolution.** Vercel Marketplace injects `KV_*` naming; existing dev setups and `.env.example` documented `UPSTASH_*`. The rate-limit module now reads both via `__resolveUpstashCreds()`, preferring `KV_*` when present so the production source of truth (Vercel) always wins over a stale local override. Test coverage in `lib/rate-limit/__tests__/index.test.ts` pins this precedence (7 cases) so a future rename doesn't silently regress to the in-memory shim.
+- **`buildInMemoryLimiter` shim retained, not deleted.** The v4 history comment in `lib/rate-limit/index.ts` documents why: a future env-var regression on Vercel or a fresh fork running without provisioning must still bootstrap. The shim's loud Sentry warning (`console.error`) is the regression alarm.
+- **Direct-Upstash console NOT used.** The Marketplace path was chosen over `console.upstash.com` direct provisioning despite the Marketplace's paid-only plan presentation, because unified Vercel billing + auto-injection + dashboard visibility outweighed the (negligible at MVP traffic) per-request cost on the cheapest paid plan.
+- **Scope budgets unchanged.** The default 30-req / 60-sec sliding window applies uniformly across all scopes for now. Issue tracking a per-scope ratchet (e.g., `AUTH_MAGIC_LINK` should likely drop to ~5/hr for production-grade abuse resistance) lives at the JSDoc comment at `RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK` and is deferred to a follow-up.
+
+**Alternatives considered:**
+
+- **Direct Upstash + manually injected env vars** — true $0 free tier, but split billing and a manual env-var sync chore on token rotation. Marketplace path won on operational simplicity for a two-dev project.
+- **Rename in code to KV_\* only** — would have been the simplest patch but breaks the documented `.env.example` for anyone running local Upstash. Dual-name resolution costs ~10 LoC and preserves both setup paths.
+- **Skip the env-var rename, manually mirror `KV_*` → `UPSTASH_*` on Vercel** — would have kept the code untouched, but adds an invisible env-var dependency that future Carl would not remember. Code change is the durable solution.
+
+**Follow-ups (not blocking #124 closure):**
+
+- #130 — pin production-mode rate-limit shim behavior (separate test surface; the v4 path is now the assumed default and worth a regression guard)
+- Per-scope budget ratcheting (especially `AUTH_MAGIC_LINK` → ~5/hr) — file as new issue if not already
+- Confirm the Vercel Marketplace billing line item appears as expected on next invoice; if usage is genuinely zero across the month, no surprise
+
+**Acceptance verified:** 20/20 unit tests green (7 new for env precedence); typecheck + lint clean; prod redeploy + 35-request smoke test confirms the 30/min budget enforces (`rate_limit` error toast on the 31st); Vercel logs confirm `[rate-limit] Upstash creds unset` warning no longer fires post-redeploy.
+
+---
+
 ## 2026-05-19 (PM) — M2 — Trip is real — milestone closed
 
 **Decision:** M2's seven planned PRs all landed on `main` with CI + code-reviewer + (where applicable) security-reviewer approval:
