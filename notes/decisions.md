@@ -5,6 +5,135 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-20 (PM) — M3 — Trip is useful — milestone closed
+
+**Decision:** M3 closed. The MVP-target trio is now reachable from one
+URL: itinerary, announcements (with Realtime), trip notes, arrivals
+manifest, roster with vCard mass-download + copy-all-numbers, and
+organizer invite minting with the rate-limit scope properly split from
+the accept path. Per-item RSVP + per-item member-flag (dietary / sober /
+late-arrival) ship as silent opt-ins per the "don't encode a default"
+ADR.
+
+**What shipped (9 PRs):**
+
+- **#143** Wave 0a — plan doc, deployment-readiness, M3 copy keys, #116/#117/#130.
+- **#145** Wave 0b — Playwright auth fixture (#120).
+- **#144** Wave 0c — PKCE → token-hash for cross-device magic-link clicks (#137).
+- **#146** Wave 1 — `m3_itinerary_announcements` migration + data layer +
+  idempotent server actions for itinerary, announcements, lodging,
+  travel legs, trip notes, item RSVPs, item flags.
+- **#147** Wave 2 — itinerary UI + per-item RSVP chip + organizer-only
+  per-item flag form (#35, #38, #80; lodging UI portion of #36).
+- **#148** Wave 3a — announcements page + Realtime feed (#79).
+- **#149** Wave 3b — now/next dashboard card + trip notes editor +
+  `revalidatePath` on `setRsvpAction` success (#77, #78, #110).
+- **#150** Wave 4a — arrivals manifest + travel-leg form (#37).
+- **#151** Wave 4b — roster page + vCard mass-download + copy-numbers
+  (#39, #40).
+- **#152** Wave 4c — invite-issuance UI + `MINT_INVITE` rate-limit scope
+  split from `ACCEPT_INVITE` (#129, #107).
+
+**Load-bearing decisions made during execution:**
+
+1. **Idempotency-key scope per the per-table ADR** held: organizer-
+   acting tables (`itinerary_items`, `announcements`, `lodging_assignments`)
+   use `(trip_id, idempotency_key)`; strictly-user tables
+   (`itinerary_item_rsvps`, `itinerary_item_member_flags`, `travel_legs`)
+   include `trip_member_id` in the partial unique scope. Migration
+   #146 enforces this end-to-end.
+
+2. **`revalidatePath("/trips", "layout")` on RSVP success** chosen over
+   per-slug invalidation. Per-slug would have required an extra DB
+   round-trip in the hot RSVP path to fetch `trips.slug` from the
+   membership row. Layout-wide is broader but the cost is negligible —
+   the cache miss only matters for surfaces already showing RSVP counts.
+
+3. **Browser-local TZ for the now/next pure function (#108 still deferred).**
+   `whatsHappeningNow` takes `now: Date` as a parameter and uses it
+   directly. Cross-coast trips will see the viewer's local clock at
+   render time. The trip-local TZ fix is M4+ territory; the timeline
+   has a one-line dashboard-footer caveat as planned.
+
+4. **Reusable shadcn `Select` + `Textarea` primitives added** via
+   `pnpm dlx shadcn@latest add`. No new npm dependency in `package.json`
+   — `@base-ui/react` was already a transitive dep of the existing
+   shadcn primitives, so the new components ride that pin.
+
+5. **Emoji icons swapped for `lucide-react` SVG** in the arrivals card
+   per design-system §581 (icons are SVG; emoji reserved for reactions
+   and user-generated copy). The reciprocal cleanup on
+   `components/trip/itinerary/item-card.tsx` is tracked as a follow-up.
+
+6. **vCard CRLF escaping is a security guarantee, not a formatting nit.**
+   A user-controlled `display_name` containing `\r\n` could inject
+   forged `BEGIN:VCARD` / `END:VCARD` blocks into every other member's
+   downloaded `.vcf`. `escapeVCardText` now escapes CR/LF/CRLF to `\\n`
+   BEFORE the comma/semicolon/backslash escapes. `sanitisePhone` strips
+   newlines from the TEL value as defense-in-depth. Three new tests
+   pin the attack vector closed (full payload, lone CR/LF, malformed
+   phone). Both reviewers independently surfaced this; the fix was
+   the highest-severity find of Wave 4.
+
+7. **`MINT_INVITE` rate-limit scope split from `ACCEPT_INVITE` (#107).**
+   `createInviteAction` and `acceptInviteAction` now use distinct
+   buckets per `(scope, user_id)`. A burst of mints can no longer
+   starve the accept path (or vice versa). Default budget (30 req / 60 s
+   sliding window) applies to both; ratchet review (#141) is post-M3.
+
+8. **Revoke RLS no-op detector.** The `invites` table currently has
+   SELECT/INSERT/DELETE RLS policies but no UPDATE policy. A denied
+   UPDATE returns success with zero affected rows — not an error.
+   `lib/db/invites.ts` `revokeInvite` now chains `.select("token")`
+   on the UPDATE and throws if the affected-row count is zero. Without
+   this, `revokeInviteAction` would have been a silent no-op for every
+   caller and the UI would have lied about revocation. The proper fix
+   (UPDATE policy or `revoke_invite` SECURITY DEFINER RPC) is an M4
+   migration follow-up; the in-action check is the M3-scope band-aid.
+
+9. **`invites.token` SELECT RLS is `is_trip_member`, not organizer-only.**
+   The page-level `is_trip_organizer` check in
+   `app/(authed)/trips/[tripId]/invites/page.tsx` is the load-bearing
+   gate. Docstring corrected in `lib/db/invites.ts`. Tightening the
+   SELECT policy is an M4 follow-up.
+
+10. **Override G — `app/page.tsx` kept as-is.** The landing page
+    written for M2 ("Plan the trip without the group-chat chaos.")
+    accurately describes the M3 product surface. No changes needed for
+    M3 reality. Tracked as an explicit kept-as-is decision per the
+    plan's Override G ownership rule.
+
+**Process learnings (full retro in `notes/retros/m3-retro.md`):**
+
+- Parallel `tdd-guide` agents on independent worktrees worked well for
+  Wave 3 (2 PRs) and Wave 4 (3 PRs). No file collisions; PR open ↔ merge
+  cycle averaged ~1 hour per wave including reviewer turnaround.
+- `security-reviewer` + `code-reviewer` dispatched in parallel (Override
+  D) consistently caught issues the implementation agent missed —
+  most notably the vCard CRLF injection and the `revokeInvite` RLS
+  no-op. The pattern is keeping; the only friction was self-PR approval
+  blocked by GitHub, which the agents handled by posting comment reviews
+  with explicit "clear to merge" language.
+- Session limits hit twice during Wave 4 re-reviews. The fix-up commits
+  were demonstrably aligned with the prior review findings (verified
+  against the diff manually), so the orchestrator merged. Future mitigation:
+  smaller, more atomic fix-up commits keep the re-review window short.
+- Real-browser smoke at 375px on the Vercel preview (Override A) caught
+  zero new issues this milestone — the screenshots became more of a
+  smoke-test ritual than a defect surface. The closure walk on
+  travelston.com (Override E `[v]` axis) is what catches what CI misses.
+
+**Verified DoD:** see `notes/m3-execution-plan.md` final DoD checklist.
+All `[d]` boxes ticked at PR-merge time; `[v]` boxes ticked at closure
+after the production walk on travelston.com (PR body embeds the 8
+screenshots).
+
+**MVP target reset:** M1 → M3 are done. Next: M4 — Trip is shippable.
+Per `notes/roadmap.md`, **stop at M4** — use the app for one real
+bachelor party before opening M5.
+
+---
+
 ## 2026-05-20 — M3 Wave 0c — Switch magic-link from PKCE to token-hash for cross-device clicks (#137)
 
 **Decision:** Replace the `exchangeCodeForSession(code)` PKCE exchange in

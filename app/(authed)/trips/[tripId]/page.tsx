@@ -134,7 +134,11 @@ export default async function TripDashboardPage({ params }: PageProps) {
           </CardContent>
         </Card>
 
-        {/* Itinerary link card — M3 Wave 2 (#35) */}
+        {/* Sub-route link cards — Itinerary (Wave 2), Announcements (3a),
+            Arrivals (4a), Roster (4b), Invites (4c — organizer-only).
+            Each lives under /trips/[slug]/<route>; the page-level RLS/role
+            gate enforces actual visibility, the dashboard surfaces them
+            so they're discoverable. */}
         <Link href={`/trips/${trip.slug}/itinerary`} className="block">
           <Card className="hover:bg-muted/40 transition-colors">
             <CardHeader>
@@ -142,6 +146,43 @@ export default async function TripDashboardPage({ params }: PageProps) {
             </CardHeader>
           </Card>
         </Link>
+
+        <Link href={`/trips/${trip.slug}/announcements`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.announcements_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href={`/trips/${trip.slug}/arrivals`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.arrivals_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href={`/trips/${trip.slug}/roster`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.roster_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        {/* Invites — organizer-only. Page returns notFound() for
+            non-organizers, but we still hide the affordance here as UX
+            (so a non-organizer dashboard isn't peppered with dead links). */}
+        {isOrganizer ? (
+          <Link href={`/trips/${trip.slug}/invites`} className="block">
+            <Card className="hover:bg-muted/40 transition-colors">
+              <CardHeader>
+                <CardTitle>{M3_UI_STRINGS.invitesPage_heading}</CardTitle>
+              </CardHeader>
+            </Card>
+          </Link>
+        ) : null}
 
         {/* Trip notes — Wave 3b (#78) */}
         <Card>

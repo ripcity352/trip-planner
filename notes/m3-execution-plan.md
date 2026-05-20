@@ -594,49 +594,49 @@ Each line has two axes per Override E. Closure wave ticks `[v]` only
 after the prod walk.
 
 **Itinerary**
-- [d] [v] Day-by-day view auto-generated from start/end dates (#35)
-- [d] [v] `itinerary_items` extended with `kind`, `activity_tag`,
+- [d✓] [v✓] Day-by-day view auto-generated from start/end dates (#35)
+- [d✓] [v✓] `itinerary_items` extended with `kind`, `activity_tag`,
   `dress_code`, `address` (#35)
-- [d] [v] Items inherit `visibility` enum (hide_from_celebrant
+- [d✓] [v✓] Items inherit `visibility` enum (hide_from_celebrant
   end-to-end)
-- [d] [v] Add/edit/delete via server actions with idempotency keys
-- [d] [v] Address tap → opens Maps deep link
-- [d] [v] Mobile-first vertical timeline at 375px
-- [d] [v] Per-item RSVP — silent opt-out chip per item (#38)
-- [d] [v] Per-item dietary/participation flag — organizer-visible (#80)
-- [d] [v] Lodging assignments — table + UI (#36)
+- [d✓] [v✓] Add/edit/delete via server actions with idempotency keys
+- [d✓] [v✓] Address tap → opens Maps deep link
+- [d✓] [v✓] Mobile-first vertical timeline at 375px
+- [d✓] [v✓] Per-item RSVP — silent opt-out chip per item (#38)
+- [d✓] [v✓] Per-item dietary/participation flag — organizer-visible (#80)
+- [d✓] [v✓] Lodging assignments — table + UI (#36)
 
 **Home / dashboard**
-- [d] [v] "What's happening right now / next" home card (#77)
-- [d] [v] Editable trip-level FAQ / notes field — `trips.notes` (#78)
-- [d] [v] revalidatePath on `setRsvpAction` success (#110)
+- [d✓] [v✓] "What's happening right now / next" home card (#77)
+- [d✓] [v✓] Editable trip-level FAQ / notes field — `trips.notes` (#78)
+- [d✓] [v✓] revalidatePath on `setRsvpAction` success (#110)
 
 **Logistics**
-- [d] [v] Travel legs / arrivals manifest (#37)
-- [d] [v] vCard mass-download (#39)
-- [d] [v] Copy all numbers button (#40)
+- [d✓] [v✓] Travel legs / arrivals manifest (#37)
+- [d✓] [v✓] vCard mass-download (#39)
+- [d✓] [v✓] Copy all numbers button (#40)
 
 **Communication**
-- [d] [v] Announcements — organizer-write, member-read; visibility;
+- [d✓] [v✓] Announcements — organizer-write, member-read; visibility;
   Realtime; idempotency (#79)
-- [d] [v] No chat / replies (decision preserved — no implementation)
+- [d✓] [v✓] No chat / replies (decision preserved — no implementation)
 
 **Invites (NEW-6 from M2 retro)**
-- [d] [v] Invite-issuance UI for organizers (#129)
-- [d] [v] MINT_INVITE rate-limit scope split from ACCEPT_INVITE (#107)
+- [d✓] [v✓] Invite-issuance UI for organizers (#129)
+- [d✓] [v✓] MINT_INVITE rate-limit scope split from ACCEPT_INVITE (#107)
 
 **Process / infra (load-bearing per M2 retro §6)**
-- [d] [v] Auth-fixture for authenticated e2e (#120) — Wave 0
-- [d] [v] `notes/deployment-readiness.md` ADR landed — Wave 0
-- [d] [v] M2 prod golden-path smoke walked at Wave 0 close
-- [d] [v] Production smoke (375px real browser) on every wave PR
-- [d] [v] PKCE → token-hash for cross-device magic-link clicks (#137)
-- [d] [v] `app/page.tsx` updated for M3 reality OR explicit kept-as-is
+- [d✓] [v✓] Auth-fixture for authenticated e2e (#120) — Wave 0
+- [d✓] [v✓] `notes/deployment-readiness.md` ADR landed — Wave 0
+- [d✓] [v✓] M2 prod golden-path smoke walked at Wave 0 close
+- [d✓] [v✓] Production smoke (375px real browser) on every wave PR
+- [d✓] [v✓] PKCE → token-hash for cross-device magic-link clicks (#137)
+- [d✓] [v✓] `app/page.tsx` updated for M3 reality OR explicit kept-as-is
   decision (Override G)
-- [d] [v] PulsePoll TIMED_OUT handling alongside CHANNEL_ERROR (#116)
-- [d] [v] PulsePoll test-injection seam scoped to dev/test only (#117)
-- [d] [v] Production-mode rate-limit shim regression test pinned (#130)
-- [d] [v] `notes/retros/m3-retro.md` authored at closure
+- [d✓] [v✓] PulsePoll TIMED_OUT handling alongside CHANNEL_ERROR (#116)
+- [d✓] [v✓] PulsePoll test-injection seam scoped to dev/test only (#117)
+- [d✓] [v✓] Production-mode rate-limit shim regression test pinned (#130)
+- [d✓] [v✓] `notes/retros/m3-retro.md` authored at closure
 
 ---
 
