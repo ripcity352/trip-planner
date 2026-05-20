@@ -16,7 +16,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Trip } from "./types";
+import type { Trip, TripMember, TripRole } from "./types";
 
 // Single source of truth for the trips column list. RLS will additionally
 // hide rows where `deleted_at is not null` for non-organizers, but we
@@ -83,6 +83,86 @@ export async function listMyTrips(supabase: SupabaseClient): Promise<Trip[]> {
   }
 
   return (data ?? []) as Trip[];
+}
+
+// ---------------------------------------------------------------------------
+// Trip member helpers
+// ---------------------------------------------------------------------------
+
+export interface ViewerMember {
+  id: string;
+  role: TripRole;
+  is_celebrant: boolean;
+  display_name: string | null;
+}
+
+/**
+ * Return the viewer's trip_member row for the given trip, or null if they
+ * are not a member. Used by Server Components to determine organizer/celebrant
+ * status without calling supabase.from() directly in the page.
+ */
+export async function getViewerMember(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<ViewerMember | null> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .select("id, role, is_celebrant, display_name")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getViewerMember failed: ${error.message}`);
+  }
+
+  return data as ViewerMember | null;
+}
+
+/**
+ * Return the celebrant's display_name for a trip, or null if the trip has
+ * no celebrant row (unlikely in production but possible in tests/staging).
+ */
+export async function getCelebrantName(
+  supabase: SupabaseClient,
+  tripId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .select("display_name")
+    .eq("trip_id", tripId)
+    .eq("is_celebrant", true)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getCelebrantName failed: ${error.message}`);
+  }
+
+  return (data as { display_name: string | null } | null)?.display_name ?? null;
+}
+
+/**
+ * Return all trip members for a trip. Used by ItemCard/LodgingRoster to
+ * display member names alongside assignments.
+ */
+export async function getTripMembers(
+  supabase: SupabaseClient,
+  tripId: string
+): Promise<TripMember[]> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .select(
+      "id, trip_id, user_id, role, rsvp_status, joined_at, is_celebrant, display_name, phone_e164, email, idempotency_key"
+    )
+    .eq("trip_id", tripId)
+    .order("joined_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`getTripMembers failed: ${error.message}`);
+  }
+
+  return (data ?? []) as TripMember[];
 }
 
 /**
