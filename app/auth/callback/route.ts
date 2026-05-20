@@ -17,6 +17,18 @@ export async function GET(request: Request) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }
+    // Diagnostic logging — distinguishes PKCE mismatch / expired-code /
+    // already-used-code in Vercel/Sentry. Never logs the code itself.
+    console.error("[auth] exchangeCodeForSession failed", {
+      status: error.status,
+      code: (error as { code?: string }).code,
+      name: error.name,
+      message: error.message,
+    });
+  } else {
+    console.error("[auth] callback missing code param", {
+      searchParams: Object.fromEntries(searchParams.entries()),
+    });
   }
 
   return NextResponse.redirect(`${origin}/login?error=auth`);
