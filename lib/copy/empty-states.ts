@@ -306,7 +306,9 @@ export const M3_UI_STRINGS = {
   invitesPage_pageTitle: "Invite links",
   invitesPage_heading: "Invite links",
   invitesPage_create_cta: "Mint a link",
-  invitesPage_uses_template: "{remaining} of {total} left",
+  // {remaining} = current uses_left. Schema doesn't track an original max
+  // (only the remaining count), so "{remaining} of {total}" would misreport.
+  invitesPage_uses_template: "{remaining} left",
   invitesPage_expires_template: "Expires {when}",
   invitesPage_copy_link_cta: "Copy link",
   invitesPage_copied: "Copied — paste in the group chat.",

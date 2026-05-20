@@ -93,9 +93,18 @@ export async function getInvitePreview(
 }
 
 /**
- * Lists every invite for a trip, newest first. RLS on `invites`
- * already gates this to organizers + co-organizers — we don't add an
- * app-level check.
+ * Lists every invite for a trip, newest first. SELECT RLS on `invites`
+ * is currently gated by `is_trip_member(trip_id)` (NOT organizer-only),
+ * so the page-level `is_trip_organizer` check in
+ * `app/(authed)/trips/[tripId]/invites/page.tsx` is the load-bearing
+ * gate that prevents non-organizer trip members from listing tokens.
+ *
+ * Follow-up: tighten the SELECT policy to `is_trip_organizer` in a
+ * future migration so this is enforced at the row level too. Out of
+ * scope for Wave 4c (migration ordering risk); tracked for M4.
+ *
+ * Alias: `getInvitesByTrip` — same function, exported under the name
+ * used by Wave 4c pages per `notes/m3-execution-plan.md` §"Wave 4".
  */
 export async function getTripInvites(
   supabase: SupabaseClient,
@@ -113,6 +122,12 @@ export async function getTripInvites(
 
   return (data ?? []) as Invite[];
 }
+
+/**
+ * Alias for `getTripInvites` — Wave 4c pages use this name per the
+ * execution plan's file ownership table.
+ */
+export const getInvitesByTrip = getTripInvites;
 
 /**
  * Inserts a new invite row. RLS gates writes to organizers; the M1
@@ -164,18 +179,37 @@ export async function createInviteRecord(
 /**
  * Revokes an invite by clamping `expires_at` to `now()`. We don't
  * delete the row so we can still surface "this link was revoked" if
- * someone clicks it. RLS gates writes to organizers.
+ * someone clicks it.
+ *
+ * IMPORTANT: the `invites` table currently has no UPDATE RLS policy
+ * (only SELECT/INSERT/DELETE). Postgres treats "no policy that
+ * matches" as deny, but a denied UPDATE returns success with zero
+ * affected rows — not an error. We therefore add a `.select()` to the
+ * UPDATE so we can confirm a row was actually modified, and throw if
+ * not. Without this check, `revokeInvite` would be a silent no-op for
+ * every caller and the UI would lie about revocation.
+ *
+ * Migration follow-up: add a column-scoped UPDATE policy on `invites`
+ * for organizers / co-organizers, OR add a `revoke_invite()` SECURITY
+ * DEFINER RPC mirroring `accept_invite`. Out of scope for Wave 4c
+ * (migration ordering risk); tracked for M4.
  */
 export async function revokeInvite(
   supabase: SupabaseClient,
   token: string
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("invites")
     .update({ expires_at: new Date().toISOString() })
-    .eq("token", token);
+    .eq("token", token)
+    .select("token");
 
   if (error) {
     throw new Error(`revokeInvite failed: ${error.message}`);
+  }
+  if (!Array.isArray(data) || data.length === 0) {
+    // RLS denied the UPDATE (or the token doesn't exist). Either way the
+    // caller's revoke promise wasn't kept — surface as an error.
+    throw new Error("revokeInvite: no row updated (RLS denied or token missing)");
   }
 }
