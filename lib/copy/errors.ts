@@ -35,7 +35,21 @@ export type ErrorKey =
   | "invite_exhausted"
   | "invite_not_found"
   | "trip_create_failed"
-  | "rsvp_save_failed";
+  | "rsvp_save_failed"
+  // M3 error keys (Wave 0a). Naming follows the existing
+  // `<feature>_<verb>_failed` pattern. Voice-tested — blame-free, warm,
+  // specific. See `notes/m3-execution-plan.md` Override F.
+  | "itinerary_save_failed"
+  | "itinerary_delete_failed"
+  | "item_rsvp_save_failed"
+  | "item_flag_save_failed"
+  | "announcement_post_failed"
+  | "trip_notes_save_failed"
+  | "travel_leg_save_failed"
+  | "travel_leg_delete_failed"
+  | "lodging_assign_failed"
+  | "invite_mint_failed"
+  | "invite_revoke_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -52,4 +66,23 @@ export const ERRORS: Record<ErrorKey, string> = {
   trip_create_failed:
     "Couldn't lock that in. Give it another shot in a sec.",
   rsvp_save_failed: "RSVP didn't save. Tap it again — it'll catch.",
+  // M3 error strings — same voice rules.
+  itinerary_save_failed:
+    "Didn't save. Give it another tap — your connection's flaky.",
+  itinerary_delete_failed: "Couldn't delete that. Try once more in a sec.",
+  item_rsvp_save_failed:
+    "Couldn't update your spot on that one. Tap again — it'll catch.",
+  item_flag_save_failed:
+    "Heads-up didn't save. Try once more — the organizers won't see it until it does.",
+  announcement_post_failed:
+    "Update didn't go out. Tap send again — the group hasn't seen it yet.",
+  trip_notes_save_failed: "Notes didn't save. Try once more in a sec.",
+  travel_leg_save_failed:
+    "Leg didn't save. Tap again — your connection's flaky.",
+  travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",
+  lodging_assign_failed:
+    "Couldn't update room assignments. Give it another shot.",
+  invite_mint_failed:
+    "Couldn't mint a link. Try once more — sometimes the server takes a sec.",
+  invite_revoke_failed: "Couldn't revoke that link yet. Try once more.",
 };

@@ -111,6 +111,13 @@ export interface PulsePollProps<T> {
   /**
    * Injection seam for tests. Production callers should NOT pass a
    * client — the default `createClient()` (browser) is correct.
+   *
+   * Hardened in #117: at runtime, a non-nil value passed in
+   * `NODE_ENV === "production"` is treated as a misuse and ignored
+   * (defaults back to `createClient()`). Build-time type harm is
+   * inevitable — the prop is part of the exported interface — but
+   * the runtime guard means a production bundle never threads an
+   * attacker-supplied client into the Realtime channel.
    */
   __supabaseClient?: SupabaseClient;
 }
@@ -144,7 +151,14 @@ export function PulsePoll<T>({
   );
 
   React.useEffect(() => {
-    const client = __supabaseClient ?? createClient();
+    // #117: ignore the test-injection seam in production builds. The
+    // prop stays on the type so callers don't need to special-case;
+    // the runtime guard means a production bundle never wires a
+    // caller-supplied client into Realtime.
+    const isProd = process.env.NODE_ENV === "production";
+    const injectedClient =
+      !isProd && __supabaseClient ? __supabaseClient : undefined;
+    const client = injectedClient ?? createClient();
     const channel: RealtimeChannel = client.channel(channelKey);
 
     // Refetch-on-change. We don't try to merge the payload into the
@@ -202,7 +216,15 @@ export function PulsePoll<T>({
           wasDisconnectedRef.current = false;
           void refresh();
         }
-      } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+      } else if (
+        // #116: `TIMED_OUT` is the slow-heartbeat path; Supabase emits
+        // it alongside `CLOSED` / `CHANNEL_ERROR` when the connection
+        // goes quiet. Treat as a disconnect so the post-reconnect
+        // refetch fires on recovery.
+        status === "CLOSED" ||
+        status === "CHANNEL_ERROR" ||
+        status === "TIMED_OUT"
+      ) {
         wasDisconnectedRef.current = true;
         setIsStale(true);
       }

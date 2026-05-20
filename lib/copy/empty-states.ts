@@ -165,3 +165,130 @@ export const M2_UI_STRINGS = {
 } as const;
 
 export type M2UIStringKey = keyof typeof M2_UI_STRINGS;
+
+/**
+ * M3 UI strings — itinerary, announcements, now/next card, FAQ/notes,
+ * travel legs, roster, invite issuance UI. Same voice rules as M2.
+ * Keys grouped by surface for greppability.
+ *
+ * Added in Wave 0a of the M3 execution plan. Read-only after this PR
+ * for the remainder of M3 (per `notes/m3-execution-plan.md` Override
+ * F — no inline string literals in JSX leaf elements).
+ */
+export const M3_UI_STRINGS = {
+  // /trips/[tripId]/itinerary — day timeline (#35, Wave 2)
+  itinerary_pageTitle: "Itinerary",
+  itinerary_heading: "What's the plan",
+  itinerary_addItem_cta: "Add an item",
+  itinerary_day_section_template: "{weekday} · {date}",
+  itinerary_item_dress_code_template: "Wear: {code}",
+  itinerary_item_address_cta: "Open in Maps",
+  itinerary_item_hidden_for_celebrant: "Something planned",
+  itinerary_item_visibility_hide_celebrant_badge: "Hidden from {name}",
+  itinerary_item_kind_event: "Event",
+  itinerary_item_kind_lodging: "Lodging",
+  itinerary_item_kind_transport: "Transport",
+  itinerary_item_kind_meal: "Meal",
+  itinerary_item_kind_activity: "Activity",
+  itinerary_rsvp_skip_chip: "Skip me",
+  itinerary_rsvp_going_chip: "I'm in",
+  itinerary_rsvp_inherited_caption: "Going by default",
+  itinerary_item_flag_label: "Heads up to the organizers",
+  itinerary_item_flag_placeholder: "Allergic, vegetarian, leaving early…",
+  itinerary_item_flag_save: "Save the heads-up",
+  itinerary_item_flag_empty_organizer: "No heads-ups from anyone yet.",
+  // Add-item / edit-item forms
+  itineraryForm_title_label: "What is it?",
+  itineraryForm_kind_label: "Kind",
+  itineraryForm_starts_label: "Starts",
+  itineraryForm_ends_label: "Ends",
+  itineraryForm_address_label: "Where",
+  itineraryForm_address_placeholder: "Street, city, or 'somewhere fun'",
+  itineraryForm_dress_label: "Dress code (optional)",
+  itineraryForm_tags_label: "Tags",
+  itineraryForm_visibility_label: "Who sees this?",
+  itineraryForm_visibility_everyone: "Everyone",
+  itineraryForm_visibility_organizers: "Just organizers",
+  itineraryForm_visibility_hide_celebrant: "Hide from the celebrant",
+  itineraryForm_submit_add: "Add it",
+  itineraryForm_submit_edit: "Save it",
+  itineraryForm_delete: "Delete",
+  itineraryForm_cancel: "Cancel",
+  itineraryForm_delete_confirm: "Delete this item? Can't undo.",
+  // Lodging assignments (#36, Wave 2)
+  lodging_assignments_heading: "Who's in which room",
+  lodging_room_label_placeholder: "Master, bunk room, the loft, …",
+  lodging_assign_cta: "Assign a room",
+  lodging_unassign_cta: "Unassign",
+  // Now/next card (#77, Wave 3b)
+  nowNext_pretrip_template: "Trip starts in {days}.",
+  nowNext_today_label: "Today",
+  nowNext_now_heading: "Right now",
+  nowNext_next_heading: "Up next",
+  nowNext_posttrip_template: "Trip wrapped {days} ago.",
+  nowNext_recap_placeholder: "Recap (coming soon)",
+  nowNext_no_items_yet:
+    "No items on the itinerary yet. Someone's about to fix that.",
+  // Trip FAQ / notes (#78, Wave 3b)
+  tripNotes_heading: "Stuff to know",
+  tripNotes_edit_cta: "Edit",
+  tripNotes_save_cta: "Save",
+  tripNotes_cancel_cta: "Cancel",
+  tripNotes_placeholder:
+    "Hotel WiFi password, dress codes, who's bringing what — drop it here.",
+  tripNotes_empty_member: "Nothing posted yet.",
+  tripNotes_empty_organizer:
+    "Drop the hotel wifi, dress codes, who's bringing what — anything worth pinning.",
+  // Announcements (#79, Wave 3a)
+  announcements_pageTitle: "Announcements",
+  announcements_heading: "Announcements",
+  announcements_compose_cta: "Post an update",
+  announcements_compose_placeholder: "What's the update?",
+  announcements_compose_visibility_label: "Who sees this?",
+  announcements_compose_submit: "Send it",
+  announcements_compose_cancel: "Cancel",
+  announcements_member_only_caption: "Only you can post these.",
+  // Travel legs / arrivals manifest (#37, Wave 4a)
+  arrivals_pageTitle: "Arrivals",
+  arrivals_heading: "Who's landing when",
+  arrivals_addLeg_cta: "Add a leg",
+  arrivals_leg_form_kind_label: "How",
+  arrivals_leg_form_kind_flight: "Flight",
+  arrivals_leg_form_kind_train: "Train",
+  arrivals_leg_form_kind_drive: "Drive",
+  arrivals_leg_form_kind_other: "Other",
+  arrivals_leg_form_depart_label: "Leave",
+  arrivals_leg_form_arrive_label: "Arrive",
+  arrivals_leg_form_carrier_label: "Carrier",
+  arrivals_leg_form_confirmation_label: "Confirmation #",
+  arrivals_leg_form_notes_label: "Notes",
+  arrivals_leg_form_submit: "Save it",
+  arrivals_leg_form_delete: "Delete leg",
+  arrivals_empty: "No legs logged yet. Drop yours and we'll see the manifest.",
+  // Roster + contacts (#39, #40, Wave 4b)
+  roster_pageTitle: "Roster",
+  roster_heading: "Who's coming",
+  roster_vcard_cta: "Download contacts",
+  roster_copy_numbers_cta: "Copy all numbers",
+  roster_copy_numbers_done: "Copied — paste into iMessage.",
+  roster_no_numbers: "No phone numbers in the roster yet.",
+  // Invite issuance UI (#129, Wave 4c)
+  invitesPage_pageTitle: "Invite links",
+  invitesPage_heading: "Invite links",
+  invitesPage_create_cta: "Mint a link",
+  invitesPage_uses_template: "{remaining} of {total} left",
+  invitesPage_expires_template: "Expires {when}",
+  invitesPage_copy_link_cta: "Copy link",
+  invitesPage_copied: "Copied — paste in the group chat.",
+  invitesPage_revoke_cta: "Revoke",
+  invitesPage_revoke_confirm: "Revoke this link? Anyone with it can't join.",
+  invitesPage_empty: "No links out yet. Mint one and start texting it around.",
+  invitesForm_max_uses_label: "Max uses",
+  invitesForm_max_uses_placeholder: "Leave blank for no cap",
+  invitesForm_expires_label: "Expires",
+  invitesForm_expires_placeholder: "Leave blank for no expiry",
+  invitesForm_submit: "Mint it",
+  invitesForm_cancel: "Cancel",
+} as const;
+
+export type M3UIStringKey = keyof typeof M3_UI_STRINGS;
