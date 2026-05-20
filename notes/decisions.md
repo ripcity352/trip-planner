@@ -24,9 +24,13 @@ the top. Format: date, decision, rationale, alternatives considered.
 - **Rename in code to KV_\* only** — would have been the simplest patch but breaks the documented `.env.example` for anyone running local Upstash. Dual-name resolution costs ~10 LoC and preserves both setup paths.
 - **Skip the env-var rename, manually mirror `KV_*` → `UPSTASH_*` on Vercel** — would have kept the code untouched, but adds an invisible env-var dependency that future Carl would not remember. Code change is the durable solution.
 
+**In-PR fix (#138 H1, pre-merge):** Security review surfaced that `@upstash/ratelimit` fails OPEN on network timeout — the upstream returns `{success: true, reason: "timeout"}` after its internal 5s ceiling, silently bypassing rate-limit during an Upstash outage. Two-line fix in this PR: tighten `Ratelimit.timeout` to 1500ms and add an `isTimeoutAllow()` guard at both call sites (`rateLimitedAction`, `rateLimitRequest`) that promotes timeout-allow to a deny. Two new tests (one per call site) pin the behavior. Brings live tests to 23/23 in this module, 162/162 overall.
+
 **Follow-ups (not blocking #124 closure):**
 
 - #130 — pin production-mode rate-limit shim behavior (separate test surface; the v4 path is now the assumed default and worth a regression guard)
+- #139 — per-scope fail-closed when shim is active (defense-in-depth from #138 M1; deliberate punt per [[feedback-friction-vs-security]])
+- #140 — hostname allow-list on Upstash REST URL (defense-in-depth from #138 M2; same deliberate punt)
 - Per-scope budget ratcheting (especially `AUTH_MAGIC_LINK` → ~5/hr) — file as new issue if not already
 - Confirm the Vercel Marketplace billing line item appears as expected on next invoice; if usage is genuinely zero across the month, no surprise
 

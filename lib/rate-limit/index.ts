@@ -35,6 +35,20 @@ interface RateLimitResult {
   remaining: number;
   reset: number;
   pending: Promise<unknown>;
+  /**
+   * Upstream `@upstash/ratelimit` sets `reason: "timeout"` on a synthetic
+   * `success: true` response when the Redis call exceeds the configured
+   * timeout. Treat as **fail-closed** at every call site — silently
+   * allowing during an Upstash outage is a rate-limit bypass. Typed as
+   * `string` rather than a literal union so we stay compatible with
+   * upstream's future enum additions (e.g., `"cacheBlock"`).
+   */
+  reason?: string;
+}
+
+/** Promote a successful-but-timeout response to a deny. See `reason` above. */
+function isTimeoutAllow(result: RateLimitResult): boolean {
+  return result.success && result.reason === "timeout";
 }
 
 // --- config ------------------------------------------------------------
@@ -191,6 +205,12 @@ function buildUpstashLimiter(url: string, token: string): Ratelimit {
     limiter: Ratelimit.slidingWindow(DEFAULT_LIMIT, DEFAULT_WINDOW),
     analytics: false,
     prefix: "trip-planner/rl",
+    // Tighter than the upstream 5s default — Upstash p99 is well under
+    // 1s, so 1500ms is a generous ceiling that still keeps end-user
+    // latency bounded during a slow Redis. On timeout the upstream
+    // returns `{success: true, reason: "timeout"}`; both call sites
+    // check `isTimeoutAllow` and promote to a deny so we fail closed.
+    timeout: 1500,
   });
 }
 
@@ -282,7 +302,7 @@ export async function rateLimitedAction<T>(
   const limiter = getLimiter();
   const identifier = `${scope}:${key}`;
   const result = await limiter.limit(identifier);
-  if (!result.success) {
+  if (!result.success || isTimeoutAllow(result)) {
     throw new RateLimitError(scope, result);
   }
   return fn();
@@ -312,7 +332,7 @@ export async function rateLimitRequest(
   const identifier = `http:${req.method}:${clientId}`;
   const result = await limiter.limit(identifier);
 
-  if (result.success) return null;
+  if (result.success && !isTimeoutAllow(result)) return null;
 
   const retryAfterSeconds = Math.max(
     1,

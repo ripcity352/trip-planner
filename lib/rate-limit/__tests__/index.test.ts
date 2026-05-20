@@ -208,6 +208,28 @@ describe("rateLimitedAction", () => {
     expect(fn).not.toHaveBeenCalled();
   });
 
+  it("fails CLOSED when upstream returns success:true with reason:'timeout' (#138 H1)", async () => {
+    // `@upstash/ratelimit` wraps every limit() call in a 5s timeout that
+    // resolves `{success: true, reason: "timeout"}` if Upstash is
+    // unreachable. Treating that as allow is a silent bypass during
+    // Upstash outages — call sites must promote it to a deny.
+    __setLimiterForTest({
+      limit: vi.fn().mockResolvedValue({
+        success: true,
+        limit: 30,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+        reason: "timeout",
+      }),
+    });
+    const fn = vi.fn();
+    await expect(
+      rateLimitedAction(RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK, "u", fn),
+    ).rejects.toBeInstanceOf(RateLimitError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
   it("namespaces buckets per (scope, key) so scopes don't share a budget", async () => {
     const limit = vi.fn().mockResolvedValue({
       success: true,
@@ -256,6 +278,28 @@ describe("rateLimitRequest", () => {
       headers: { "x-forwarded-for": "1.1.1.1" },
     });
     expect(await rateLimitRequest(req)).toBeNull();
+  });
+
+  it("returns a 429 when upstream returns success:true with reason:'timeout' (#138 H1)", async () => {
+    // Mirror of the rateLimitedAction test — the HTTP-edge guard must
+    // also promote timeout-allow to deny so /api/, /trips/, /invite/
+    // don't silently bypass during Upstash outages.
+    __setLimiterForTest({
+      limit: vi.fn().mockResolvedValue({
+        success: true,
+        limit: 30,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+        reason: "timeout",
+      }),
+    });
+    const req = makeReq("http://localhost/api/webhooks/foo", {
+      method: "POST",
+      headers: { "x-forwarded-for": "3.3.3.3" },
+    });
+    const res = await rateLimitRequest(req);
+    expect(res?.status).toBe(429);
   });
 
   it("returns a 429 NextResponse when the limit is exceeded", async () => {
