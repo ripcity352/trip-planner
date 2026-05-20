@@ -236,11 +236,16 @@ create policy "itinerary: members read via visibility"
   to authenticated
   using (public.can_see_content(trip_id, visibility));
 
+-- INSERT pins created_by = auth.uid() (defense-in-depth — restores the
+-- binding 0001_init.sql had before the M3 visibility-aware rewrite).
 create policy "itinerary: organizers insert"
   on public.itinerary_items
   for insert
   to authenticated
-  with check (public.is_trip_organizer(trip_id));
+  with check (
+    public.is_trip_organizer(trip_id)
+    and auth.uid() = created_by
+  );
 
 create policy "itinerary: organizers update"
   on public.itinerary_items
@@ -270,6 +275,9 @@ create policy "announcements: members read via visibility"
   to authenticated
   using (public.can_see_content(trip_id, visibility));
 
+-- author_id (legacy) AND the new created_by both bind to auth.uid().
+-- The action sets both columns to the same value; the WITH CHECK locks
+-- direct-client misuse.
 create policy "announcements: organizers insert"
   on public.announcements
   for insert
@@ -277,6 +285,7 @@ create policy "announcements: organizers insert"
   with check (
     public.is_trip_organizer(trip_id)
     and auth.uid() = author_id
+    and auth.uid() = created_by
   );
 
 create policy "announcements: organizers update"
@@ -307,13 +316,22 @@ create policy "lodging: members read"
     )
   );
 
+-- INSERT/UPDATE additionally pins trip_member_id.trip_id = item.trip_id
+-- (defense-in-depth — prevents an organizer of trip A from assigning a
+-- trip_member of trip B to their lodging item). The trigger
+-- assert_lodging_item_kind_before_assignment additionally enforces
+-- item.kind = 'lodging'.
 create policy "lodging: organizers insert"
   on public.lodging_assignments
   for insert
   to authenticated
   with check (
     exists (
-      select 1 from public.itinerary_items ii
+      select 1
+      from public.itinerary_items ii
+      join public.trip_members tm
+        on tm.id = lodging_assignments.trip_member_id
+       and tm.trip_id = ii.trip_id
       where ii.id = lodging_assignments.item_id
         and public.is_trip_organizer(ii.trip_id)
     )
@@ -332,7 +350,11 @@ create policy "lodging: organizers update"
   )
   with check (
     exists (
-      select 1 from public.itinerary_items ii
+      select 1
+      from public.itinerary_items ii
+      join public.trip_members tm
+        on tm.id = lodging_assignments.trip_member_id
+       and tm.trip_id = ii.trip_id
       where ii.id = lodging_assignments.item_id
         and public.is_trip_organizer(ii.trip_id)
     )

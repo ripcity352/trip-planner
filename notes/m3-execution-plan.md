@@ -229,7 +229,9 @@ Author order inside the SQL (dependency-correct):
      idempotency_key uuid,
      created_at timestamptz not null default now()
    )` + index on `(trip_id, arrive_at)` (arrivals manifest sort) +
-   partial unique on `(trip_id, idempotency_key)` where not null
+   partial unique on `(trip_id, trip_member_id, idempotency_key)` where
+   not null (strictly-user-scoped per the per-table ADR; matches the
+   migration and Appendix A.1 §5)
 9. `create table public.itinerary_item_rsvps (
      item_id uuid not null references itinerary_items(id) on delete cascade,
      trip_member_id uuid not null references trip_members(id) on delete cascade,
