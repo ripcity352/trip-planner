@@ -100,6 +100,8 @@ logged-out invite preview. Stripped Goal 2 — Fear List swipe / Crew Cards
 - Every UI string sourced from the M1 copy palettes; PR template
   enforces microcopy review
 
+**Status (2026-05-19):** All PRs landed on `main` with CI green and reviewer approval. See `notes/decisions.md` "M2 — Trip is real — milestone closed" entry. Authenticated multi-actor e2e + persimmon design-token wiring trail in the follow-up issues.
+
 **Out of scope:** Fear List swipe (#29 killed), Crew Cards (#31 killed),
 dietary as a profile column (moved to M3 as per-item flag), OG cards (M5).
 
