@@ -189,7 +189,9 @@ describe("M3_UI_STRINGS", () => {
     expect(M3_UI_STRINGS.nowNext_pretrip_template).toContain("{days}");
     expect(M3_UI_STRINGS.nowNext_posttrip_template).toContain("{days}");
     expect(M3_UI_STRINGS.invitesPage_uses_template).toContain("{remaining}");
-    expect(M3_UI_STRINGS.invitesPage_uses_template).toContain("{total}");
+    // {total} was removed in the Wave 4c fix-up — schema only tracks
+    // remaining count, no original max. The template now reads "{remaining} left".
+    expect(M3_UI_STRINGS.invitesPage_uses_template).not.toContain("{total}");
     expect(M3_UI_STRINGS.invitesPage_expires_template).toContain("{when}");
   });
 });

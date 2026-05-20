@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { ERRORS } from "@/lib/copy/errors";
 
 interface CopyLinkButtonProps {
   token: string;
@@ -19,26 +20,60 @@ interface CopyLinkButtonProps {
 
 export function CopyLinkButton({ token }: CopyLinkButtonProps) {
   const [copied, setCopied] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function handleCopy() {
+    setErrorMessage(null);
     const url = `${window.location.origin}/invite/${token}`;
-    await navigator.clipboard.writeText(url);
-    setCopied(true);
-    // Reset after 3s so the button is reusable.
-    setTimeout(() => setCopied(false), 3000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      // Reset after 3s so the button is reusable.
+      setTimeout(() => setCopied(false), 3000);
+    } catch (err) {
+      // clipboard.writeText rejects on insecure context, permission denied,
+      // and iOS Safari edge cases. Surface a fallback string and log.
+      console.error("[invites] copy-link failed:", err);
+      setErrorMessage(ERRORS.network);
+    }
   }
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={handleCopy}
-      className="h-11"
-    >
-      {copied
-        ? M3_UI_STRINGS.invitesPage_copied
-        : M3_UI_STRINGS.invitesPage_copy_link_cta}
-    </Button>
+    <div className="flex flex-col items-start gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleCopy}
+        aria-describedby={
+          copied ? "copy-link-status" : errorMessage ? "copy-link-error" : undefined
+        }
+        className="h-11"
+      >
+        {copied
+          ? M3_UI_STRINGS.invitesPage_copied
+          : M3_UI_STRINGS.invitesPage_copy_link_cta}
+      </Button>
+      {copied && !errorMessage ? (
+        <span
+          id="copy-link-status"
+          role="status"
+          aria-live="polite"
+          className="sr-only"
+        >
+          {M3_UI_STRINGS.invitesPage_copied}
+        </span>
+      ) : null}
+      {errorMessage ? (
+        <span
+          id="copy-link-error"
+          role="status"
+          aria-live="polite"
+          className="text-destructive text-xs"
+        >
+          {errorMessage}
+        </span>
+      ) : null}
+    </div>
   );
 }

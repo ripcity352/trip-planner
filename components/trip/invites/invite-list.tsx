@@ -13,8 +13,7 @@
 
 import { format } from "date-fns";
 
-import { EMPTY_STATES } from "@/lib/copy/empty-states";
-import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { EMPTY_STATES, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Invite } from "@/lib/db/types";
 import { CopyLinkButton } from "./copy-link-button";
 import { RevokeButton } from "./revoke-button";
@@ -44,9 +43,10 @@ export function InviteList({ invites }: InviteListProps) {
 function InviteRow({ invite }: { invite: Invite }) {
   const usesLine =
     invite.uses_left !== null
-      ? M3_UI_STRINGS.invitesPage_uses_template
-          .replace("{remaining}", String(invite.uses_left))
-          .replace("{total}", String(invite.uses_left))
+      ? M3_UI_STRINGS.invitesPage_uses_template.replace(
+          "{remaining}",
+          String(invite.uses_left),
+        )
       : null;
 
   const expiryLine =

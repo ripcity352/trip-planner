@@ -52,11 +52,26 @@ describe("CopyLinkButton", () => {
     fireEvent.click(screen.getByRole("button", { name: /copy link/i }));
 
     await waitFor(() => {
-      // M3_UI_STRINGS.invitesPage_copied
+      // The label appears both on the button and in the sr-only status span;
+      // assert via the button role for a unique match.
       expect(
-        screen.getByText(/copied.*paste/i),
+        screen.getByRole("button", { name: /copied.*paste/i }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("renders an error message when clipboard.writeText rejects (no silent failure)", async () => {
+    writeTextMock.mockRejectedValueOnce(new Error("permission denied"));
+    render(<CopyLinkButton token="tok-xyz" />);
+    fireEvent.click(screen.getByRole("button", { name: /copy link/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(/couldn't reach/i);
+    });
+    // The success label must NOT have rendered.
+    expect(
+      screen.queryByRole("button", { name: /copied.*paste/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("meets minimum tap target of 44px (h-11 class)", () => {

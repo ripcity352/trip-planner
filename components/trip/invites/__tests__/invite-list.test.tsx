@@ -53,9 +53,9 @@ describe("InviteList", () => {
     render(
       <InviteList invites={[makeInvite({ uses_left: 3 })]} />,
     );
-    // M3_UI_STRINGS.invitesPage_uses_template = "{remaining} of {total} left"
-    // uses_left represents the remaining count
-    expect(screen.getByText(/of.*left/i)).toBeInTheDocument();
+    // M3_UI_STRINGS.invitesPage_uses_template = "{remaining} left" — schema
+    // only tracks remaining, not original max (fix-up after Wave 4c review).
+    expect(screen.getByText(/3 left/i)).toBeInTheDocument();
   });
 
   it("shows the expiry date when expires_at is set", () => {
@@ -76,6 +76,6 @@ describe("InviteList", () => {
   it("shows unlimited label when uses_left is null", () => {
     render(<InviteList invites={[makeInvite({ uses_left: null })]} />);
     // Should NOT render the uses template when null (unlimited)
-    expect(screen.queryByText(/of.*left/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d+ left/i)).not.toBeInTheDocument();
   });
 });
