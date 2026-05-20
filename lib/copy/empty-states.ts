@@ -261,6 +261,12 @@ export const M3_UI_STRINGS = {
   announcements_compose_submit: "Send it",
   announcements_compose_cancel: "Cancel",
   announcements_member_only_caption: "Only you can post these.",
+  // Announcement card badges (#79, Wave 3a fix-up — pulled from inline literals
+  // per Override F after code-review HIGH finding)
+  announcements_badge_pinned: "Pinned",
+  announcements_badge_organizers_only: "Organizers only",
+  announcements_badge_hide_celebrant: "Hidden from the celebrant",
+  announcements_badge_custom: "Custom audience",
   // Travel legs / arrivals manifest (#37, Wave 4a)
   arrivals_pageTitle: "Arrivals",
   arrivals_heading: "Who's landing when",
@@ -278,6 +284,11 @@ export const M3_UI_STRINGS = {
   arrivals_leg_form_submit: "Save it",
   arrivals_leg_form_delete: "Delete leg",
   arrivals_empty: "No legs logged yet. Drop yours and we'll see the manifest.",
+  // Arrivals CTAs (Wave 4a fix-up — added so we don't reuse itineraryForm_* keys
+  // cross-feature; voice-tested)
+  arrivals_cancel_cta: "Cancel",
+  arrivals_edit_cta: "Edit",
+  arrivals_add_cta: "Add a leg",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   roster_heading: "Who's coming",
