@@ -14,9 +14,17 @@
  *     a second UPDATE
  *   - rate-limit error → rate_limit
  *   - DB error on update → rsvp_save_failed
+ *   - revalidatePath is called on success (#110)
+ *   - revalidatePath is NOT called on failure (#110)
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock next/cache revalidatePath for #110 assertions
+const revalidatePathMock = vi.fn();
+vi.mock("next/cache", () => ({
+  revalidatePath: (...args: unknown[]) => revalidatePathMock(...args),
+}));
 
 // Test surface: replay control is what matters most. We track update
 // invocations and the auth.uid() lookup against an in-memory rowset.
@@ -139,6 +147,7 @@ describe("setRsvpAction", () => {
     memberUpdateMock.mockReset();
     rateLimitedActionMock.mockClear();
     createClientMock.mockReset();
+    revalidatePathMock.mockReset();
     updateEqCalls.length = 0;
     createClientMock.mockResolvedValue(buildClient());
     // Suppress deliberate console.error noise from failure-path tests.
@@ -298,5 +307,85 @@ describe("setRsvpAction", () => {
     );
 
     expect(result).toEqual({ ok: false, errorKey: "rsvp_save_failed" });
+  });
+
+  // #110 — revalidatePath must be called on success so the dashboard
+  // RSVP aggregate count refreshes after a toggle.
+  it("calls revalidatePath on successful RSVP update (#110)", async () => {
+    primeAuth("u-1");
+    primeMember({
+      id: "tm-1",
+      user_id: "u-1",
+      trip_id: VALID_TRIP_ID,
+      rsvp_status: "pending",
+      idempotency_key: null,
+    });
+    primeUpdate({ id: "tm-1", rsvp_status: "going" });
+
+    const { setRsvpAction } = await import("@/lib/actions/rsvp");
+
+    const result = await setRsvpAction(
+      { tripId: VALID_TRIP_ID, status: "going" },
+      VALID_IDEMPOTENCY_KEY
+    );
+
+    expect(result.ok).toBe(true);
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT call revalidatePath when the update fails (#110)", async () => {
+    primeAuth("u-1");
+    primeMember({
+      id: "tm-1",
+      user_id: "u-1",
+      trip_id: VALID_TRIP_ID,
+      rsvp_status: "pending",
+      idempotency_key: null,
+    });
+    primeUpdate(null, { message: "constraint", code: "23505" });
+
+    const { setRsvpAction } = await import("@/lib/actions/rsvp");
+
+    await setRsvpAction(
+      { tripId: VALID_TRIP_ID, status: "going" },
+      VALID_IDEMPOTENCY_KEY
+    );
+
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call revalidatePath when user is not authenticated (#110)", async () => {
+    primeAuth(null);
+
+    const { setRsvpAction } = await import("@/lib/actions/rsvp");
+
+    await setRsvpAction(
+      { tripId: VALID_TRIP_ID, status: "going" },
+      VALID_IDEMPOTENCY_KEY
+    );
+
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("calls revalidatePath on idempotency replay (still a 'success' response) (#110)", async () => {
+    primeAuth("u-1");
+    primeMember({
+      id: "tm-1",
+      user_id: "u-1",
+      trip_id: VALID_TRIP_ID,
+      rsvp_status: "maybe",
+      idempotency_key: VALID_IDEMPOTENCY_KEY, // replay scenario
+    });
+
+    const { setRsvpAction } = await import("@/lib/actions/rsvp");
+
+    const result = await setRsvpAction(
+      { tripId: VALID_TRIP_ID, status: "going" },
+      VALID_IDEMPOTENCY_KEY
+    );
+
+    expect(result.ok).toBe(true);
+    // Replay returns ok:true — revalidate should still fire
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
   });
 });
