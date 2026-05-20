@@ -64,7 +64,11 @@ export function AnnouncementList({
   }
 
   return (
-    <ol className="flex flex-col gap-3">
+    <ol
+      className="flex flex-col gap-3"
+      aria-live="polite"
+      aria-relevant="additions"
+    >
       {announcements.map((a) => (
         <li key={a.id}>
           <AnnouncementCard announcement={a} />

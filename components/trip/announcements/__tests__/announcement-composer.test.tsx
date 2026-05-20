@@ -197,6 +197,47 @@ describe("AnnouncementComposer", () => {
     });
   });
 
+  it("submits the selected visibility value", async () => {
+    render(<AnnouncementComposer {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId("visibility-select"), {
+      target: { value: "organizers_only" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/what's the update/i), {
+      target: { value: "Internal note for the planners." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send it/i }));
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith(
+        expect.objectContaining({
+          visibility: "organizers_only",
+          body: "Internal note for the planners.",
+        }),
+        expect.any(String)
+      );
+    });
+  });
+
+  it("submits hide_from_celebrant when selected", async () => {
+    render(<AnnouncementComposer {...defaultProps} />);
+
+    fireEvent.change(screen.getByTestId("visibility-select"), {
+      target: { value: "hide_from_celebrant" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/what's the update/i), {
+      target: { value: "Surprise dinner details." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send it/i }));
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith(
+        expect.objectContaining({ visibility: "hide_from_celebrant" }),
+        expect.any(String)
+      );
+    });
+  });
+
   it("generates a fresh idempotency key on each submission", async () => {
     render(<AnnouncementComposer {...defaultProps} />);
 

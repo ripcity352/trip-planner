@@ -6,6 +6,7 @@
  */
 
 import { formatDistanceToNow } from "date-fns";
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Announcement } from "@/lib/db/types";
 
 interface AnnouncementCardProps {
@@ -14,11 +15,11 @@ interface AnnouncementCardProps {
   authorDisplayName?: string;
 }
 
-/** Visibility labels for non-default values. */
+/** Visibility labels for non-default values — sourced from `M3_UI_STRINGS`. */
 const VISIBILITY_LABEL: Partial<Record<Announcement["visibility"], string>> = {
-  organizers_only: "Organizers only",
-  hide_from_celebrant: "Hidden from celebrant",
-  custom: "Custom audience",
+  organizers_only: M3_UI_STRINGS.announcements_badge_organizers_only,
+  hide_from_celebrant: M3_UI_STRINGS.announcements_badge_hide_celebrant,
+  custom: M3_UI_STRINGS.announcements_badge_custom,
 };
 
 export function AnnouncementCard({
@@ -41,7 +42,7 @@ export function AnnouncementCard({
         <div className="flex flex-wrap items-center gap-1.5">
           {announcement.pinned && (
             <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              Pinned
+              {M3_UI_STRINGS.announcements_badge_pinned}
             </span>
           )}
           {visibilityLabel && (

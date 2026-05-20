@@ -137,4 +137,40 @@ describe("AnnouncementList", () => {
     render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} />);
     expect(screen.queryByText(/all quiet/i)).not.toBeInTheDocument();
   });
+
+  it("places a pinned realtime arrival above an existing non-pinned item", () => {
+    const existing = makeAnnouncement({
+      id: "ann-existing",
+      body: "Regular update.",
+      pinned: false,
+      created_at: "2026-05-20T09:00:00Z",
+    });
+    render(
+      <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} />
+    );
+
+    const pinnedIncoming = makeAnnouncement({
+      id: "ann-pinned",
+      body: "Pinned later but should float to top.",
+      pinned: true,
+      created_at: "2026-05-20T10:00:00Z",
+    });
+    act(() => {
+      capturedOnInsert?.(pinnedIncoming);
+    });
+
+    const bodies = screen.getAllByText(/\.$/).map((el) => el.textContent ?? "");
+    const pinnedIdx = bodies.findIndex(
+      (t) => t === "Pinned later but should float to top."
+    );
+    const regularIdx = bodies.findIndex((t) => t === "Regular update.");
+    expect(pinnedIdx).toBeLessThan(regularIdx);
+  });
+
+  it("renders the feed with aria-live='polite' for screen-reader updates", () => {
+    const items = [makeAnnouncement({ body: "Visible announcement." })];
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} />);
+    const list = screen.getByRole("list");
+    expect(list).toHaveAttribute("aria-live", "polite");
+  });
 });
