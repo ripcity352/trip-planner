@@ -114,6 +114,12 @@ Itinerary first (swapped before announcements per product review — the
 itinerary is what attendees open the app *for*). Then announcements +
 realtime.
 
+**Status (2026-05-20):** **Closed.** Nine PRs (#143, #144, #145, #146,
+#147, #148, #149, #150, #151, #152) merged to `main`. See
+`notes/decisions.md` "M3 — Trip is useful — milestone closed" entry for
+the load-bearing decisions and `notes/retros/m3-retro.md` for the retro.
+**Current phase: M4.**
+
 **Definition of done:**
 - **Itinerary**
   - Day-by-day view auto-generated from start/end dates

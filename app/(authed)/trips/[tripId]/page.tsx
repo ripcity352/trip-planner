@@ -19,9 +19,16 @@
  * suffix is gated by an `is_trip_organizer()` RPC check; RLS does the
  * same gating at the row level as defense-in-depth.
  *
- * Wave 2 (M3) addition: Itinerary link card shows the next upcoming
- * item as a preview using getNextUpcomingItem (append-only addition to
- * lib/db/itinerary.ts — no existing exports touched).
+ * Wave 3b (M3) addition: NowNextCard + TripNotesEditor wired into the
+ * dashboard. The single-item-preview helper (`getNextUpcomingItem`) was
+ * superseded by `getItineraryByTrip` so the now/next pure function has
+ * the full item list to compute the current/next pair.
+ *
+ * Wave 5 (M3) closure addition: link cards for the five M3 sub-routes
+ * (Itinerary, Announcements, Arrivals, Roster, Invites). Invites is
+ * organizer-only — the dashboard hides the affordance for non-organizers
+ * so a member dashboard isn't peppered with dead-end links. Page-level
+ * RPC gate on /invites/page.tsx is the load-bearing security check.
  */
 
 import { format } from "date-fns";
@@ -134,7 +141,11 @@ export default async function TripDashboardPage({ params }: PageProps) {
           </CardContent>
         </Card>
 
-        {/* Itinerary link card — M3 Wave 2 (#35) */}
+        {/* Sub-route link cards — Itinerary (Wave 2), Announcements (3a),
+            Arrivals (4a), Roster (4b), Invites (4c — organizer-only).
+            Each lives under /trips/[slug]/<route>; the page-level RLS/role
+            gate enforces actual visibility, the dashboard surfaces them
+            so they're discoverable. */}
         <Link href={`/trips/${trip.slug}/itinerary`} className="block">
           <Card className="hover:bg-muted/40 transition-colors">
             <CardHeader>
@@ -142,6 +153,43 @@ export default async function TripDashboardPage({ params }: PageProps) {
             </CardHeader>
           </Card>
         </Link>
+
+        <Link href={`/trips/${trip.slug}/announcements`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.announcements_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href={`/trips/${trip.slug}/arrivals`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.arrivals_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href={`/trips/${trip.slug}/roster`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.roster_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        {/* Invites — organizer-only. Page returns notFound() for
+            non-organizers, but we still hide the affordance here as UX
+            (so a non-organizer dashboard isn't peppered with dead links). */}
+        {isOrganizer ? (
+          <Link href={`/trips/${trip.slug}/invites`} className="block">
+            <Card className="hover:bg-muted/40 transition-colors">
+              <CardHeader>
+                <CardTitle>{M3_UI_STRINGS.invitesPage_heading}</CardTitle>
+              </CardHeader>
+            </Card>
+          </Link>
+        ) : null}
 
         {/* Trip notes — Wave 3b (#78) */}
         <Card>
