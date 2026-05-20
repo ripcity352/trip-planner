@@ -30,7 +30,9 @@ the top. Format: date, decision, rationale, alternatives considered.
 - Per-scope budget ratcheting (especially `AUTH_MAGIC_LINK` → ~5/hr) — file as new issue if not already
 - Confirm the Vercel Marketplace billing line item appears as expected on next invoice; if usage is genuinely zero across the month, no surprise
 
-**Acceptance verified:** 20/20 unit tests green (7 new for env precedence); typecheck + lint clean; prod redeploy + 35-request smoke test confirms the 30/min budget enforces (`rate_limit` error toast on the 31st); Vercel logs confirm `[rate-limit] Upstash creds unset` warning no longer fires post-redeploy.
+**Pre-merge acceptance (verified):** 159/159 unit tests green (7 new for env precedence in `lib/rate-limit/__tests__/index.test.ts`); typecheck + lint + build clean.
+
+**Post-merge smoke (gates #124 closure):** prod auto-deploy from `main`; 35-request burst against a guarded scope should surface the `rate_limit` toast on the 31st; Vercel logs should stop emitting `[rate-limit] Upstash creds unset in production` on cold start. Update this entry to "verified" once observed.
 
 ---
 

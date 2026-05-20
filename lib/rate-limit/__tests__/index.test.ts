@@ -111,6 +111,20 @@ describe("__resolveUpstashCreds (env-var precedence, #124)", () => {
       }),
     ).toBeNull();
   });
+
+  it("falls through from empty KV_* to populated UPSTASH_* (Vercel injects empty placeholder, .env.local has real value)", () => {
+    // Realistic regression: an env where KV_* is declared-but-empty
+    // (e.g., the integration was uninstalled but the placeholder env
+    // var lingered) must not shadow a working UPSTASH_* fallback.
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "",
+        KV_REST_API_TOKEN: "",
+        UPSTASH_REDIS_REST_URL: "https://up.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "up-tok",
+      }),
+    ).toEqual({ url: "https://up.upstash.io", token: "up-tok" });
+  });
 });
 
 describe("RATE_LIMIT_SCOPES (catalogue)", () => {
