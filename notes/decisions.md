@@ -5,6 +5,78 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-20 — M3 Wave 0c — Switch magic-link from PKCE to token-hash for cross-device clicks (#137)
+
+**Decision:** Replace the `exchangeCodeForSession(code)` PKCE exchange in
+`/auth/callback` with `verifyOtp({ token_hash, type })`. The legacy PKCE
+`code` branch is retained for backward compat during the Supabase Dashboard
+email-template flip window. `token_hash` takes precedence when both params
+are present.
+
+**Why we deviated from the `@supabase/ssr` PKCE default:**
+
+`@supabase/ssr` ships with PKCE as the default auth flow. PKCE stores a
+`code_verifier` cookie on the browser that initiated `signInWithOtp`. When
+the user clicks the link on a *different* device — the dominant real-world
+pattern for a bachelor-party app where links travel through group chats and
+email clients — there is no `code_verifier` cookie in that context and auth
+fails with `AuthPKCECodeVerifierMissingError`.
+
+Failure modes caught in production (2026-05-19):
+- User requests link on phone Safari → clicks in Gmail app (different
+  in-app browser) → fails
+- User requests link on laptop → clicks in phone's mail app → fails
+- Email-client URL prefetch (Gmail Smart Compose, antivirus scanners)
+  consumes the code → the real click fails
+
+**Friction-vs-security rationale** (see
+`~/.claude/projects/.../memory/feedback_friction_vs_security.md`):
+
+The threat model here is "drunk friend mistypes their email," not
+"nation-state phishing campaign." PKCE's protection against authorization
+code interception doesn't earn its friction in this context. The token-hash
+flow gives us the same one-time-use guarantee (the hash is burned after
+`verifyOtp`) without requiring same-browser round-trip.
+
+From the memory note: *"I'm not sure why we even need such high security
+and email verification for what should be a simple website (low friction)."*
+That feedback is load-bearing product direction.
+
+**Implementation:**
+- `lib/auth/callback-handler.ts` — new module, extracted from the route so
+  it can be unit-tested. Contains all branching logic.
+- `app/auth/callback/route.ts` — now delegates entirely to
+  `resolveCallbackResult()`. No inline auth logic.
+- `lib/supabase/server.ts`, `lib/supabase/browser.ts` — no changes needed;
+  `verifyOtp` works on the standard `@supabase/ssr` server client without
+  any flow-type override.
+- `lib/auth/safe-next.ts` — unchanged.
+- `lib/auth/__tests__/callback.test.ts` — 8 new unit tests covering both
+  paths (token-hash, PKCE) and edge cases (missing params, both params
+  present).
+- `e2e/cross-device-magic-link.spec.ts` — cross-device E2E using two
+  isolated browser contexts + Supabase Admin API `generateLink` to mint
+  a real `token_hash` without needing an inbox.
+
+**Human-only Supabase Dashboard step (not automated):**
+Authentication → Email Templates → Magic Link: change the link from
+`{{ .ConfirmationURL }}` to the token-hash variant. See PR body for exact
+template text. Without this change, the Dashboard still generates PKCE
+`code` URLs — the callback handles those as backward-compat, but new links
+will continue to be cross-device-fragile until the template is flipped.
+
+**Alternatives considered:**
+- **Option A — implicit flow** (`flowType: 'implicit'` on
+  `createServerClient`): `@supabase/ssr` v0.x doesn't fully support
+  implicit flow on the server-side cookie client; the package is optimized
+  for PKCE and the implicit path is not documented for SSR. Option B
+  (token-hash) is the Supabase-recommended pattern for cross-device flows.
+- **OTP code entry fallback UI**: explicitly killed per issue body. Adds
+  a step, breaks the "link just works" mental model, out of scope for this
+  app's threat model.
+
+---
+
 ## 2026-05-19 (late PM) — M2 follow-up — Upstash provisioned via Vercel Marketplace (#124)
 
 **Decision:** Provisioned Upstash for Redis through the Vercel Marketplace ("Upstash for Redis" integration, `upstash/upstash-kv` product slug), region `us-east-1`. Auto-injects `KV_REST_API_URL` + `KV_REST_API_TOKEN` (plus `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN`) into Production, Preview, and Development environments.
