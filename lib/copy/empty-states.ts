@@ -261,6 +261,12 @@ export const M3_UI_STRINGS = {
   announcements_compose_submit: "Send it",
   announcements_compose_cancel: "Cancel",
   announcements_member_only_caption: "Only you can post these.",
+  // Announcement card badges (#79, Wave 3a fix-up — pulled from inline literals
+  // per Override F after code-review HIGH finding)
+  announcements_badge_pinned: "Pinned",
+  announcements_badge_organizers_only: "Organizers only",
+  announcements_badge_hide_celebrant: "Hidden from the celebrant",
+  announcements_badge_custom: "Custom audience",
   // Travel legs / arrivals manifest (#37, Wave 4a)
   arrivals_pageTitle: "Arrivals",
   arrivals_heading: "Who's landing when",
