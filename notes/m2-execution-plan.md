@@ -461,10 +461,14 @@ gh issue list --milestone "M2 — Trip is real" --json state -q '[.[] | select(.
       same reason. Anon surfaces have evidence; authenticated screens
       were exercised in unit + RTL tests in lieu of mobile-safari
       screenshots until the auth fixture lands.
-- [ ] Logged-in user can complete the full loop on mobile Safari
-      preview — **deferred** (auth-fixture blocker). Stub spec lives
-      in `e2e/m2-golden-path.spec.ts` as `test.fixme(...)` so the
-      assertions are ready the day the fixture lands.
+- [~] Logged-in user can complete the full loop on mobile Safari
+      preview — **partial**. Manually verified on desktop Safari
+      2026-05-19 PM (post-#125 + #134 + Resend SMTP setup):
+      `/login` → magic-link email arrives → click link → `/trips`
+      lands → `/trips/new` CTA works. Mobile-Safari-at-375px portion
+      of this DoD line is deferred behind the auth-fixture blocker
+      (#120); stub spec already lives in `e2e/m2-golden-path.spec.ts`
+      as `test.fixme(...)` ready for when the fixture lands.
 
 ---
 
