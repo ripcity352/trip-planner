@@ -81,7 +81,7 @@ export const ERRORS: Record<ErrorKey, string> = {
     "Leg didn't save. Tap again — your connection's flaky.",
   travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",
   lodging_assign_failed:
-    "Couldn't update room assignments. Give it another shot.",
+    "Rooms didn't budge. Tap again — it'll catch.",
   invite_mint_failed:
     "Couldn't mint a link. Try once more — sometimes the server takes a sec.",
   invite_revoke_failed: "Couldn't revoke that link yet. Try once more.",

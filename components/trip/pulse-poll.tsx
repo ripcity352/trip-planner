@@ -154,7 +154,10 @@ export function PulsePoll<T>({
     // #117: ignore the test-injection seam in production builds. The
     // prop stays on the type so callers don't need to special-case;
     // the runtime guard means a production bundle never wires a
-    // caller-supplied client into Realtime.
+    // caller-supplied client into Realtime. Next.js statically inlines
+    // `process.env.NODE_ENV` at build time, so a production bundle
+    // ships with `isProd = true` baked in and the conditional becomes
+    // dead code from the bundler's perspective.
     const isProd = process.env.NODE_ENV === "production";
     const injectedClient =
       !isProd && __supabaseClient ? __supabaseClient : undefined;
