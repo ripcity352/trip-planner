@@ -354,6 +354,20 @@ export interface ItineraryItemRsvp {
 }
 
 /**
+ * Roster entry — denormalised view of a `trip_members` row used by the
+ * roster page and contact-export components. Exported here so the page
+ * and component share a single type rather than re-declaring it.
+ */
+export interface RosterEntry {
+  id: string;
+  displayName: string | null;
+  /** E.164-formatted phone number, or null if not provided. */
+  phone: string | null;
+  role: TripRole;
+  isCelebrant: boolean;
+}
+
+/**
  * Per-member per-item participation flag. `flag` is freeform text (no enum
  * per CLAUDE.md rule #8 — "don't encode a default"). Examples: "vegan",
  * "sober", "late-arrival". SELECT is organizer-only via RLS.
