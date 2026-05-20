@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
+  __resolveUpstashCreds,
   __setLimiterForTest,
   getClientId,
   rateLimitRequest,
@@ -33,6 +34,96 @@ describe("module import safety", () => {
     // throwing is the assertion. Add a sanity check so the test is non-trivial.
     expect(process.env.UPSTASH_REDIS_REST_URL).toBeFalsy();
     expect(typeof rateLimitedAction).toBe("function");
+  });
+});
+
+describe("__resolveUpstashCreds (env-var precedence, #124)", () => {
+  // The Vercel Marketplace "Upstash for Redis" integration auto-injects
+  // KV_REST_API_URL / KV_REST_API_TOKEN. Local dev and direct-Upstash
+  // setups historically used UPSTASH_REDIS_REST_URL /
+  // UPSTASH_REDIS_REST_TOKEN. Both must work; KV_* wins when present
+  // because that's the live prod configuration after #124 closed.
+
+  const empty = {};
+
+  it("returns null when no creds are present", () => {
+    expect(__resolveUpstashCreds(empty)).toBeNull();
+  });
+
+  it("returns null when only the URL half is present", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "https://example.upstash.io",
+      }),
+    ).toBeNull();
+    expect(
+      __resolveUpstashCreds({
+        UPSTASH_REDIS_REST_URL: "https://example.upstash.io",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when only the token half is present", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_TOKEN: "tok",
+      }),
+    ).toBeNull();
+  });
+
+  it("resolves KV_* names (Vercel Marketplace auto-injection)", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "https://kv.upstash.io",
+        KV_REST_API_TOKEN: "kv-tok",
+      }),
+    ).toEqual({ url: "https://kv.upstash.io", token: "kv-tok" });
+  });
+
+  it("resolves UPSTASH_REDIS_REST_* names (direct-Upstash / local dev)", () => {
+    expect(
+      __resolveUpstashCreds({
+        UPSTASH_REDIS_REST_URL: "https://up.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "up-tok",
+      }),
+    ).toEqual({ url: "https://up.upstash.io", token: "up-tok" });
+  });
+
+  it("prefers KV_* over UPSTASH_* when both are present", () => {
+    // Vercel Marketplace KV_* are the production source of truth after
+    // #124; an inherited UPSTASH_* in the same environment must not
+    // shadow them.
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "https://kv.upstash.io",
+        KV_REST_API_TOKEN: "kv-tok",
+        UPSTASH_REDIS_REST_URL: "https://up.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "up-tok",
+      }),
+    ).toEqual({ url: "https://kv.upstash.io", token: "kv-tok" });
+  });
+
+  it("treats empty-string values as absent", () => {
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "",
+        KV_REST_API_TOKEN: "",
+      }),
+    ).toBeNull();
+  });
+
+  it("falls through from empty KV_* to populated UPSTASH_* (Vercel injects empty placeholder, .env.local has real value)", () => {
+    // Realistic regression: an env where KV_* is declared-but-empty
+    // (e.g., the integration was uninstalled but the placeholder env
+    // var lingered) must not shadow a working UPSTASH_* fallback.
+    expect(
+      __resolveUpstashCreds({
+        KV_REST_API_URL: "",
+        KV_REST_API_TOKEN: "",
+        UPSTASH_REDIS_REST_URL: "https://up.upstash.io",
+        UPSTASH_REDIS_REST_TOKEN: "up-tok",
+      }),
+    ).toEqual({ url: "https://up.upstash.io", token: "up-tok" });
   });
 });
 
@@ -117,6 +208,28 @@ describe("rateLimitedAction", () => {
     expect(fn).not.toHaveBeenCalled();
   });
 
+  it("fails CLOSED when upstream returns success:true with reason:'timeout' (#138 H1)", async () => {
+    // `@upstash/ratelimit` wraps every limit() call in a 5s timeout that
+    // resolves `{success: true, reason: "timeout"}` if Upstash is
+    // unreachable. Treating that as allow is a silent bypass during
+    // Upstash outages — call sites must promote it to a deny.
+    __setLimiterForTest({
+      limit: vi.fn().mockResolvedValue({
+        success: true,
+        limit: 30,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+        reason: "timeout",
+      }),
+    });
+    const fn = vi.fn();
+    await expect(
+      rateLimitedAction(RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK, "u", fn),
+    ).rejects.toBeInstanceOf(RateLimitError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
   it("namespaces buckets per (scope, key) so scopes don't share a budget", async () => {
     const limit = vi.fn().mockResolvedValue({
       success: true,
@@ -165,6 +278,28 @@ describe("rateLimitRequest", () => {
       headers: { "x-forwarded-for": "1.1.1.1" },
     });
     expect(await rateLimitRequest(req)).toBeNull();
+  });
+
+  it("returns a 429 when upstream returns success:true with reason:'timeout' (#138 H1)", async () => {
+    // Mirror of the rateLimitedAction test — the HTTP-edge guard must
+    // also promote timeout-allow to deny so /api/, /trips/, /invite/
+    // don't silently bypass during Upstash outages.
+    __setLimiterForTest({
+      limit: vi.fn().mockResolvedValue({
+        success: true,
+        limit: 30,
+        remaining: 0,
+        reset: Date.now() + 60_000,
+        pending: Promise.resolve(),
+        reason: "timeout",
+      }),
+    });
+    const req = makeReq("http://localhost/api/webhooks/foo", {
+      method: "POST",
+      headers: { "x-forwarded-for": "3.3.3.3" },
+    });
+    const res = await rateLimitRequest(req);
+    expect(res?.status).toBe(429);
   });
 
   it("returns a 429 NextResponse when the limit is exceeded", async () => {
