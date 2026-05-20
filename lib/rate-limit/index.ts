@@ -88,6 +88,16 @@ export const RATE_LIMIT_SCOPES = {
   // is a high-tap surface (drunk user reconsidering on bad signal) and
   // we want it isolated from RSVP / createTrip budgets.
   CAST_DATE_VOTE: "castDateVote",
+  // M3 Wave 1 scopes — one bucket per action surface so a user
+  // spamming one path doesn't starve the others. All default to
+  // 30/60s sliding window per notes/m3-execution-plan.md Appendix A.3.
+  CREATE_ITINERARY_ITEM: "createItineraryItem",
+  POST_ANNOUNCEMENT: "postAnnouncement",
+  UPDATE_TRIP_NOTES: "updateTripNotes",
+  SET_ITEM_RSVP: "setItemRsvp",
+  SET_ITEM_FLAG: "setItemFlag",
+  UPSERT_TRAVEL_LEG: "upsertTravelLeg",
+  ASSIGN_LODGING: "assignLodging",
 } as const;
 
 export type RateLimitScope =
