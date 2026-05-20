@@ -708,21 +708,115 @@ In addition to the global overrides A-G above:
 
 ## Appendix A — Schema + RLS sign-off (architect-signed, Wave 1)
 
-> Populated by the architect agent at Wave 1 start. Until then, this
-> section reads `(populated at Wave 1 start)` and the Wave 1 gate
-> blocks merge via:
->
-> ```
-> grep -q "(populated at Wave 1 start)" notes/m3-execution-plan.md && echo BLOCK_MERGE && exit 1
-> ```
+> Architect-signed 2026-05-20. All four subsections (A.1–A.4) are populated.
+> The merge gate that formerly blocked on placeholder text has been cleared.
 
-**A.1 Invariants** — *(populated at Wave 1 start)*
+**A.1 Invariants**
 
-**A.2 RLS matrix** — *(populated at Wave 1 start)*
+Architect-signed 2026-05-20. These constraints are non-negotiable; any
+Wave 1 PR that violates them is a hard-stop.
 
-**A.3 Rate-limit scope additions** — *(populated at Wave 1 start)*
+1. **`itinerary_items.kind`** — enum `itinerary_item_kind` not null
+   default `'activity'`. Existing rows (all pre-M3, no production data)
+   get `'activity'` as the backfill default. The `visibility` and
+   `address` columns already exist from m1_foundation; do NOT re-add
+   them. Add only the net-new columns: `kind`, `activity_tag`, `dress_code`,
+   `idempotency_key`.
 
-**A.4 Realtime publication contract** — *(populated at Wave 1 start)*
+2. **`lodging_assignments`** — only valid for items with `kind =
+   'lodging'`. Enforced by trigger `assert_lodging_item_kind_before_assignment`
+   (BEFORE INSERT OR UPDATE, raises P0001). Defense-in-depth on top of
+   the application layer. The trigger function is `SECURITY DEFINER`
+   with `set search_path = public`.
+
+3. **`travel_legs` owner-only write** — `trip_member_id` in the WITH
+   CHECK clause must equal the caller's own `trip_members.id` row for
+   the same trip. No organizer bypass on travel legs — organizers cannot
+   impersonate a member's leg. The RLS WITH CHECK uses a sub-select
+   binding `trip_member_id` to `auth.uid()` via `trip_members.user_id`.
+
+4. **`itinerary_item_member_flags` read = organizer only** — members
+   submit their own dietary/sober/participation flags, but no member
+   (including the submitter) can read another member's flag. Only
+   `is_trip_organizer(item.trip_id)` may SELECT. The flag writer gets
+   no confirmation read; the action layer returns success on INSERT.
+
+5. **Idempotency scope per ADR (notes/decisions.md 2026-05-19)**:
+   - Organizer-acting tables (`itinerary_items`, `announcements`,
+     `lodging_assignments`): scope is `(trip_id, idempotency_key)`.
+   - Strictly-user tables (`itinerary_item_rsvps`,
+     `itinerary_item_member_flags`, `travel_legs`): scope includes
+     `trip_member_id` — `(item_id, trip_member_id, idempotency_key)` or
+     `(trip_id, trip_member_id, idempotency_key)`.
+
+6. **Celebrant visibility** — `can_see_content(trip_id, visibility)`
+   already handles `hide_from_celebrant` (returns `false` when caller
+   is the celebrant). The SELECT policy on `itinerary_items` calls this
+   helper; no bespoke celebrant check needed in the migration.
+
+7. **`announcements.created_by`** — already has `author_id` from init
+   and `visibility`/`idempotency_key` from m1_foundation. Wave 1 adds
+   `created_by uuid references auth.users(id)` as a NEW column (the
+   previous author column was `author_id` — they coexist; `created_by`
+   is the standard M3 pattern for organizer-created content). The RLS
+   WITH CHECK on INSERT binds `created_by = auth.uid()`.
+
+8. **Realtime** — only `announcements` table is added to the
+   `supabase_realtime` publication. All other new tables are read via
+   normal Supabase queries. The `alter publication` is wrapped in a
+   `DO $$ begin ... end $$` guard so CI runners without the publication
+   don't error (same pattern as m2_date_poll.sql).
+
+9. **No breaking changes** — all alterations are additive. No columns
+   dropped, no types modified. Existing RLS policies on `itinerary_items`
+   and `announcements` are dropped and recreated with the visibility-aware
+   SELECT using `can_see_content`.
+
+**A.2 RLS matrix**
+
+| Table | Anonymous | Non-member | Member (non-org) | Organizer | Celebrant notes |
+|---|---|---|---|---|---|
+| `itinerary_items` | denied | denied | SELECT via `can_see_content` | SELECT + INSERT + UPDATE + DELETE | `hide_from_celebrant` rows invisible via helper |
+| `lodging_assignments` | denied | denied | SELECT (via item's trip membership) | SELECT + INSERT + UPDATE + DELETE | N/A |
+| `travel_legs` | denied | denied | SELECT (trip-wide); INSERT/UPDATE/DELETE only own rows | SELECT; cannot INSERT/UPDATE/DELETE another member's leg | N/A |
+| `itinerary_item_rsvps` | denied | denied | SELECT (trip-wide); INSERT/UPDATE/DELETE only own rows | SELECT (trip-wide); cannot impersonate | N/A |
+| `itinerary_item_member_flags` | denied | denied | INSERT/DELETE own flags only; SELECT denied | SELECT all flags for trip; INSERT/DELETE on behalf | N/A |
+| `announcements` | denied | denied | SELECT via `can_see_content` | SELECT + INSERT (`created_by = auth.uid()`) + UPDATE + DELETE | `hide_from_celebrant` honored |
+
+**A.3 Rate-limit scope additions**
+
+All scopes use the existing default budget: 30 req / 60 s sliding window per
+`(scope, user_id)` identifier. The ratchet review (#141) is post-M3.
+
+| Scope key | Constant | Action |
+|---|---|---|
+| `CREATE_ITINERARY_ITEM` | `createItineraryItem` | `addItineraryItem` |
+| `POST_ANNOUNCEMENT` | `postAnnouncement` | `postAnnouncement` |
+| `UPDATE_TRIP_NOTES` | `updateTripNotes` | `setTripNotes` |
+| `SET_ITEM_RSVP` | `setItemRsvp` | `setItemRsvp` |
+| `SET_ITEM_FLAG` | `setItemFlag` | `addItemFlag` / `removeItemFlag` |
+| `UPSERT_TRAVEL_LEG` | `upsertTravelLeg` | `upsertTravelLeg` |
+| `ASSIGN_LODGING` | `assignLodging` | `assignMemberToLodging` |
+
+**A.4 Realtime publication contract**
+
+- **Table published:** `public.announcements`
+- **Channel pattern:** `announcements:{tripId}` — scoped per trip so
+  a subscriber only receives events for their trip.
+- **Payload:** Supabase Realtime sends the full row diff. RLS is honored
+  at the DB level — rows invisible to the subscriber (visibility filter)
+  are not broadcast. Callers verify `can_see_content` is configured
+  correctly by the SELECT RLS policy.
+- **Event types:** `INSERT` (new announcements). `UPDATE` and `DELETE`
+  are not surfaced in Wave 1 UI but the channel receives them; subscribers
+  can filter by `eventType` if needed.
+- **No PII leakage risk:** the `author_id` / `created_by` columns are
+  UUIDs, not email addresses or display names. Display name lookups happen
+  via a separate `profiles` join at the application layer, not in the
+  Realtime payload.
+- **Guard:** the `alter publication` SQL is wrapped in a `DO` block so
+  the migration runs cleanly on a bare Postgres test instance where
+  `supabase_realtime` publication may not exist.
 
 ---
 
