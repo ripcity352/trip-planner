@@ -1,11 +1,9 @@
+import { notFound } from "next/navigation";
+
 /**
  * /dev/smoke — design system token smoke page.
- *
- * Renders one of each primitive with computed CSS variable values printed
- * as data-* attributes. Used by the Playwright theme-smoke spec and for
- * manual verification on mobile Safari.
- *
- * NOT linked from any nav; remove in M5 productionisation pass.
+ * Dev/staging only: production serves a 404.
+ * Remove this route entirely in the M5 productionisation pass.
  */
 export const metadata = {
   title: "Smoke — design system",
@@ -13,6 +11,7 @@ export const metadata = {
 };
 
 export default function SmokePage() {
+  if (process.env.NODE_ENV === "production") notFound();
   return (
     <main
       className="min-h-screen p-8 space-y-12"
@@ -29,10 +28,7 @@ export default function SmokePage() {
         <p className="text-xs font-mono" style={{ color: "var(--ink-tertiary)" }}>
           hero-type / Fraunces / wonk=1 / 56–72px
         </p>
-        <h1
-          className="font-heading text-6xl font-semibold leading-none tracking-tight hero-type"
-          style={{ fontFamily: "var(--font-fraunces)" }}
-        >
+        <h1 className="font-heading text-6xl font-semibold leading-none tracking-tight hero-type">
           Bachelor Weekend
         </h1>
       </section>
@@ -55,7 +51,6 @@ export default function SmokePage() {
         </p>
         <p
           className="text-xs font-mono font-medium tracking-wide"
-          style={{ fontFamily: "var(--font-jetbrains-mono)" }}
         >
           12 DAYS AWAY · 7 GOING · 2 MAYBE
         </p>

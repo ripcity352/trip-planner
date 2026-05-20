@@ -9,7 +9,8 @@ import { test, expect } from "@playwright/test";
  */
 test.describe("bachelor theme binding", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/dev/smoke", { waitUntil: "networkidle" });
+    await page.goto("/dev/smoke", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("main h1")).toBeVisible();
   });
 
   test("html background-color resolves to #100c0f", async ({ page }) => {

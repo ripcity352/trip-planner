@@ -133,11 +133,7 @@
 /* Bound to data-theme="bachelor" on <html>. Other themes rebind same tokens. */
 
 [data-theme="bachelor"] {
-  /* Apply dark background directly to html so getComputedStyle sees it */
-  background-color: #100c0f;
-  color: #f3e9d2;
-
-  /* Surfaces */
+  /* Surfaces — define tokens first so background-color can reference them */
   --surface-base: #100c0f;
   --surface-elevated: #1a1517;
   --surface-sunken: #0a0708;
@@ -158,9 +154,13 @@
   /* Focus ring — WCAG 2.2 SC 2.4.11 compliant */
   --focus-ring: #ff8a65;
 
+  /* Apply directly to html so getComputedStyle resolves without body intermediary */
+  background-color: var(--surface-base);
+  color: var(--ink-primary);
+
   /* Wire shadcn semantics to bachelor palette so components inherit */
-  --background: #100c0f;
-  --foreground: #f3e9d2;
+  --background: var(--surface-base);
+  --foreground: var(--ink-primary);
   --card: #1a1517;
   --card-foreground: #f3e9d2;
   --popover: #1a1517;
