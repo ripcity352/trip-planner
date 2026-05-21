@@ -201,9 +201,9 @@ export async function acceptInviteAction(
 
 /**
  * Create an invite link for a trip. RLS gates this to organizers.
- * Rate-limited under the `acceptInvite` scope — the bucket is shared
- * with the accept path, which is the right call for now (a burst of
- * mint/accept activity is the same throttle target).
+ * Rate-limited under the dedicated `MINT_INVITE` scope (#107) — split
+ * from `ACCEPT_INVITE` so a burst of organizer mints cannot exhaust the
+ * accept budget for incoming members (or vice versa).
  */
 export async function createInviteAction(
   input: CreateInviteActionInput
@@ -226,7 +226,7 @@ export async function createInviteAction(
 
   try {
     const invite = await rateLimitedAction(
-      RATE_LIMIT_SCOPES.ACCEPT_INVITE,
+      RATE_LIMIT_SCOPES.MINT_INVITE,
       userId,
       () =>
         createInviteRecord(
@@ -244,13 +244,16 @@ export async function createInviteAction(
     }
     // RLS rejection surfaces as a Postgres-class error with code 42501.
     // We don't have a typed Supabase error here, so heuristic on
-    // message; misclassifying as `network` is acceptable for v1 because
-    // the form recovers the same way.
+    // message.
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("RLS") || message.includes("42501")) {
       return { ok: false, errorKey: "rls_denied" };
     }
-    return { ok: false, errorKey: "network" };
+    // Anything else is a mint-specific failure — use the dedicated key
+    // so the UI can show a copy targeted at the mint flow rather than the
+    // generic network toast.
+    console.error("[invites] createInviteAction unexpected:", err);
+    return { ok: false, errorKey: "invite_mint_failed" };
   }
 }
 
@@ -271,7 +274,11 @@ export async function revokeInviteAction(
     if (message.includes("RLS") || message.includes("42501")) {
       return { ok: false, errorKey: "rls_denied" };
     }
-    return { ok: false, errorKey: "network" };
+    // The no-op-revoke detector in lib/db/invites.ts throws when RLS
+    // silently drops the UPDATE — that surfaces here as a generic error;
+    // the dedicated revoke_failed key lets the UI render a precise toast.
+    console.error("[invites] revokeInviteAction unexpected:", err);
+    return { ok: false, errorKey: "invite_revoke_failed" };
   }
 }
 

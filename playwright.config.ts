@@ -12,13 +12,31 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
+    // ------------------------------------------------------------------
+    // Setup project: runs once before authenticated test projects.
+    // Produces playwright/.auth/storage-state.json.
+    // Run in isolation: pnpm exec playwright test --project=setup
+    // ------------------------------------------------------------------
+    {
+      name: "setup",
+      testMatch: /e2e\/_setup\/auth\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+
+    // ------------------------------------------------------------------
+    // Test projects: depend on the setup project for authenticated tests.
+    // The storageState is applied per-test via the `authedPage` fixture
+    // (tests/fixtures/auth.ts). Unauthenticated specs work without it.
+    // ------------------------------------------------------------------
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
     },
     {
       name: "mobile-safari",
       use: { ...devices["iPhone 14"] },
+      dependencies: ["setup"],
     },
   ],
   webServer: {

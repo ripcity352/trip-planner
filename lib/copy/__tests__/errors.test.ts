@@ -19,6 +19,32 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "invite_not_found",
   "trip_create_failed",
   "rsvp_save_failed",
+  // M3 keys (Wave 0a)
+  "itinerary_save_failed",
+  "itinerary_delete_failed",
+  "item_rsvp_save_failed",
+  "item_flag_save_failed",
+  "announcement_post_failed",
+  "trip_notes_save_failed",
+  "travel_leg_save_failed",
+  "travel_leg_delete_failed",
+  "lodging_assign_failed",
+  "invite_mint_failed",
+  "invite_revoke_failed",
+  // M4 keys (Wave 0a)
+  "address_lookup_failed",
+  "datetime_invalid",
+  "places_proxy_failed",
+  // M5 auth keys (PR2)
+  "auth_wrong_password",
+  "auth_code_invalid",
+  "auth_code_expired",
+  "auth_email_taken_oauth",
+  // M5 PR4 account security keys
+  "auth_current_password_incorrect",
+  "auth_unauthenticated",
+  // M5 PR5 — Google OAuth error key
+  "oauth_redirect_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

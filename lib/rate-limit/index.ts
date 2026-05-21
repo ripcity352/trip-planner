@@ -9,18 +9,12 @@
  *      `createTrip`, `acceptInvite`, etc. Throws `RateLimitError` instead of
  *      returning an HTTP response so callers can surface a friendly toast.
  *
- * Upstash Redis is configured via `UPSTASH_REDIS_REST_URL` +
- * `UPSTASH_REDIS_REST_TOKEN`. When BOTH are present we wire the real
- * limiter. When either is missing:
- *
- *   - In dev / test (`NODE_ENV !== "production"`) we fall back to an
- *     in-memory shim that always allows. This keeps `pnpm build` green
- *     without secrets and lets unit tests run without network.
- *   - In production we still build the same shim at import time (so the
- *     deploy doesn't crash on cold-start), but every `.limit()` call
- *     FAILS CLOSED — `success: false`. The deploy will then surface
- *     rate-limit errors on every guarded path, which is the loud
- *     signal we want: "rate limit creds are missing from the env."
+ * Upstash Redis credentials are read via `__resolveUpstashCreds`, which
+ * accepts either naming scheme (Vercel Marketplace's `KV_REST_API_*`
+ * takes precedence over the legacy `UPSTASH_REDIS_REST_*`; see #124).
+ * When BOTH a URL and token are present we wire the real limiter. When
+ * either is missing we fall back to the in-memory shim documented at
+ * `buildInMemoryLimiter`.
  *
  * Importing this module must never throw.
  */
@@ -41,6 +35,20 @@ interface RateLimitResult {
   remaining: number;
   reset: number;
   pending: Promise<unknown>;
+  /**
+   * Upstream `@upstash/ratelimit` sets `reason: "timeout"` on a synthetic
+   * `success: true` response when the Redis call exceeds the configured
+   * timeout. Treat as **fail-closed** at every call site — silently
+   * allowing during an Upstash outage is a rate-limit bypass. Typed as
+   * `string` rather than a literal union so we stay compatible with
+   * upstream's future enum additions (e.g., `"cacheBlock"`).
+   */
+  reason?: string;
+}
+
+/** Promote a successful-but-timeout response to a deny. See `reason` above. */
+function isTimeoutAllow(result: RateLimitResult): boolean {
+  return result.success && result.reason === "timeout";
 }
 
 // --- config ------------------------------------------------------------
@@ -61,17 +69,19 @@ const ANON_CLIENT_ID = "anon";
  * unrecognized scopes are rejected at the type level so callers can't
  * silently typo a new bucket into existence.
  *
- * `AUTH_MAGIC_LINK` (#102 fix-up) covers the `/login` server action and
- * shares the default budget (30 / 60s). The default is generous for an
- * auth-issuance endpoint; before production we should ratchet this
- * down to ~5 / hour by introducing a per-scope budget map. Tracking as
- * a follow-up: the surgical fix here keeps the seam in place without
- * rebuilding the limiter config surface.
+ * `AUTH_OTP_VERIFY` (#102 fix-up, renamed M5/PR1) covers the `/login`
+ * server action and shares the default budget (30 / 60s). The default
+ * is generous for an auth-issuance endpoint; before production we
+ * should ratchet this down to ~5 / hour by introducing a per-scope
+ * budget map. Tracking as a follow-up: the surgical fix here keeps the
+ * seam in place without rebuilding the limiter config surface.
+ * AUTH_OTP_VERIFY covers both magic-link URLs and 6-digit codes — both
+ * call verifyOtp.
  */
 export const RATE_LIMIT_SCOPES = {
   CREATE_TRIP: "createTrip",
   ACCEPT_INVITE: "acceptInvite",
-  AUTH_MAGIC_LINK: "authMagicLink",
+  AUTH_OTP_VERIFY: "authOtpVerify",
   // `setRsvp` (#74) gets its own bucket so a user spamming RSVP taps
   // doesn't starve their `createTrip` / `acceptInvite` budget. Default
   // 30/60s is generous for the drunk-double-tap pattern.
@@ -80,10 +90,80 @@ export const RATE_LIMIT_SCOPES = {
   // is a high-tap surface (drunk user reconsidering on bad signal) and
   // we want it isolated from RSVP / createTrip budgets.
   CAST_DATE_VOTE: "castDateVote",
+  // M3 Wave 1 scopes — one bucket per action surface so a user
+  // spamming one path doesn't starve the others. All default to
+  // 30/60s sliding window per notes/m3-execution-plan.md Appendix A.3.
+  CREATE_ITINERARY_ITEM: "createItineraryItem",
+  POST_ANNOUNCEMENT: "postAnnouncement",
+  UPDATE_TRIP_NOTES: "updateTripNotes",
+  SET_ITEM_RSVP: "setItemRsvp",
+  SET_ITEM_FLAG: "setItemFlag",
+  UPSERT_TRAVEL_LEG: "upsertTravelLeg",
+  ASSIGN_LODGING: "assignLodging",
+  // M3 Wave 4c — issue #107: minting invite links now has its own bucket
+  // separate from `ACCEPT_INVITE` so a burst of organizer mints cannot
+  // starve a member's accept attempt (or vice versa). Both paths default
+  // to the standard 30 req / 60s sliding window.
+  MINT_INVITE: "mintInvite",
+  // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
+  // Isolated bucket so a burst of typeahead requests doesn't starve
+  // other action budgets. 30 req / 60s matches the default; fail-CLOSED
+  // on shim so the proxy can't be abused if Upstash is unconfigured.
+  PLACES_AUTOCOMPLETE: "placesAutocomplete",
+  // M5 PR2 — password sign-in and sign-up. Deliberately tighter than
+  // the default (5 / 15 min) because brute-forcing a password requires
+  // many rapid attempts. NOT in FAIL_CLOSED_ON_SHIM so bootstrapping
+  // deploys (no Upstash yet) can still use the password form — consistent
+  // with AUTH_OTP_VERIFY precedent.
+  AUTH_PASSWORD: "authPassword",
+  // M5 PR4 — /account/sign-in-and-security password rotation. Same
+  // tighter budget as AUTH_PASSWORD (5 / 15 min) to blunt any attempt
+  // to cycle through passwords. NOT in FAIL_CLOSED_ON_SHIM — matches
+  // AUTH_PASSWORD precedent so a bootstrapping deploy isn't bricked.
+  AUTH_CHANGE_PASSWORD: "authChangePassword",
 } as const;
 
 export type RateLimitScope =
   (typeof RATE_LIMIT_SCOPES)[keyof typeof RATE_LIMIT_SCOPES];
+
+/**
+ * Per-scope budget overrides. Scopes not listed here inherit the module-level
+ * defaults (`DEFAULT_LIMIT` / `DEFAULT_WINDOW`). Kept as a plain record so
+ * tests can assert on it without importing Upstash types.
+ *
+ * Exported so the deployment-readiness tooling and tests can verify budgets
+ * without instantiating a real Ratelimit instance.
+ */
+export const SCOPE_BUDGETS: Readonly<
+  Partial<Record<RateLimitScope, { limit: number; window: string }>>
+> = {
+  [RATE_LIMIT_SCOPES.MINT_INVITE]: { limit: 10, window: "1 h" },
+  [RATE_LIMIT_SCOPES.PLACES_AUTOCOMPLETE]: { limit: 30, window: "60 s" },
+  // Password auth: 5 attempts per 15 minutes per email. Tight enough
+  // to blunt online brute-force; loose enough that a real user with
+  // fat fingers never hits it (5 bad attempts in 15 min is unusual).
+  [RATE_LIMIT_SCOPES.AUTH_PASSWORD]: { limit: 5, window: "15 m" },
+  // Password rotation: 5 attempts / 15 min per user-id. Same rationale
+  // as AUTH_PASSWORD — brute-forcing an authenticated rotation requires
+  // the same tight window.
+  [RATE_LIMIT_SCOPES.AUTH_CHANGE_PASSWORD]: { limit: 5, window: "15 m" },
+} as const;
+
+/**
+ * Scopes that must DENY when the in-memory shim is active (no Upstash creds).
+ *
+ * Rationale: `MINT_INVITE` and `PLACES_AUTOCOMPLETE` are sensitive enough
+ * that an unconfigured deployment (shim active) should fail-closed rather
+ * than silently allow. Contrast with `AUTH_OTP_VERIFY` and `ACCEPT_INVITE`
+ * which keep the allow-with-warning posture so a bootstrapping deployment
+ * doesn't brick login or invite acceptance.
+ *
+ * Exported so tests can assert membership without white-boxing the shim.
+ */
+export const FAIL_CLOSED_ON_SHIM: ReadonlySet<RateLimitScope> = new Set<RateLimitScope>([
+  RATE_LIMIT_SCOPES.MINT_INVITE,
+  RATE_LIMIT_SCOPES.PLACES_AUTOCOMPLETE,
+]);
 
 /** Mutation-like HTTP methods we guard at the edge. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -98,6 +178,15 @@ const GUARDED_PATH_PATTERNS: ReadonlyArray<RegExp> = [
   // `/invite/<token>/accept` is a public POST endpoint — unauthenticated
   // abuse needs the HTTP-edge throttle before it reaches the action.
   /^\/invite\//,
+  // M5 PR2 — password sign-in / sign-up POST and auth callback are now
+  // mutation-class paths that need the HTTP-edge throttle. The action-
+  // level AUTH_PASSWORD scope is the primary defence; the path pattern
+  // here is a belt-and-suspenders guard at the edge.
+  /^\/login(\/|$)/,
+  /^\/auth\//,
+  // M5 PR4 — /account/* is an authed mutation surface (password rotation).
+  // HTTP-edge throttle mirrors the pattern for /trips/*.
+  /^\/account\//,
 ];
 
 // --- error -------------------------------------------------------------
@@ -123,25 +212,46 @@ export class RateLimitError extends Error {
 // --- limiter (lazy) ----------------------------------------------------
 
 /**
- * Lazy singleton. Module import must never touch process.env beyond a
- * tag-check, and must never construct a Redis client at load time —
- * otherwise importing this file in a test (where env vars are unset)
- * would crash the suite.
+ * Lazy per-scope cache. Module import must never touch process.env
+ * beyond a tag-check, and must never construct a Redis client at load
+ * time — otherwise importing this file in a test (where env vars are
+ * unset) would crash the suite.
+ *
+ * Keyed by scope so each `SCOPE_BUDGETS` entry gets its own Ratelimit
+ * instance with the right `slidingWindow(limit, window)` config. Scopes
+ * not in `SCOPE_BUDGETS` share the default-budget instance keyed under
+ * `DEFAULT_LIMITER_KEY`. Without per-scope keying, `MINT_INVITE`'s
+ * 10/hour budget never reaches Upstash and silently inherits 30/60s —
+ * the W0c code-review HIGH.
  */
-let cachedLimiter: Ratelimit | InMemoryLimiter | null = null;
+const DEFAULT_LIMITER_KEY = "__default__";
+const cachedLimiters = new Map<
+  RateLimitScope | typeof DEFAULT_LIMITER_KEY,
+  Ratelimit | InMemoryLimiter
+>();
+/**
+ * Test override limiter — when set, takes precedence over `cachedLimiters`
+ * for all scopes. Cleared via `__setLimiterForTest(null)`.
+ */
+let testOverrideLimiter: Ratelimit | InMemoryLimiter | null = null;
 
 /**
- * Minimal in-memory shim that always allows. Used when Upstash env vars
- * are absent (local dev, CI, tests). We deliberately do NOT implement a
- * real in-memory counter here because:
+ * Minimal in-memory shim that always allows (or denies for fail-closed
+ * scopes). Used when Upstash env vars are absent (local dev, CI, tests).
+ * We deliberately do NOT implement a real in-memory counter here because:
  *   - Next.js middleware can be hot-reloaded, blowing away counters
  *   - Multi-instance prod deployments need shared state anyway (that's
  *     what Upstash is for)
  * In tests that want to assert "limit was hit", `rateLimitedAction` is
  * exercised against an injected mock instead.
+ *
+ * The `isShim` marker lets call sites detect that they're running against
+ * the shim so they can apply fail-closed logic for sensitive scopes.
  */
 interface InMemoryLimiter {
   readonly limit: (identifier: string) => Promise<RateLimitResult>;
+  /** Marker: true only on the in-memory shim, never on a real Ratelimit. */
+  readonly isShim: true;
 }
 
 function buildInMemoryLimiter(): InMemoryLimiter {
@@ -151,20 +261,23 @@ function buildInMemoryLimiter(): InMemoryLimiter {
   //       in spirit, wrong in practice during bootstrap. Production-
   //       without-real-users-yet (MVP) has no Upstash provisioned and
   //       fail-closed bricks magic-link login.
-  //   v3 (this): allow-with-loud-warning when Upstash is unconfigured,
+  //   v3: allow-with-loud-warning when Upstash is unconfigured,
   //       regardless of NODE_ENV. The warning routes through Sentry via
-  //       console.error and tracks via the follow-up issue. When Upstash
-  //       IS configured but transiently fails, the upstream `Ratelimit`
-  //       throws and the caller catches as a `RateLimitError` — that
-  //       path is still fail-closed (correct).
-  //
-  // Tracking the "provision Upstash before real users" requirement at
-  // gh issue link in the rationale below — DO NOT remove this warning
-  // without also flipping the dependency or accepting the no-rate-limit
-  // posture explicitly.
+  //       console.error and tracks via the follow-up issue.
+  //   v4 (this): #124 closed — Upstash for Redis is now provisioned via
+  //       the Vercel Marketplace, injected as `KV_REST_API_URL` +
+  //       `KV_REST_API_TOKEN`. This shim is therefore the *exception
+  //       path* in production: if it fires, it means either an env-var
+  //       regression on Vercel or a fresh fork running with no creds.
+  //       The warning stays loud so a future regression is caught
+  //       immediately. When Upstash IS configured but transiently
+  //       fails, the upstream `Ratelimit` throws and the caller catches
+  //       as a `RateLimitError` — that path is still fail-closed
+  //       (correct).
   const isProd = process.env.NODE_ENV === "production";
   let warned = false;
   return {
+    isShim: true as const,
     limit: async (): Promise<RateLimitResult> => {
       if (isProd && !warned) {
         warned = true;
@@ -188,25 +301,96 @@ function buildInMemoryLimiter(): InMemoryLimiter {
   };
 }
 
-function buildUpstashLimiter(url: string, token: string): Ratelimit {
+function buildUpstashLimiter(
+  url: string,
+  token: string,
+  scope?: RateLimitScope,
+): Ratelimit {
   const redis = new Redis({ url, token });
+  const budget = scope ? SCOPE_BUDGETS[scope] : undefined;
+  const limit = budget?.limit ?? DEFAULT_LIMIT;
+  const window = (budget?.window ?? DEFAULT_WINDOW) as Parameters<
+    typeof Ratelimit.slidingWindow
+  >[1];
+  // Prefix per scope so different budgets don't share a counter bucket
+  // (an organizer's MINT_INVITE state and a member's SET_RSVP state are
+  // already keyed by `${scope}:${userId}` at call sites, but distinct
+  // prefixes also keep Upstash analytics readable).
+  const prefix = scope ? `trip-planner/rl/${scope}` : "trip-planner/rl";
   return new Ratelimit({
     redis,
-    limiter: Ratelimit.slidingWindow(DEFAULT_LIMIT, DEFAULT_WINDOW),
+    limiter: Ratelimit.slidingWindow(limit, window),
     analytics: false,
-    prefix: "trip-planner/rl",
+    prefix,
+    // Tighter than the upstream 5s default — Upstash p99 is well under
+    // 1s, so 1500ms is a generous ceiling that still keeps end-user
+    // latency bounded during a slow Redis. On timeout the upstream
+    // returns `{success: true, reason: "timeout"}`; both call sites
+    // check `isTimeoutAllow` and promote to a deny so we fail closed.
+    timeout: 1500,
   });
 }
 
-function getLimiter(): Ratelimit | InMemoryLimiter {
-  if (cachedLimiter) return cachedLimiter;
+/** Type-guard: returns true only when the limiter is the in-memory shim. */
+function isInMemoryShim(
+  limiter: Ratelimit | InMemoryLimiter,
+): limiter is InMemoryLimiter {
+  return (limiter as InMemoryLimiter).isShim === true;
+}
 
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+function getLimiter(
+  scope?: RateLimitScope,
+): Ratelimit | InMemoryLimiter {
+  if (testOverrideLimiter) return testOverrideLimiter;
 
-  cachedLimiter =
-    url && token ? buildUpstashLimiter(url, token) : buildInMemoryLimiter();
-  return cachedLimiter;
+  // Scopes WITHOUT a custom budget share the default-keyed limiter.
+  // Scopes WITH a budget get their own keyed limiter so the
+  // `slidingWindow(limit, window)` config actually takes effect.
+  const cacheKey: RateLimitScope | typeof DEFAULT_LIMITER_KEY =
+    scope && SCOPE_BUDGETS[scope] ? scope : DEFAULT_LIMITER_KEY;
+
+  const existing = cachedLimiters.get(cacheKey);
+  if (existing) return existing;
+
+  const creds = __resolveUpstashCreds(process.env);
+  const limiter = creds
+    ? buildUpstashLimiter(
+        creds.url,
+        creds.token,
+        cacheKey === DEFAULT_LIMITER_KEY ? undefined : cacheKey,
+      )
+    : buildInMemoryLimiter();
+  cachedLimiters.set(cacheKey, limiter);
+  return limiter;
+}
+
+/**
+ * Resolves Upstash REST creds from the environment, accepting both the
+ * Vercel-Marketplace naming (`KV_REST_API_URL` / `KV_REST_API_TOKEN`,
+ * auto-injected by the "Upstash for Redis" integration since #124) and
+ * the legacy direct-Upstash naming (`UPSTASH_REDIS_REST_URL` /
+ * `UPSTASH_REDIS_REST_TOKEN`, still used in `.env.local` for devs who
+ * provisioned outside the Marketplace).
+ *
+ * Precedence: `KV_*` wins when both pairs are present. The production
+ * deploy is the source of truth, and Vercel always populates the `KV_*`
+ * pair from the Marketplace install — a stray `UPSTASH_*` left behind
+ * in an older env file must not shadow it.
+ *
+ * Returns `null` if either half (url or token) is missing — half-config
+ * is broken-config, and the in-memory shim's loud warning is the
+ * correct signal.
+ *
+ * Exported with the `__` prefix to mark it as test-surface; consumers
+ * should use `rateLimitedAction` / `rateLimitRequest` instead.
+ */
+export function __resolveUpstashCreds(
+  env: Readonly<Record<string, string | undefined>>,
+): { url: string; token: string } | null {
+  const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
+  const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  return { url, token };
 }
 
 /**
@@ -217,7 +401,12 @@ function getLimiter(): Ratelimit | InMemoryLimiter {
 export function __setLimiterForTest(
   limiter: Pick<Ratelimit, "limit"> | null,
 ): void {
-  cachedLimiter = limiter as Ratelimit | null;
+  testOverrideLimiter = limiter as Ratelimit | null;
+  if (limiter === null) {
+    // Clear scope-keyed cache too so the next getLimiter() rebuilds
+    // (otherwise back-to-back tests would share an old shim instance).
+    cachedLimiters.clear();
+  }
 }
 
 // --- public API --------------------------------------------------------
@@ -254,10 +443,23 @@ export async function rateLimitedAction<T>(
   key: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const limiter = getLimiter();
+  const limiter = getLimiter(scope);
   const identifier = `${scope}:${key}`;
   const result = await limiter.limit(identifier);
-  if (!result.success) {
+
+  // Fail-closed: scopes in FAIL_CLOSED_ON_SHIM are denied when the shim
+  // is active (Upstash is unconfigured). The shim would otherwise allow,
+  // which is the correct bootstrap posture for auth and invite acceptance
+  // but NOT for MINT_INVITE or PLACES_AUTOCOMPLETE where an unconfigured
+  // deployment must not silently open an abuse surface.
+  if (isInMemoryShim(limiter) && FAIL_CLOSED_ON_SHIM.has(scope)) {
+    throw new RateLimitError(scope, {
+      remaining: 0,
+      reset: Date.now() + 60_000,
+    });
+  }
+
+  if (!result.success || isTimeoutAllow(result)) {
     throw new RateLimitError(scope, result);
   }
   return fn();
@@ -287,7 +489,7 @@ export async function rateLimitRequest(
   const identifier = `http:${req.method}:${clientId}`;
   const result = await limiter.limit(identifier);
 
-  if (result.success) return null;
+  if (result.success && !isTimeoutAllow(result)) return null;
 
   const retryAfterSeconds = Math.max(
     1,

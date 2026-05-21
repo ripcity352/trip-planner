@@ -114,6 +114,21 @@ Itinerary first (swapped before announcements per product review — the
 itinerary is what attendees open the app *for*). Then announcements +
 realtime.
 
+**Status (2026-05-20):** **Closed.** Nine PRs (#143, #144, #145, #146,
+#147, #148, #149, #150, #151, #152) merged to `main`. See
+`notes/decisions.md` "M3 — Trip is useful — milestone closed" entry for
+the load-bearing decisions and `notes/retros/m3-retro.md` for the retro.
+**Current phase: M5 — Closed (2026-05-21).**
+M5 auth redesign shipped: password (primary) + 6-digit OTP (fallback)
++ Google OAuth (alternative; round-trip walk deferred to follow-up).
+`/account/sign-in-and-security` State A/A+/B/C state machine landed.
+See `notes/retros/m5-retro.md` for closure details. Carry-backs filed:
+#230 (flake), #232 (OAuth detection), #233 (State B identity check),
+#135 (Resend domain — carried from M4).
+
+**Stop here.** Use M1–M5 for the real bachelor party. M6 gates on the
+post-trip retro — don't scope it until you've actually used the app.
+
 **Definition of done:**
 - **Itinerary**
   - Day-by-day view auto-generated from start/end dates
@@ -158,20 +173,50 @@ balance-audit nudges, notification-outbox seam (#33 killed).
 
 The ship moment. Polish + the bright line marked **STOP HERE.**
 
+**Status (2026-05-21): Closed.** W0a–W4b (#190–#204) merged to `main`;
+closure PR W4c (#205) merges this plan. See `notes/decisions.md`
+"M4 — Trip is shippable — milestone closed" ADR for load-bearing
+decisions and `notes/retros/m4-retro.md` for the full retro.
+**M4 closed; M5 gated on real-trip retro.**
+
+**Sim 2026-05-20:** 16 of 21 future-state-guide open questions
+resolved; see `notes/sim/2026-05-20/findings.md` for the synthesis.
+
 **Definition of done:**
-- Custom domain wired up in Vercel
+- Custom domain wired up in Vercel (#83)
 - Theming pass: party-specific colors, hero image, party name
+  (#90, #121)
 - Mobile QA across iOS Safari and Android Chrome
-- **Microcopy review** enforced as PR-template checklist for any UI string
-- **`/legal/terms` and `/legal/privacy` stub pages** — pass the voice test
-- **axe-core + Lighthouse a11y pass** per UI route
+- **Microcopy review** enforced as PR-template checklist for any UI
+  string (sim microcopy PR: #174)
+- **`/legal/terms` and `/legal/privacy` stub pages** — pass the voice
+  test (#81)
+- **axe-core + Lighthouse a11y pass** per UI route (#82)
 - **Color is never the only signal** — RSVP/state icons accompany color
+  (#45)
+- **Structured inputs with freeform fallback** — chip pickers + datetime
+  widgets replace the M3 freeform fields where it's cheap to do so
+  without violating the "don't encode a default" ADR (rule #8). Six
+  surfaces (schema/RLS deltas bundled into #173):
+  - Dress-code preset chips (#163)
+  - Activity-tag chip picker (#164)
+  - Per-item member-flag chips with custom fallback (#165)
+  - Address autocomplete via Places API (#166) — new API-key dep
+  - `datetime-local` widget on non-lodging itinerary items (#167)
+  - Airline + flight-number picker for travel legs (#168)
+- **M2/M3 carry-back follow-ups** (bundled into #173) —
+  trip-local TZ (#108), invites RLS tightening (#154, #155), invite
+  idempotency-key (#158), trip-notes revalidate (#159), itinerary
+  emoji→SVG (#156), dead helper cleanup (#157), three prod-walk UX
+  fixes (#160, #161, #162), rate-limit hardening (#139, #140, #141)
 - **Send invite link to actual party attendees**
 - **Stop here.** Use it for the real trip. Come back to M5 only after a
   retrospective surfaces what the trip actually needed.
 
 **Out of scope:** every delight mechanic deferred to M5 (Drumroll,
 Lock-In Day, Hot Seat — all killed; can earn back via retro).
+Pure-enum replacements for the freeform text fields are out — the ADR
+rules that out; M4 structured-inputs scope is *suggest-with-fallback*.
 
 ---
 

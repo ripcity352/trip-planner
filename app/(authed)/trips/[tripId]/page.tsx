@@ -18,6 +18,17 @@
  * the declining-whispers ADR. The organizer-only "(N can't make it)"
  * suffix is gated by an `is_trip_organizer()` RPC check; RLS does the
  * same gating at the row level as defense-in-depth.
+ *
+ * Wave 3b (M3) addition: NowNextCard + TripNotesEditor wired into the
+ * dashboard. The single-item-preview helper (`getNextUpcomingItem`) was
+ * superseded by `getItineraryByTrip` so the now/next pure function has
+ * the full item list to compute the current/next pair.
+ *
+ * Wave 5 (M3) closure addition: link cards for the five M3 sub-routes
+ * (Itinerary, Announcements, Arrivals, Roster, Invites). Invites is
+ * organizer-only — the dashboard hides the affordance for non-organizers
+ * so a member dashboard isn't peppered with dead-end links. Page-level
+ * RPC gate on /invites/page.tsx is the load-bearing security check.
  */
 
 import { format } from "date-fns";
@@ -32,14 +43,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { RsvpToggle } from "@/components/trip/rsvp-toggle";
+import { NowNextCard } from "@/components/trip/now-next-card";
+import { TripNotesEditor } from "@/components/trip/trip-notes-editor";
 import { getTripBySlug } from "@/lib/db/trips";
 import {
   getMyRsvp,
   getOrganizerDeclinedCount,
   getRsvpCountsForTrip,
 } from "@/lib/db/rsvp";
+import { getItineraryByTrip } from "@/lib/db/itinerary";
+import { getTripNotes } from "@/lib/db/trip-notes";
 import { createClient } from "@/lib/supabase/server";
-import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
+import { M2_UI_STRINGS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Trip } from "@/lib/db/types";
 
 type PageProps = {
@@ -71,12 +86,16 @@ export default async function TripDashboardPage({ params }: PageProps) {
     notFound();
   }
 
-  // Glanceable counts always source from the view — see file docstring.
-  // We fan out the three reads in parallel; they're independent.
-  const [counts, myRsvp, organizerCheck] = await Promise.all([
+  // Fan out independent reads in parallel.
+  // Wave 3b: replaced getNextUpcomingItem with getItineraryByTrip so the
+  // now/next pure function has the full item list. getTripNotes is a
+  // focused read of trips.notes without pulling the full Trip row again.
+  const [counts, myRsvp, organizerCheck, allItems, tripNotes] = await Promise.all([
     getRsvpCountsForTrip(supabase, trip.id),
     getMyRsvp(supabase, trip.id, user.id),
     supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
+    getItineraryByTrip(supabase, trip.id),
+    getTripNotes(supabase, trip.id),
   ]);
 
   const isOrganizer = organizerCheck.data === true;
@@ -106,6 +125,9 @@ export default async function TripDashboardPage({ params }: PageProps) {
       </header>
 
       <div className="grid grid-cols-1 gap-4">
+        {/* Now/next card — Wave 3b (#77) */}
+        <NowNextCard trip={trip} items={allItems} />
+
         <Card>
           <CardHeader>
             <CardTitle>{M2_UI_STRINGS.dashboard_section_rsvp_heading}</CardTitle>
@@ -119,19 +141,64 @@ export default async function TripDashboardPage({ params }: PageProps) {
           </CardContent>
         </Card>
 
+        {/* Sub-route link cards — Itinerary (Wave 2), Announcements (3a),
+            Arrivals (4a), Roster (4b), Invites (4c — organizer-only).
+            Each lives under /trips/[slug]/<route>; the page-level RLS/role
+            gate enforces actual visibility, the dashboard surfaces them
+            so they're discoverable. */}
+        <Link href={`/trips/${trip.slug}/itinerary`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.itinerary_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href={`/trips/${trip.slug}/announcements`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.announcements_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href={`/trips/${trip.slug}/arrivals`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.arrivals_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        <Link href={`/trips/${trip.slug}/roster`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M3_UI_STRINGS.roster_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        {/* Invites — organizer-only. Page returns notFound() for
+            non-organizers, but we still hide the affordance here as UX
+            (so a non-organizer dashboard isn't peppered with dead links). */}
+        {isOrganizer ? (
+          <Link href={`/trips/${trip.slug}/invites`} className="block">
+            <Card className="hover:bg-muted/40 transition-colors">
+              <CardHeader>
+                <CardTitle>{M3_UI_STRINGS.invitesPage_heading}</CardTitle>
+              </CardHeader>
+            </Card>
+          </Link>
+        ) : null}
+
+        {/* Trip notes — Wave 3b (#78) */}
         <Card>
-          <CardHeader>
-            <CardTitle>
-              {M2_UI_STRINGS.dashboard_section_invite_heading}
-            </CardTitle>
-            <CardDescription>
-              {M2_UI_STRINGS.dashboard_section_invite_body}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground text-sm">
-              {M2_UI_STRINGS.dashboard_invite_placeholder}
-            </p>
+          <CardContent className="pt-4">
+            <TripNotesEditor
+              tripId={trip.id}
+              initialNotes={tripNotes}
+              isOrganizer={isOrganizer}
+            />
           </CardContent>
         </Card>
 

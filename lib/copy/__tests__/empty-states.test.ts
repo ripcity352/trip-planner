@@ -10,6 +10,7 @@ import {
   EMPTY_STATE_CTAS,
   ATTENDEE_COUNT_BUCKET_LABELS,
   M2_UI_STRINGS,
+  M3_UI_STRINGS,
   type EmptyStateKey,
   type AttendeeCountBucketLabelKey,
 } from "@/lib/copy/empty-states";
@@ -159,5 +160,38 @@ describe("M2_UI_STRINGS — date-poll keys", () => {
     expect(M2_UI_STRINGS.datePoll_mark_aria_label_template).toContain(
       "{label}"
     );
+  });
+});
+
+// M3 surface strings — itinerary, announcements, now/next card, trip
+// notes, arrivals, roster, invite UI. Mirrors M2_UI_STRINGS: sweep
+// shape + length, then pin the placeholders on the templates.
+describe("M3_UI_STRINGS", () => {
+  it("every value is a non-empty string under 120 chars", () => {
+    Object.values(M3_UI_STRINGS).forEach((value) => {
+      expect(typeof value).toBe("string");
+      expect(value.trim().length).toBeGreaterThan(0);
+      expect(value.length).toBeLessThanOrEqual(MAX_LENGTH);
+    });
+  });
+
+  // Templates use `.replace("{placeholder}", value)` substitution. A
+  // missing placeholder leaves a literal `{name}` in the rendered UI.
+  it("templates carry their placeholders", () => {
+    expect(M3_UI_STRINGS.itinerary_day_section_template).toContain("{weekday}");
+    expect(M3_UI_STRINGS.itinerary_day_section_template).toContain("{date}");
+    expect(M3_UI_STRINGS.itinerary_item_dress_code_template).toContain(
+      "{code}"
+    );
+    expect(
+      M3_UI_STRINGS.itinerary_item_visibility_hide_celebrant_badge
+    ).toContain("{name}");
+    expect(M3_UI_STRINGS.nowNext_pretrip_template).toContain("{days}");
+    expect(M3_UI_STRINGS.nowNext_posttrip_template).toContain("{days}");
+    expect(M3_UI_STRINGS.invitesPage_uses_template).toContain("{remaining}");
+    // {total} was removed in the Wave 4c fix-up — schema only tracks
+    // remaining count, no original max. The template now reads "{remaining} left".
+    expect(M3_UI_STRINGS.invitesPage_uses_template).not.toContain("{total}");
+    expect(M3_UI_STRINGS.invitesPage_expires_template).toContain("{when}");
   });
 });

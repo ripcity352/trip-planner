@@ -76,6 +76,98 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock,
 }));
 
+describe("createInviteAction — rate-limit scope (#107)", () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+    getUserMock.mockReset();
+    rateLimitedActionMock.mockClear();
+    redirectMock.mockReset();
+    createClientMock.mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  const VALID_UUID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+
+  function primeAuth(userId: string | null) {
+    getUserMock.mockResolvedValue(
+      userId
+        ? { data: { user: { id: userId } }, error: null }
+        : { data: { user: null }, error: null }
+    );
+  }
+
+  it("rate-limits under MINT_INVITE, not ACCEPT_INVITE", async () => {
+    // Issue #107: createInviteAction was using ACCEPT_INVITE scope,
+    // meaning a burst of mints drained the accept bucket. This test
+    // pins that createInviteAction uses the dedicated MINT_INVITE scope.
+    primeAuth("u-1");
+
+    // Minimal Supabase client double with a successful insert chain.
+    const insertSingle = vi.fn().mockResolvedValue({
+      data: {
+        token: "tok-1",
+        trip_id: VALID_UUID,
+        created_by: "u-1",
+        expires_at: null,
+        uses_left: null,
+        created_at: new Date().toISOString(),
+      },
+      error: null,
+    });
+    createClientMock.mockResolvedValue({
+      auth: { getUser: getUserMock },
+      from: vi.fn().mockReturnValue({
+        insert: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            single: insertSingle,
+          }),
+        }),
+      }),
+    });
+
+    const { createInviteAction: action } = await import("@/lib/actions/invites");
+
+    await action({ tripId: VALID_UUID, usesLeft: null, expiresAt: null });
+
+    // rateLimitedAction must be called with "mintInvite" scope specifically.
+    // (RATE_LIMIT_SCOPES.MINT_INVITE === "mintInvite")
+    expect(rateLimitedActionMock).toHaveBeenCalledWith(
+      "mintInvite",
+      "u-1",
+      expect.any(Function),
+    );
+    // Must NOT have been called with the "acceptInvite" bucket.
+    const scopesUsed = rateLimitedActionMock.mock.calls.map((c) => c[0]);
+    expect(scopesUsed).not.toContain("acceptInvite");
+  });
+
+  it("returns rate_limit when MINT_INVITE bucket is exhausted", async () => {
+    primeAuth("u-1");
+    createClientMock.mockResolvedValue({
+      auth: { getUser: getUserMock },
+      from: vi.fn(),
+    });
+
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("mintInvite", { remaining: 0, reset: 0 }),
+    );
+
+    const { createInviteAction: action } = await import("@/lib/actions/invites");
+    const result = await action({
+      tripId: VALID_UUID,
+      usesLeft: null,
+      expiresAt: null,
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+});
+
 describe("acceptInviteAction", () => {
   beforeEach(() => {
     rpcMock.mockReset();

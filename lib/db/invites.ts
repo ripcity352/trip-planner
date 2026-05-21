@@ -93,9 +93,18 @@ export async function getInvitePreview(
 }
 
 /**
- * Lists every invite for a trip, newest first. RLS on `invites`
- * already gates this to organizers + co-organizers — we don't add an
- * app-level check.
+ * Lists every invite for a trip, newest first. SELECT RLS on `invites`
+ * is currently gated by `is_trip_member(trip_id)` (NOT organizer-only),
+ * so the page-level `is_trip_organizer` check in
+ * `app/(authed)/trips/[tripId]/invites/page.tsx` is the load-bearing
+ * gate that prevents non-organizer trip members from listing tokens.
+ *
+ * Follow-up: tighten the SELECT policy to `is_trip_organizer` in a
+ * future migration so this is enforced at the row level too. Out of
+ * scope for Wave 4c (migration ordering risk); tracked for M4.
+ *
+ * Alias: `getInvitesByTrip` — same function, exported under the name
+ * used by Wave 4c pages per `notes/m3-execution-plan.md` §"Wave 4".
  */
 export async function getTripInvites(
   supabase: SupabaseClient,
@@ -113,6 +122,12 @@ export async function getTripInvites(
 
   return (data ?? []) as Invite[];
 }
+
+/**
+ * Alias for `getTripInvites` — Wave 4c pages use this name per the
+ * execution plan's file ownership table.
+ */
+export const getInvitesByTrip = getTripInvites;
 
 /**
  * Inserts a new invite row. RLS gates writes to organizers; the M1
@@ -164,7 +179,12 @@ export async function createInviteRecord(
 /**
  * Revokes an invite by clamping `expires_at` to `now()`. We don't
  * delete the row so we can still surface "this link was revoked" if
- * someone clicks it. RLS gates writes to organizers.
+ * someone clicks it.
+ *
+ * Delta 4 (M4) adds "organizers can update invites" RLS policy so the
+ * UPDATE now returns the affected count correctly. The M3 band-aid
+ * (.select("token") + zero-row throw) is removed — the policy is the
+ * authoritative gate.
  */
 export async function revokeInvite(
   supabase: SupabaseClient,

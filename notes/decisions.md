@@ -5,6 +5,1195 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-21 — M5 — auth redesign — milestone closed
+
+**Decision:** M5 closed. The v3.2 auth redesign shipped across 5
+sequential PRs (#226 PR1 foundation → #227 PR2 password form → #228 PR3
+template flip → #229 PR4 /account/sign-in-and-security → #231 PR5
+Google OAuth + State B). Phase 6 closure walk on
+`https://travelston.com` verified the end-to-end chain
+(OTP sign-in → State C atomic recovery → password sign-in → /trips)
+on production at 375×812. M3/M4 overrides A–I held; Override J
+(deploy-ordering enforcement) earned its keep on PR3.
+
+See `notes/retros/m5-retro.md` for the full closure retrospective
+(reconciled from parallel code-reviewer + senior-engineer agent lenses
+plus the production walk findings).
+
+**What shipped (verified end-to-end on production):**
+
+- Email + password as primary auth path (`signInWithPasswordAction`)
+- 6-digit OTP code as fallback (`requestEmailCode` /
+  `verifyEmailCodeAction` — Supabase template flipped from
+  `{{ .ConfirmationURL }}` to `{{ .Token }}`)
+- `signUpAction` for explicit signup (no auto-provision on first
+  password attempt)
+- `signInWithOAuthAction` for Google OAuth — button renders, server
+  action wired; full round-trip walk deferred (Supabase Dashboard
+  provider step pending)
+- `/account/sign-in-and-security` route with State A/A+/B/C state
+  machine, `changePasswordAction` (re-auth + `signOut({scope:'others'})`),
+  and the atomic `setPasswordViaRecoveryAction({token, newPassword})`
+  for State C OTP-recovery (PR4 HIGH-1 fix-up — the canonical
+  atomic-action pattern)
+- Three new rate-limit scopes: `AUTH_OTP_VERIFY` (renamed),
+  `AUTH_PASSWORD`, `AUTH_CHANGE_PASSWORD`
+- Inline auth on `/invite/[token]` — anon viewer sees the form on the
+  preview card without bouncing through `/login?next=`
+- Voice-locked canonical strings in `lib/copy/auth.ts` (~50 keys)
+  pinned by `lib/copy/__tests__/m5-auth-voice-locks.test.ts`
+- Consolidated v3.2 ADR section above this entry (PR3 + PR5 addendum)
+- Runbook `notes/runbooks/auth-setup.md` (renamed from
+  `auth-template-flip.md`) covers the operator's Supabase Dashboard
+  click-path for both the OTP template flip and the Google OAuth
+  provider setup
+
+**Load-bearing decisions made during execution:**
+
+1. **Atomic-action pattern for recovery flows (PR4 HIGH-1 fix-up
+   `de83f8e`).** The original State C two-action sequence
+   (`verifyEmailCodeAction` → `setPasswordAfterRecoveryAction`) was
+   bypassable: any authed session satisfied `auth.getUser() != null`
+   without proving OTP possession. Collapsed to a single
+   `setPasswordViaRecoveryAction({token, newPassword})` where `verifyOtp`
+   short-circuits before `updateUser` inside one `rateLimitedAction`
+   closure. **Canonical pattern: any "verify-then-mutate" two-action
+   sequence in an auth/recovery flow collapses to one atomic action
+   where the credential is passed into the mutating action.**
+
+2. **Override J (deploy-ordering enforcement) for milestone-coupled
+   dashboard steps.** PR3 paired code with a Supabase Dashboard
+   template flip + 1-hour drain. Flip timestamp recorded in PR body,
+   `Monitor` watcher ran the drain, production walk caught a
+   Supabase OTP-length config drift (set to 8, code expected 6) that
+   no CI / typecheck / preview could have caught. Operator fixed in
+   dashboard mid-walk. Carry pattern forward to any milestone pairing
+   code with a dashboard/provider step.
+
+3. **Dead-code wiring stripped from PR5 (HIGH-1 fix-up `9cefeef`).**
+   The `OAuthExistingUserAlert` UI + tests + e2e + voice-locks all
+   referenced an `auth_email_taken_oauth` error key that no server
+   path returned. Detection requires server-side identity probing,
+   which can't be done from app code without service-role access (banned
+   per CLAUDE.md). UI scaffolding stripped; copy keys + voice-locks
+   retained for the M5-followup PR; **issue #232** tracks proper
+   detection via a new SECURITY DEFINER RPC or app-schema
+   `has_password` tracking.
+
+4. **OAuth-start has no inner rate-limit; middleware path-throttle
+   handles per-IP at the edge (PR5 HIGH-2 fix-up `9cefeef`).** The
+   original `signInWithOAuthAction` wrapped the call in
+   `rateLimitedAction(AUTH_PASSWORD, "oauth-start", ...)` — a fixed
+   key bucket that any single client could exhaust globally for 15
+   minutes. Removed the inner limiter; rely on the existing
+   `GUARDED_PATH_PATTERNS` for `/login` which keys by IP.
+
+5. **`app/page.tsx` kept as-is.** The marketing landing page's CTA
+   "Sign in to your trip" → `/login` is auth-method-agnostic — works
+   for password / OTP / OAuth equally. No update needed; Override G
+   acknowledged.
+
+**Verified `[v]` (Phase 6 production walk, 2026-05-21 ~20:55-21:33 UTC):**
+
+- `/login` email-only mode → password mode → "Email me a code instead"
+  → real-inbox 6-digit code → `verifyEmailCodeAction` → `/trips` ✓
+- H3 button order on password mode: Sign in → Email me a code →
+  Continue with Google ✓
+- `/account/sign-in-and-security` middleware redirect for anon → ✓
+  (PR4 preview smoke + Phase 6 confirmation)
+- State C OTP recovery: form C-verify → C-set → atomic
+  `setPasswordViaRecoveryAction({token, newPassword})` → success toast
+  *"Password updated. Other devices were signed out."* ✓
+- Invalid token bounces form back to C-verify with voice-correct error
+  *"That code didn't take. Double-check or get a fresh one."* ✓
+- Sign out → email + password sign-in → `/trips` with existing trip
+  data — confirms `signInWithPassword` works against the password that
+  was set by State C ✓
+
+**Deferred / carry-forward (`[v]` not yet ticked):**
+
+- Google OAuth round-trip + State B set-password — requires Supabase
+  Dashboard Google provider enabled + Vercel/Supabase env vars set.
+  Operator chose to defer; tracks in **#232**.
+- Cross-device `signOut({scope:'others'})` verification — covered by
+  `e2e/account-change-password.spec.ts`; not exercised on production.
+- Resend sender domain (`travelston.com`) verification — carried
+  forward from M4 in **#135**. Phase 6 walk used the default Supabase
+  sender; the carry remains open until Resend is verified.
+
+**Newly filed M5 carry-back follow-ups:**
+
+- **#230** — chronic flake in `components/trip/__tests__/rsvp-toggle.test.tsx:192`.
+  Flaked in M4, flaked again on PR4's first CI run, passed on re-run with no
+  code change. Two-deferral threshold hit. Gate M6 Wave 0 on the fix.
+- **#232** — OAuth-existing-user alert detection wiring. UI scaffolding
+  stripped from PR5 fix-up; copy keys + voice-locks retained for the
+  follow-up PR.
+- **#233** — `/account/sign-in-and-security` renders State A for OTP-only
+  users (identity check is provider-only, not password-set). Discovered
+  during Phase 6 walk. State C recovery path is unaffected; first-arrival
+  UX is wrong. Recommended fix: track `has_password` in app schema
+  (option 3 in the issue body — no service-role API required).
+
+**Process learnings carried to M6 (from the retro):**
+
+1. **Phantom-wiring audit** — pre-merge reviewer prompt: for each new
+   error key / copy key / state branch, `rg <symbol>` must show both a
+   producer AND a consumer. Only consumers → flag dead-code HIGH.
+2. **`(human-step)` annotations** at plan-lock time for items requiring
+   Dashboard, RPC creation, or third-party setup — the TDD chain
+   stubs-and-defers rather than fake-and-passes.
+3. **Pre-commit grep flagging tdd-guide softens-prod-for-tests
+   patterns** — same class as M4's tdd-guide-hallucination, caught
+   pre-review on PR2 (`0054bfd`).
+4. **Atomic-action pattern codified** above; reviewer prompt: any
+   multi-step auth action is one rate-limited closure.
+5. **Supabase dashboard config-drift checklist** — pre-walk eyeball
+   checks (OTP Length, Site URL, template body, Google OAuth state)
+   should land in `notes/runbooks/auth-setup.md`. Next walk a glance,
+   not a discovery.
+
+**Memory:**
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md`
+  — updated alongside this closure to reflect M5's new reality
+  (password + OTP + OAuth, magic-link demoted to recovery primitive).
+  The underlying principle (low-friction default, defense-in-depth
+  only where the actual threat model demands it) holds.
+
+**Bright line unchanged from M4:** *use the app for one real bachelor
+party.* M5 made the auth flow real; whether M1–M5 are sufficient is
+still the post-trip retrospective gate. **Don't start M6 just because
+the chain is green — gate on the actual trip.**
+
+---
+
+## 2026-05-21 — M5 auth redesign — password + OTP + OAuth (PR3 template flip)
+
+**Decision:** Replace Supabase magic-link-as-primary with email+password
+(primary) + 6-digit OTP code (fallback) + Google OAuth (alternative; PR5).
+Magic link demoted to verification/recovery primitive only. Add
+`/account/sign-in-and-security` for password rotation (PR4). Threat model
+is bachelor-party-insider per `feedback_friction_vs_security` memory
+note — friction < defense-in-depth, rate-limiting is the load-bearing
+brute-force control.
+
+**Supersedes:** the M3 W0c decision to use magic-link-via-`token_hash`
+URLs as the primary auth path. The `token_hash` branch is deleted from
+`lib/auth/callback-handler.ts` in this PR after the 1-hour link-drain.
+
+### Why 6-character minimum password with no complexity rules
+
+For a 12-person bachelor party, the realistic attack is an organizer
+guessing another organizer's password. The defense against that is rate
+limiting (`AUTH_PASSWORD`, 5 attempts / 15 min per email), not character
+classes. Forcing "must contain a number and symbol" produces SaaS-y
+friction that the user explicitly does not want and that the threat
+model does not require. 6 characters is the floor below which even a
+trivial brute-force becomes too cheap; above the floor, the rate limit
+does the work.
+
+**Alternatives considered:** 8+ characters with class rules; zxcvbn-style
+strength meter; HaveIBeenPwned breach check. All rejected — each adds
+user-perceptible friction without changing the threat-model math.
+
+### Why no HaveIBeenPwned breach check
+
+HIBP catches passwords reused from public breaches. At insider-only
+scale (12 people, all known to the organizer), a breached-password
+match is more likely to be a false-positive (Dave reuses his Spotify
+password) than a true positive. The fetch also adds latency to the
+sign-in path and a third-party dependency. Rejected.
+
+### Why no recent-reauth gate before password change
+
+A recent-reauth gate ("you must enter your current password again
+within the last 5 minutes to change it") defends against session-
+hijack scenarios where the attacker has cookie access but not the
+plaintext password. At this threat tier — insider-only, 12-person
+trip — single-device-pwn = game over is the accepted floor. If
+someone has Dave's unlocked phone, the trip is already over and a
+recent-reauth gate doesn't change that. Rejected.
+
+### Why no separate `/forgot-password` route
+
+The 6-digit OTP fallback already serves as the recovery primitive.
+A separate password-reset route would duplicate the email-code flow
+under a different name. Users who forget their password tap "Email
+me a code instead" on `/login`, get a 6-digit code, and (in PR4) can
+set a new password from `/account/sign-in-and-security` via the
+State C sub-flow. The single recovery primitive is cleaner.
+
+### Why no "remove password" affordance in account UI
+
+Footgun. If a user removes their password, they're left with OTP-as-
+sole-auth, which is fine until they delete the email or change
+addresses. Account-locked scenarios are recoverable for the owner
+but painful for the user; not worth the surface area.
+
+### Why we accept the OAuth-user-typing-password enumeration leak (PR5)
+
+When PR5 lands, an attacker who types a wrong password for an email
+that exists with a Google-only identity will see *"You signed up with
+Google. Sign in with Google, or get a code emailed instead?"* — a
+strong enumeration oracle. This is acceptable at this threat tier:
+
+- The leak requires a `wrong-password` event on a real account, gated
+  behind `AUTH_PASSWORD` rate-limit (5/15min per email).
+- The user-experience gain is large — a confused organizer who forgot
+  they signed up with Google sees an actionable prompt instead of a
+  generic error.
+
+Suppressing the leak would either require silent re-routing (poor UX)
+or a generic error message that fails to help the legitimate user.
+
+### Why State B (PR5) has no OTP gate before set-password
+
+State B is the set-password flow for users who signed in via OAuth or
+OTP and want to add a password. They are *already authenticated* via
+their existing identity. An additional OTP gate would force a fresh
+code email for a user who just clicked through one. The invite-flow
+auto-signin precedent (M2 — accept-invite auto-creates the session
+without an additional challenge) is the same reasoning. Asymmetric
+with the password-change flow (PR4), which DOES verify the current
+password — but that's because the current password is the existing
+credential to be rotated. State B has no existing credential to
+verify; the existing identity is the verification.
+
+### PR5 addendum — State B no-OTP-gate rationale (2026-05-21)
+
+This section expands the brief bullet above with the full threat-model
+reasoning, written as the spec was locked (v3.2) and confirmed during PR5
+implementation. It is NOT a re-litigation — this is the decision the operator
+already made. The purpose is to document the reasoning deeply enough that
+a future reviewer can reconstruct it without re-opening the spec conversation.
+
+**The attack scenario for State B:**
+
+A malicious actor has access to the victim's authenticated browser session
+(borrowed laptop, unattended phone, XSS-escalated session token). They
+navigate to `/account/sign-in-and-security`, see the State B form (because
+the victim is an OAuth-only user), and set a password of their choosing.
+
+**Why this is accepted:**
+
+1. **The victim is NOT locked out.** The victim's Google OAuth identity
+   remains intact. The attacker added a credential; they did NOT replace
+   or remove the existing one. The victim can still sign in via Google
+   and then (now that they have State A, not State B) change or remove
+   the attacker's password via the existing `changePasswordAction`.
+
+2. **The OTP gate would not meaningfully close the gap.** If an attacker
+   has session-level access, they can also trigger the OTP request email.
+   On a borrowed laptop, the victim's email inbox may also be open. The
+   OTP gate is effective when we are trying to prove identity before
+   crossing a privilege boundary (State C's rationale). In State B, we
+   are not crossing such a boundary — the user is already authenticated
+   at a session level.
+
+3. **The invite-flow auto-signin precedent.** M2's accept-invite flow
+   creates an authenticated session without a separate challenge after
+   the invite link is clicked. That invite link IS the proof of
+   identity. State B is structurally similar: the OAuth session IS the
+   proof of identity. Both flows accept the risk of borrowed-session
+   abuse as the price of frictionless UX for the real-trip use case.
+
+4. **The friction cost is real.** The target user (bachelor-party
+   attendee, likely on a phone, likely arriving via a group-chat link)
+   setting a password for the first time after Google sign-in should
+   not be interrupted by a second email code. The friction cost to
+   legitimate users is high; the security benefit (against an attacker
+   who already has session access) is low.
+
+**What we DID NOT do (and why):**
+
+- `signOut({scope:'others'})` after `setPasswordAction`: would log the
+  current session out of other devices, which is surprising when the
+  user just ADDED a credential rather than rotated one. No prior
+  credential exists to invalidate.
+
+- An OTP gate: see reasoning above (point 2). Explicitly rejected in
+  the v3.2 spec and confirmed in PR5 implementation.
+
+**The load-bearing memory file:**
+`~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md`
+encodes this trade-off at the project level. State B is a specific
+instance of the general principle: "default to simplest auth/security
+pattern that meets the actual (bachelor-party) threat model."
+
+### Rate-limit posture
+
+| Scope | Budget | Fail-closed on shim? |
+|---|---|---|
+| `AUTH_OTP_VERIFY` | 30/60s (default) | No (allow-with-warning during bootstrap) |
+| `AUTH_PASSWORD` | 5/15 min per email | No (same rationale) |
+| `AUTH_CHANGE_PASSWORD` (PR4) | 5/15 min per user | No |
+
+The `FAIL_CLOSED_ON_SHIM` posture matches the existing
+`AUTH_OTP_VERIFY` precedent — bootstrapping deploys without Upstash
+should still allow auth (the deployment is too small to have an
+abuse vector at that stage). The loud `console.error` in the shim
+catches a future regression where Upstash provisioning silently
+drops.
+
+### M5 ship sequence (umbrella #220)
+
+- **PR1 (#226):** widened `verifyOtp` to accept both `token_hash`
+  (legacy) and `token + email + type` (new). Scope rename
+  `AUTH_MAGIC_LINK` → `AUTH_OTP_VERIFY`. Merged 2026-05-21.
+- **PR2 (#227):** progressive-disclosure form, `signInWithPasswordAction`,
+  `signUpAction`, `verifyEmailCodeAction`, `requestEmailCode` (renamed),
+  `AUTH_PASSWORD` rate-limit, inline auth on `/invite/[token]`,
+  `lib/copy/auth.ts` palette. Merged 2026-05-21.
+- **PR3 (#228, this PR):** Supabase Dashboard email-template flip
+  ({{ .ConfirmationURL }} → {{ .Token }}), 1-hour link drain, deletion
+  of the legacy `token_hash` branch from the callback handler, this
+  ADR, `CLAUDE.md` auth-block update, runbook
+  `notes/runbooks/auth-template-flip.md`. Closes #206.
+- **PR4 (#224, next):** `/account/sign-in-and-security` page with State
+  A / A+ / C; `changePasswordAction` with server-side email pinning +
+  `signOut({scope:'others'})`; `AUTH_CHANGE_PASSWORD` rate-limit.
+- **PR5 (#225, last):** Google OAuth + State B (set-password for
+  identity-only users). Appends State-B-OTP-drop rationale to this
+  same ADR.
+
+**Alternatives considered for the sequencing:**
+
+- Bundling PR3's dashboard flip into PR2: rejected because the 1-hour
+  drain requires a holding pattern that breaks the per-PR workflow.
+- Doing PR4+PR5 first (before the template flip): rejected because
+  PR5's State B touches the same `_form.tsx` and `actions.ts` files
+  as PR2, and parallel waves on a 360-LOC client component are a
+  collision risk. The sequential plan is also simpler to reason
+  about for the operator performing the dashboard flips.
+
+**Memory:**
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md` is load-bearing for every "no" above. Re-read it before flagging any of these decisions in a future PR review.
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/project_m5_auth_redesign.md` tracks the milestone status.
+
+---
+
+## 2026-05-21 — M4 — Trip is shippable — milestone closed
+
+**Decision:** M4 closed. The MVP is shipped: five-tab IA, structured
+inputs with freeform fallback, themed persimmon design system, legal
+stubs, axe/Lighthouse a11y pass, and 15 wave PRs (#190–#204) plus this
+closure PR landed on `main`. The app is real-trip ready. Per
+`notes/roadmap.md`, **stop here** — use it for the actual bachelor
+party, then gate M5 on the retro.
+
+**What shipped (16 PRs):**
+
+- **#190** — W0a: plan doc + copy/data lock, M4 execution plan bootstrap.
+- **#191** — W0e: test infra — multi-persona fixtures (`seed-test-organizer`,
+  `seed-test-celebrant`), `STORAGE_STATE_ORGANIZER_PATH`,
+  `STORAGE_STATE_CELEBRANT_PATH`, `asOrganizer()` / `asCelebrant()` helpers.
+- **#192** — W0b: carry-back migration (Deltas 1–7): `getFlagsForItem`
+  data layer (#Delta 1), `trips.timezone` column (#Delta 2),
+  `setTripNotes revalidatePath` (#159 / Delta 4), `invites` UPDATE RLS
+  policy (#Delta 5), `trip_members` SELECT tightening (#Delta 6),
+  `idempotency_key` on `createInviteAction` (#158 / Delta 7).
+- **#193** — W0c: Google Places autocomplete server proxy (`/api/places/autocomplete`),
+  `SCOPE_BUDGETS` wired through `buildUpstashLimiter` (Deltas 8 + 9),
+  `MINT_INVITE` hardened to 10/hour, invite GET route drop.
+- **#194** — W0d: bottom tab bar (`home / plans / posts / crew / me`),
+  `/me` skeleton, deep-link middleware, `edit-item-form-sheet.tsx` pre-split
+  into per-field sub-components.
+- **#195** — W1a: dress-code preset chips (#163).
+- **#196** — W1b: activity-tag chip picker (#164).
+- **#197** — W1c: per-item member-flag chips + organizer view + member
+  self-read (#165).
+- **#199** — W2a: Places UI consumer + `address_place_id` persistence (#166).
+- **#200** — W2b: `datetime-local` widget + trip timezone support (#167, #108),
+  `trips.timezone` added to `TRIP_COLUMNS`.
+- **#198** — W2c: airline picker + IATA enforcement + `CARRIER_SANITIZE_REGEX`
+  corrected (#168).
+- **#201** — W3a: theming pass — persimmon design tokens, focus-ring,
+  hero image (#90, #121).
+- **#202** — W3b: RSVP color + icon (color never the only signal) (#45).
+- **#203** — W4a: legal stubs — `/legal/terms` + `/legal/privacy` (#81).
+- **#204** — W4b: prod-walk fixes + `@axe-core/playwright` a11y sweep (#82).
+- **W4c** (this PR): closure — retro authored, ADR recorded, roadmap updated,
+  `CLAUDE.md` updated, m4-golden-path e2e spec, deployment-readiness
+  closure status.
+
+**Load-bearing decisions made during execution:**
+
+1. **Wave 0 split into 5 sub-PRs (W0a–W0e)** after Lazy-Path Audit 1
+   flagged the fat-PR risk. A single "M4 carry-back" PR would have been
+   ~900 LOC across 20+ files — well above the per-PR ceiling and a
+   collision hazard for the parallel structured-inputs wave. Splitting
+   into W0a (plan), W0b (DB carry-back), W0c (proxy + rate-limit),
+   W0d (nav), W0e (test infra) allowed Wave 1 to start in parallel
+   against a stable base.
+
+2. **`edit-item-form-sheet.tsx` pre-split into per-field sub-components**
+   (W0d) to avoid a 4-way line-collision risk. Wave 1 agents (W1a dress
+   code, W1b activity tag, W1c member flag) would each have needed to
+   edit the same form component. The pre-split gave each wave its own
+   file surface.
+
+3. **`date-fns-tz` as a direct dependency (W2b).** `date-fns` alone
+   cannot convert a UTC timestamp into a named timezone slot (e.g.
+   `America/Los_Angeles`). The alternative — using the Intl API directly —
+   produces format strings inconsistent with the existing `date-fns`
+   usage across the codebase. `date-fns-tz` is the canonical companion
+   library; adding it as a direct dep (not a devDep) is correct because
+   it ships in the app bundle.
+
+4. **`@axe-core/playwright` as a dev dependency (W4b).** The axe sweep
+   runs in e2e specs only — never in the app bundle. `devDependencies`
+   is the right home. The alternative (using `axe-core` directly with a
+   custom runner) was rejected as unnecessary complexity given that
+   `@axe-core/playwright` is the first-party companion.
+
+5. **`SCOPE_BUDGETS` wiring fix (W0c).** W0c initially shipped
+   `SCOPE_BUDGETS` as a declarative config object only — the values were
+   defined but never passed through `buildUpstashLimiter`. Code-reviewer
+   flagged this HIGH: the rate-limit scopes were completely bypassed in
+   production. The consolidated fix-up wired all scopes through
+   `buildUpstashLimiter` in the same W0c PR before merge.
+
+6. **`trips.timezone` added to `TRIP_COLUMNS` (W2b).** The `datetime-local`
+   widget wrote `trips.timezone` to the DB, but the shared `TRIP_COLUMNS`
+   select constant — used in every `getTrip` call — did not include the
+   new column. Security-reviewer caught this as a silent data-loss bug:
+   the UI would render with an undefined timezone on every page that used
+   the shared query, silently falling back to UTC. The fix added
+   `timezone` to `TRIP_COLUMNS` in the same W2b PR.
+
+7. **Airline picker `CARRIER_SANITIZE_REGEX` swap from `/[ \r\n]/g` to
+   `/[\0\r\n]/g` (W2c).** The original regex stripped spaces from carrier
+   names, which would corrupt airline names like "Air Canada" to
+   "AirCanada." Code-reviewer and security-reviewer both flagged this
+   CRITICAL: the intent was to strip NUL, carriage return, and newline
+   (injection vectors), not spaces. The fix swapped space (`\x20`) for
+   NUL (`\0`) in the character class.
+
+**Verified DoD:** see `notes/m4-execution-plan.md` DoD checklist. All
+`[d]` ticks landed wave-by-wave at PR merge. `[v]` ticks will land after
+the production walk on travelston.com (orchestrator's responsibility
+post-merge).
+
+**MVP target reset:** M1–M4 are done. **Next: real-trip retrospective
+gates M5.** See `notes/retros/m4-retro.md` for the full retro.
+
+---
+
+## 2026-05-20 (late PM) — Tab-based IA locked + 3-axis labeling scheme
+
+**Decision:** The trip surface ships as a **5-tab bottom navigation**:
+`home / plans / posts / crew / me`. Mirrors the Claude Design mockup
+(external Figma, not versioned in repo). Money does **not** get a 6th
+tab — it surfaces as a "your move" CTA on `home` (e.g. "Send Dave
+$312"). Settlement detail is a deep-link route or bottom-sheet, never
+a top-level tab. Closes the IA gap the nine open expenses issues
+(#46–#54, #57) have been carrying.
+
+**3-axis issue labeling — `milestone × area × tab`:**
+
+- **`milestone:Mx`** — when we ship it. Already in use.
+- **`area:*`** — engineering/feature domain. Already in use; expanding
+  with `area:copy` for microcopy-only changes.
+- **`tab:*`** — where the user encounters it. **New axis, optional.**
+  Use only when an issue has a clear user-facing home. `tab:none` for
+  genuinely cross-cutting work (RLS, infra, auth, design system).
+
+**Triage rule:** every issue gets `milestone` + `area` required;
+`tab` optional. Multiple `tab:*` labels allowed for issues that span
+tabs (e.g. #45 RSVP color+icon touches `home` + `plans` + `crew`).
+
+**Code structure stays as-is.** Next.js App Router routes (already
+organized by feature under `app/(authed)/trips/[tripId]/...`) remain
+the source of truth. Do not bend folder structure to tab labels — the
+URL tree and the nav tree are allowed to diverge.
+
+**Why not promote `tab` to a milestone axis:** milestones today answer
+*"what does this unlock for a real trip?"* — a stable framing that's
+survived three closures (M1, M2, M3). Tab-keyed milestones would
+force *placement* questions (the wrong unit) and couple the schedule
+to the IA (the least stable layer in this stack). Tab IA may shift
+(e.g. `crew` could split into `roster` + `invites`); a label retag is
+cheap, a milestone restructure isn't.
+
+**Why money lives on `home`, not its own tab:** money is the #1 asked
+feature per audience research, but the user-action shape is "settle
+one balance, then forget about it." It belongs in the "your move"
+slot on `home` alongside RSVP nudges and itinerary acks, not in a
+permanent IA position that promises ongoing engagement we won't
+deliver. Aligns with the 2026-05-18 "no real-money handling" ADR —
+informational settlement doesn't warrant tab-level real estate.
+
+**What unlocks next (files separately, post-merge):**
+
+- **Nav-refactor M4 carry-back issue** — `components/BottomTabBar.tsx`
+  + `app/(authed)/trips/[tripId]/layout.tsx` + new `/me` route.
+  ~200 LOC. `milestone:M4`, `area:nav`, `tab:none`.
+- **`/me` composition issue** — what surfaces on the new self-tab
+  (profile, my RSVPs, my expenses, leave-trip). `milestone:M4`,
+  `area:me`, `tab:me`.
+- **7-issue Claude Design feedback batch** — Prompts 1–5, 7, 10 from
+  the mockup walkthrough. Each filed with appropriate `tab:*` label.
+
+**Out of scope for this ADR:** the actual tab-bar component, the
+`/me` route, the visual treatment of the "your move" home CTA. Those
+ship as code in the issues above.
+
+**Alternatives considered:**
+
+- **6-tab IA with `money` as a peer:** rejected per money-shape
+  argument above. Also pushes tab targets below the 44pt mobile-tap
+  comfort zone on 375px screens.
+- **`tab` as a required label:** rejected — most infra and design-
+  system work has no user-facing home. `tab:none` is honest;
+  required-everywhere would force false placement.
+- **Drop the `area` axis, use only `milestone` + `tab`:** rejected —
+  `area` is what the engineering side queries on; `tab` is what
+  product/UX queries on. Both audiences need their own slice.
+
+---
+
+## 2026-05-20 — M4 sim: full-filter wins for hide_from_celebrant + decoy-item workaround pattern
+
+**Decision:** For `visibility=hide_from_celebrant` content, the existing
+M3 RLS-filter shape — row excluded from the celebrant's `SELECT`
+entirely, no slot rendered — is the right answer. The frosted-blur
+pattern described in `notes/research/ux-design-principles.md:51-73`
+(celebrant sees the slot, content blurred) is **out of scope for M4
+and most likely M5**. Revisit only if a real-trip retrospective
+surfaces a concrete "celebrant felt the absence" moment.
+
+For multi-hour surprise windows where the celebrant might notice a
+literal time-gap, organizers use the **decoy-item pattern**: add a
+`visibility=everyone` decoy item ("free time / regroup at 5:30",
+"recovery at the Airbnb") in the same slot. Honest, no lie, fills the
+gap. Works in M3+M4 today, zero schema change.
+
+**Rationale:**
+
+Three sources had to be reconciled:
+
+1. `notes/research/persona-groom.md:41` — full-filter (celebrant
+   doesn't see the slot at all).
+2. M3 shipped RLS shape — `can_see_content()` (m1 migration:171–188) is
+   a **boolean predicate** used inside the itinerary `SELECT` policy
+   (m3 migration:233–237). Row is filtered server-side; client never
+   receives it. Full-filter.
+3. `notes/research/ux-design-principles.md:51-73` — frosted blur with
+   slot visible.
+
+Two of three sources agree. The technical critic (re-audit batch 2)
+verified the blur path would require a **new masked-SELECT shape**:
+`can_see_content()` is boolean, not a sanitizer, so a blur surface
+would need either a separate view exposing slot metadata (`day`,
+`start_time`, `category`) without the content, or a SECURITY DEFINER
+RPC returning a sanitized projection. That's a new query path and a
+new RLS surface. The full-filter pattern that already ships does the
+right thing for the persona — `roadmap.md:194` STOP HERE held.
+
+The celebrant walk independently surfaced the same call:
+*"a frosted 9pm card with `Saturday 9pm · Activity` metadata visible
+is a teaser by another name, and David would have started guessing.
+Filter wins; just write it down."* (`findings-celebrant.md:168`)
+
+**Decoy-item workaround pattern (LOAD-BEARING):**
+
+The critic re-audited the decoy pattern against current RLS
+(`findings-critic.md` re-audit batch 2):
+
+- Celebrant `SELECT` returns only the `everyone` decoy row;
+  organizer `SELECT` returns both. ✓
+- No `(trip_id, day, start_time)` uniqueness constraint on
+  `itinerary_items` — two items at the same slot is structurally
+  indistinguishable from real scheduling overlap. **That's the
+  win, not a leak — plausible deniability.**
+- `itinerary_item_rsvps` on the decoy is innocuous (celebrant can
+  RSVP `going` to "free time"); no cross-leak to the hidden item.
+- `lodging_assignments` cross-trip guard (trigger
+  `assert_lodging_item_kind_before_assignment`, m3 migration:557–582)
+  blocks lodging-assignment to a non-lodging decoy.
+
+Pattern is RLS-tight today, no schema delta needed. Organizer copy
+guidance for the decoy lives in the M4 microcopy PR.
+
+**Future-decisions guardrail (CRITICAL FOR M5+):**
+
+**Never ship an activity feed, recent-changes surface, or any
+visualization exposing `created_at` timestamps on itinerary items to
+the celebrant.** The decoy pattern relies on slot-overlap plausible
+deniability; a creation-timestamp-adjacent display would reveal the
+decoy by adjacency (decoy and surprise are created seconds apart).
+This guardrail is the load-bearing reason this ADR exists — without
+recording it, future-Claude could re-propose an organizer-activity
+or "what changed today" surface and silently leak the hidden item by
+inference.
+
+**Alternatives considered:**
+
+- **Frosted-blur masked-SELECT (`ux-design-principles.md:51-73`).**
+  Rejected because (a) it requires a new masked-SELECT shape because
+  `can_see_content()` is boolean, not a sanitizer; (b) `roadmap.md:194`
+  STOP HERE explicitly limits M4 polish; (c) the decoy-item pattern
+  closes the same "celebrant might notice the gap" concern at zero
+  engineering cost. The blur design earns its way back in only if a
+  retro produces a specific celebrant-felt-the-absence moment that
+  the decoy pattern couldn't cover.
+
+**Implementation:**
+
+- No code change. Filter shape already ships (m1 + m3 migrations).
+- Microcopy PR ships organizer-facing copy guidance for the decoy
+  pattern alongside the dress-code rename + member-flag composer
+  heading.
+- This ADR is the durable record of the call; cite it in any future
+  PR/issue that re-opens the blur question.
+
+**Sim citations:**
+
+- Celebrant Finding C1 — `findings-celebrant.md:6` (blur vs filter,
+  filter wins)
+- Organizer Finding O2 — `findings-organizer.md:15` (hide_from_celebrant
+  render path)
+- Organizer cross-DM addendum — `findings-celebrant.md:81–85` (decoy
+  pattern surfaced via celebrant walk)
+- Critic pre-load — `findings-critic.md` (initial filter-wins recommendation)
+- Critic re-audit batch 2 — `findings-critic.md:444–451` (decoy RLS
+  verification + activity-feed guardrail)
+- Synthesis Call A — `findings.md:52–53`
+
+---
+
+## 2026-05-20 — M4 sim: organizer-write-on-behalf for member-flags — M5+ scope, principle holds with attribution
+
+**Decision:** Organizer-write-on-behalf for `itinerary_item_member_flags`
+is **M5+ scope**, deferred from M4. **The master principle stated in
+`persona-edge-attendees.md:11-18` (non-default attendees opt *in*, the
+app doesn't *assume*) HOLDS with attribution + member-confirm** — the
+M5 design must not treat this as a principle-inversion fight. The
+principle protects against the app *assuming* a default; it does NOT
+protect against an organizer *recording* what an attendee already
+volunteered out-of-band. **This wording is load-bearing; do not soften
+it.**
+
+**Reconciliation of the disagreement:**
+
+This call was contested through the sim:
+
+1. **Initial critic framing (pre-load):** organizer-on-behalf inverts
+   the opt-in principle — the app would be acting on behalf of a
+   member who hasn't tapped, which looks like the same kind of
+   "assume the default" pattern rule #8 was written to prevent.
+2. **Organizer pushback (`findings-organizer.md:33–40`, Finding #4):**
+   the M3 schema already lets organizers write on behalf of members
+   for `lodging_assignments` (migration
+   `20260520052357_m3_itinerary_announcements.sql:131-149`). That
+   precedent shows the project can express "organizer banks an
+   attendee fact" without violating the principle, *given the right
+   attribution.* Workaround today ("text Marcus to open the app") is
+   literally the asymmetric-labor problem
+   `persona-best-man.md:69` names.
+3. **Edge-attendee addendum (`findings-edge.md:90–99`, Finding #10):**
+   the affected persona — Marcus, the one the principle was written
+   to protect — sided with the organizer in his own filing:
+   *"transcribing a fact the attendee specifically volunteered via
+   DM is recording, not assuming."* He proposed the three
+   preserve-conditions below.
+4. **Critic walk-back (`findings-critic.md:440`, re-audit batch 1):**
+   the initial principle-inversion framing was retracted. *"Marcus's
+   `written_by` + member-confirm proposal closes the principle
+   objection."* Severity downgraded to "nice-to-have for M4, M5 retro
+   if no budget."
+
+**Three preserve-conditions (REQUIRED for any M5 implementation —
+copy verbatim from `findings-critic.md` re-audit batch 1):**
+
+1. **Attribution column:**
+   `written_by_trip_member_id uuid references public.trip_members(id)` —
+   NOT `auth.users(id)`. This matches the M1 FK-retargeting convention
+   (`database-workflow.md:256-271`) and the existing `trip_member_id`
+   column shape on the same table.
+
+2. **Additive INSERT policy (do NOT widen the existing owner-insert
+   policy):**
+   Keep `"item flags: owner insert"` (m3 migration:514-525) unchanged.
+   Add a second, additive policy
+   `"item flags: organizer insert on behalf"`:
+   ```sql
+   with check (
+     public.is_trip_organizer(...)
+     and written_by_trip_member_id in (
+       select id from trip_members where user_id = auth.uid()
+     )
+     and trip_member_id <> written_by_trip_member_id
+   )
+   ```
+   The third clause is **load-bearing defense-in-depth**: without it,
+   an organizer could write a flag claiming the member wrote it
+   themselves (forged self-attribution). The clause forces
+   `written_by` to be the acting organizer's own membership row and
+   forbids it from matching the target.
+
+3. **Member-confirm UI:** Once the M4 self-read SELECT policy lands
+   (the M4 carry-back ship-blocker, three-persona convergence), the
+   member-side picker surfaces organizer-written rows with a
+   one-tap `"Dave saved this for you — keep it?"` confirm/remove
+   affordance. The attribution column is honest; the confirm/remove
+   makes the principle hold *in the UX*, not just in the schema.
+
+**Why M5+ scope, not M4:**
+
+The feature requires four moves in one wave: (a) schema add
+(`written_by_trip_member_id` column), (b) RLS policy add (additive
+INSERT), (c) server action plumbing for organizer-acting
+write-with-attribution, (d) member-confirm UI on the chip picker.
+That's three-of-four M4 budget hats in a single feature — schema,
+RLS, UI, plus the copy review for the confirm string. The M4
+carry-back migration already ships the self-read fix
+(cross-persona ship-blocker), which is what unblocks the picker
+end-to-end for the actual M4 trip. Write-on-behalf lands when the
+post-trip retro confirms the asymmetric-labor problem actually
+fired (Dave actually had to text Marcus to open the app, Marcus
+actually didn't, the chef-venue actually missed the allergy).
+
+If the M5 retro confirms the friction, the implementation is
+mechanically ready — three preserve-conditions above, ~80 lines of
+migration + policy + server action + picker affordance.
+
+**What this ADR PREVENTS:**
+
+Future re-litigation of the principle question. If you find yourself
+debating whether organizer-on-behalf "violates opt-in," re-read the
+edge-attendee's addendum (`findings-edge.md` Finding #10). The
+principle protects against the *app* assuming; it does not protect
+against an *organizer* recording what the attendee volunteered. The
+attribution + member-confirm UI is the bridge between those two
+positions and is the right design.
+
+**Alternatives considered:**
+
+- **Land in M4 with the three preserve-conditions.** Rejected on
+  scope: too many M4 budget hats in one feature, and the M4
+  self-read fix already unblocks the picker for the actual trip.
+  Save the write-on-behalf surface for the retro-confirmed need.
+- **Widen the existing owner-insert policy to allow organizer
+  writes.** Rejected: the additive-policy pattern is safer to
+  audit and reason about. Mixing owner-self and organizer-on-behalf
+  semantics in one policy makes the third-clause defense-in-depth
+  ambiguous to read.
+- **Use a SECURITY DEFINER RPC** like `accept_invite`. Rejected:
+  RLS can express the constraint directly with the additive policy.
+  SECURITY DEFINER is the right tool when RLS *can't* express the
+  constraint (atomic invite accept), not when it can.
+
+**Sim citations:**
+
+- Organizer Finding #4 — `findings-organizer.md:33–40`
+- Edge-attendee addendum Finding #10 — `findings-edge.md:90–99`
+- Critic re-audit batch 1 — `findings-critic.md:428–442`
+- Synthesis Call B — `findings.md:55`
+
+---
+
+## 2026-05-20 — M4 sim: Google Places API locked + server-proxy + PLACES_AUTOCOMPLETE rate-limit scope
+
+**Decision:** Lock the M4 address-autocomplete provider (#166) to
+**Google Places API**. A browser-visible API key
+(`NEXT_PUBLIC_GOOGLE_PLACES_KEY` or similar) is **rejected** in favor
+of a **server-proxy route handler** at
+`app/api/places/autocomplete/route.ts`, fronted by a new rate-limit
+scope `PLACES_AUTOCOMPLETE` in `lib/rate-limit/`.
+
+**Rationale:**
+
+- **Provider choice (Google):** team-lead lock during the sim
+  (`findings-organizer.md:145`). Google Places has the best US bar /
+  restaurant coverage for the actual use case (bachelor-trip venue
+  picking). Mapbox and Apple MapKit JS were considered; Mapbox loses
+  on small-business coverage in the US bar/restaurant long tail,
+  Apple MapKit loses on cross-platform polish (the trip is shared
+  across iOS + Android browsers). Closes
+  `future-state-guide.md` open question #11.
+
+- **Server-proxy, not browser-visible key:** the conventional move
+  for a Next.js client-side Places integration is a `NEXT_PUBLIC_*`
+  key with HTTP-referrer restrictions on the Google Cloud Console
+  side. Three reasons we don't take that path:
+  1. **HTTP-referrer is spoofable.** It's a header; anyone running
+     curl can pretend to be `*.vercel.app`. Browser-visible keys are
+     scrape-able from the bundled JS within seconds of a Vercel
+     preview going live.
+  2. **Places billing is real and abusable.** A leaked key with no
+     rate-limit between it and the client is a cost-amplification
+     surface. The MVP traffic is tiny but the abuse surface is
+     globally addressable.
+  3. **`lib/rate-limit/` already exists.** Routing through a server
+     proxy lets us add a `PLACES_AUTOCOMPLETE` scope (per-user,
+     consistent with `MINT_INVITE` / `ACCEPT_INVITE` / `SET_RSVP`
+     buckets) and centralizes the key in Vercel project env. This
+     is consistent with the #141 rate-limit ratchet posture.
+
+- **Friction-vs-security clarification:** the project-memory note
+  `feedback_friction_vs_security` addresses **user-flow** threats
+  (e.g., PKCE-vs-token-hash on magic-link — see
+  `decisions.md:137–207`). It does **not** apply to
+  **infrastructure-cost** threats like an unauthenticated billing
+  surface. The server proxy is +1 file (`route.ts`), zero
+  user-visible friction. The user types in a chip picker; the proxy
+  fetches and returns suggestions; the user never sees the seam.
+
+**Schema impact (in M4 carry-back migration):**
+
+```sql
+alter table public.itinerary_items
+  add column address_place_id text,
+  add column address_provider text;
+```
+
+These columns close the schema portion of #166. The provider column
+exists so a future Mapbox-or-other migration is a string-update, not
+a re-key.
+
+**Dependency declaration:**
+
+This is a **new external dependency**. Per `CLAUDE.md` ("Don't add
+new dependencies without flagging it in the response"): the dep is
+Google Places Autocomplete API (Places API (New) endpoints, server-
+side). **No new npm package** — the route handler uses Next.js's
+built-in `fetch`. The only project-level deltas are:
+- New env var `GOOGLE_PLACES_API_KEY` (server-only, Vercel-injected,
+  documented in `.env.example`)
+- One Google Cloud Console project + Places API enabled + billing
+  card on file (owner action — `ripcity352`)
+- New rate-limit scope constant added to `lib/rate-limit/`
+
+**Alternatives considered:**
+
+- **Mapbox** — bar/restaurant coverage gap (see provider choice).
+- **Apple MapKit JS** — cross-platform polish gap; only worth it for
+  iOS-only apps.
+- **Browser-visible key with HTTP-referrer restriction** — spoofable,
+  scrape-able, no rate-limit hook. Rejected.
+- **OpenStreetMap / Nominatim** — usage policy forbids high-volume
+  autocomplete; not designed for this workload.
+
+**Sim citations:**
+
+- Organizer Finding #17 — `findings-organizer.md:142–148`
+- Critic pre-load — `findings-critic.md:94–100`
+- Synthesis carry-back item — `findings.md:87`
+
+---
+
+## 2026-05-20 — M4 sim: silent "heading back" ping — retired ask, safety case → text-organizer-directly
+
+**Decision:** The persona ask for an in-app silent "heading back"
+ping from an attendee to the organizer (`persona-edge-attendees.md:48`,
+sober persona) is **retired in the form proposed**. The right product
+answer for the safety-coded use case is **text the organizer
+directly** — the organizer's phone is already on the M3 roster, with
+the copy-all-numbers and vCard download surfaces shipped in PR #151.
+
+**Why retired, not deferred:**
+
+The persona ask, in the form proposed (in-app silent push to
+organizer-only), has two structural problems:
+
+1. **In-app push fires only when the recipient has the app open.**
+   The scenario is Marcus leaving a club at midnight, wanting Dave
+   to *know* he's heading back (safety case). For that signal to be
+   safety-grade, Dave has to *get* it. In-app delivery is
+   unreliable for that — Dave isn't checking the app at midnight;
+   he's at the club too, or in an Uber. The signal needs to land on
+   Dave's lock screen via SMS or a push channel he actively
+   monitors. The M4 product has neither.
+
+2. **The killed notification-outbox seam is correctly killed**
+   (`killed-and-deferred.md:26`). The retro should not re-propose
+   the outbox under safety-coded framing. The kill rationale —
+   "premature abstraction; an outbox seam with no second channel is
+   a pattern, not a product" — applies as strongly to a safety
+   primitive as it did to the general case. The second channel
+   arrives with money-pool nudges in M5; the seam is designed
+   *then*.
+
+3. **The M3 roster already solves this.** Dave's phone number is on
+   the roster page (`/trips/[tripId]/roster`); Marcus can copy it
+   or download Dave's vCard in two taps. Texting Dave "heading
+   back" via the OS SMS app delivers reliably on every device,
+   surfaces on a lock screen, and creates zero new infrastructure.
+
+**Future-decisions guardrail:**
+
+If a retro re-proposes a silent organizer-only ping primitive under
+safety framing — e.g., "we need a panic ping for the sober persona"
+— point at this ADR. The principled response is *"the M3 roster
+already solves the safety case via OS-native SMS; the proposed
+primitive trades reliability for in-app cleanliness, and reliability
+is the load-bearing property for a safety signal."* If a real-trip
+retro surfaces a use case where SMS-the-organizer would have failed,
+that's the moment to re-open — not before.
+
+**What stays open:** the general "heading back" use case where the
+member just wants to *log* their early departure (not summon
+attention) — that's already covered by per-item RSVP `skipping`,
+which fires no notifications by design. Marcus can mark himself
+`skipping` on remaining items at midnight; the per-item RSVP is the
+canonical low-noise surface.
+
+**Alternatives considered:**
+
+- **In-app silent push (the persona ask as written).** Rejected for
+  reliability reasons above.
+- **Defer to M5 with the outbox seam.** Rejected: the kill rationale
+  in `killed-and-deferred.md:26` still applies; the second channel
+  is what unlocks the seam, not the use case framing.
+- **Add SMS to the M4 stack just for this.** Rejected — SMS provider
+  + Twilio account + abuse hardening for a single primitive is
+  dramatic scope creep. The OS SMS app is already on every device.
+
+**Sim citations:**
+
+- Edge-attendee Finding #5 — `findings-edge.md:43–50`
+- Critic re-audit batch 3 — `findings-critic.md:499–500`
+- Synthesis retired-ask — `findings.md:78–80`
+
+---
+
+## 2026-05-20 (PM) — M3 — Trip is useful — milestone closed
+
+**Decision:** M3 closed. The MVP-target trio is now reachable from one
+URL: itinerary, announcements (with Realtime), trip notes, arrivals
+manifest, roster with vCard mass-download + copy-all-numbers, and
+organizer invite minting with the rate-limit scope properly split from
+the accept path. Per-item RSVP + per-item member-flag (dietary / sober /
+late-arrival) ship as silent opt-ins per the "don't encode a default"
+ADR.
+
+**What shipped (9 PRs):**
+
+- **#143** Wave 0a — plan doc, deployment-readiness, M3 copy keys, #116/#117/#130.
+- **#145** Wave 0b — Playwright auth fixture (#120).
+- **#144** Wave 0c — PKCE → token-hash for cross-device magic-link clicks (#137).
+- **#146** Wave 1 — `m3_itinerary_announcements` migration + data layer +
+  idempotent server actions for itinerary, announcements, lodging,
+  travel legs, trip notes, item RSVPs, item flags.
+- **#147** Wave 2 — itinerary UI + per-item RSVP chip + organizer-only
+  per-item flag form (#35, #38, #80; lodging UI portion of #36).
+- **#148** Wave 3a — announcements page + Realtime feed (#79).
+- **#149** Wave 3b — now/next dashboard card + trip notes editor +
+  `revalidatePath` on `setRsvpAction` success (#77, #78, #110).
+- **#150** Wave 4a — arrivals manifest + travel-leg form (#37).
+- **#151** Wave 4b — roster page + vCard mass-download + copy-numbers
+  (#39, #40).
+- **#152** Wave 4c — invite-issuance UI + `MINT_INVITE` rate-limit scope
+  split from `ACCEPT_INVITE` (#129, #107).
+
+**Load-bearing decisions made during execution:**
+
+1. **Idempotency-key scope per the per-table ADR** held: organizer-
+   acting tables (`itinerary_items`, `announcements`, `lodging_assignments`)
+   use `(trip_id, idempotency_key)`; strictly-user tables
+   (`itinerary_item_rsvps`, `itinerary_item_member_flags`, `travel_legs`)
+   include `trip_member_id` in the partial unique scope. Migration
+   #146 enforces this end-to-end.
+
+2. **`revalidatePath("/trips", "layout")` on RSVP success** chosen over
+   per-slug invalidation. Per-slug would have required an extra DB
+   round-trip in the hot RSVP path to fetch `trips.slug` from the
+   membership row. Layout-wide is broader but the cost is negligible —
+   the cache miss only matters for surfaces already showing RSVP counts.
+
+3. **Browser-local TZ for the now/next pure function (#108 still deferred).**
+   `whatsHappeningNow` takes `now: Date` as a parameter and uses it
+   directly. Cross-coast trips will see the viewer's local clock at
+   render time. The trip-local TZ fix is M4+ territory; the timeline
+   has a one-line dashboard-footer caveat as planned.
+
+4. **Reusable shadcn `Select` + `Textarea` primitives added** via
+   `pnpm dlx shadcn@latest add`. No new npm dependency in `package.json`
+   — `@base-ui/react` was already a transitive dep of the existing
+   shadcn primitives, so the new components ride that pin.
+
+5. **Emoji icons swapped for `lucide-react` SVG** in the arrivals card
+   per design-system §581 (icons are SVG; emoji reserved for reactions
+   and user-generated copy). The reciprocal cleanup on
+   `components/trip/itinerary/item-card.tsx` is tracked as a follow-up.
+
+6. **vCard CRLF escaping is a security guarantee, not a formatting nit.**
+   A user-controlled `display_name` containing `\r\n` could inject
+   forged `BEGIN:VCARD` / `END:VCARD` blocks into every other member's
+   downloaded `.vcf`. `escapeVCardText` now escapes CR/LF/CRLF to `\\n`
+   BEFORE the comma/semicolon/backslash escapes. `sanitisePhone` strips
+   newlines from the TEL value as defense-in-depth. Three new tests
+   pin the attack vector closed (full payload, lone CR/LF, malformed
+   phone). Both reviewers independently surfaced this; the fix was
+   the highest-severity find of Wave 4.
+
+7. **`MINT_INVITE` rate-limit scope split from `ACCEPT_INVITE` (#107).**
+   `createInviteAction` and `acceptInviteAction` now use distinct
+   buckets per `(scope, user_id)`. A burst of mints can no longer
+   starve the accept path (or vice versa). Default budget (30 req / 60 s
+   sliding window) applies to both; ratchet review (#141) is post-M3.
+
+8. **Revoke RLS no-op detector.** The `invites` table currently has
+   SELECT/INSERT/DELETE RLS policies but no UPDATE policy. A denied
+   UPDATE returns success with zero affected rows — not an error.
+   `lib/db/invites.ts` `revokeInvite` now chains `.select("token")`
+   on the UPDATE and throws if the affected-row count is zero. Without
+   this, `revokeInviteAction` would have been a silent no-op for every
+   caller and the UI would have lied about revocation. The proper fix
+   (UPDATE policy or `revoke_invite` SECURITY DEFINER RPC) is an M4
+   migration follow-up; the in-action check is the M3-scope band-aid.
+
+9. **`invites.token` SELECT RLS is `is_trip_member`, not organizer-only.**
+   The page-level `is_trip_organizer` check in
+   `app/(authed)/trips/[tripId]/invites/page.tsx` is the load-bearing
+   gate. Docstring corrected in `lib/db/invites.ts`. Tightening the
+   SELECT policy is an M4 follow-up.
+
+10. **Override G — `app/page.tsx` kept as-is.** The landing page
+    written for M2 ("Plan the trip without the group-chat chaos.")
+    accurately describes the M3 product surface. No changes needed for
+    M3 reality. Tracked as an explicit kept-as-is decision per the
+    plan's Override G ownership rule.
+
+**Process learnings (full retro in `notes/retros/m3-retro.md`):**
+
+- Parallel `tdd-guide` agents on independent worktrees worked well for
+  Wave 3 (2 PRs) and Wave 4 (3 PRs). No file collisions; PR open ↔ merge
+  cycle averaged ~1 hour per wave including reviewer turnaround.
+- `security-reviewer` + `code-reviewer` dispatched in parallel (Override
+  D) consistently caught issues the implementation agent missed —
+  most notably the vCard CRLF injection and the `revokeInvite` RLS
+  no-op. The pattern is keeping; the only friction was self-PR approval
+  blocked by GitHub, which the agents handled by posting comment reviews
+  with explicit "clear to merge" language.
+- Session limits hit twice during Wave 4 re-reviews. The fix-up commits
+  were demonstrably aligned with the prior review findings (verified
+  against the diff manually), so the orchestrator merged. Future mitigation:
+  smaller, more atomic fix-up commits keep the re-review window short.
+- Real-browser smoke at 375px on the Vercel preview (Override A) caught
+  zero new issues this milestone — the screenshots became more of a
+  smoke-test ritual than a defect surface. The closure walk on
+  travelston.com (Override E `[v]` axis) is what catches what CI misses.
+
+**Verified DoD:** see `notes/m3-execution-plan.md` final DoD checklist.
+All `[d]` boxes ticked at PR-merge time; `[v]` boxes ticked at closure
+after the production walk on travelston.com (PR body embeds the 8
+screenshots).
+
+**MVP target reset:** M1 → M3 are done. Next: M4 — Trip is shippable.
+Per `notes/roadmap.md`, **stop at M4** — use the app for one real
+bachelor party before opening M5.
+
+---
+
+## 2026-05-20 — M3 Wave 0c — Switch magic-link from PKCE to token-hash for cross-device clicks (#137)
+
+**Decision:** Replace the `exchangeCodeForSession(code)` PKCE exchange in
+`/auth/callback` with `verifyOtp({ token_hash, type })`. The legacy PKCE
+`code` branch is retained for backward compat during the Supabase Dashboard
+email-template flip window. `token_hash` takes precedence when both params
+are present.
+
+**Why we deviated from the `@supabase/ssr` PKCE default:**
+
+`@supabase/ssr` ships with PKCE as the default auth flow. PKCE stores a
+`code_verifier` cookie on the browser that initiated `signInWithOtp`. When
+the user clicks the link on a *different* device — the dominant real-world
+pattern for a bachelor-party app where links travel through group chats and
+email clients — there is no `code_verifier` cookie in that context and auth
+fails with `AuthPKCECodeVerifierMissingError`.
+
+Failure modes caught in production (2026-05-19):
+- User requests link on phone Safari → clicks in Gmail app (different
+  in-app browser) → fails
+- User requests link on laptop → clicks in phone's mail app → fails
+- Email-client URL prefetch (Gmail Smart Compose, antivirus scanners)
+  consumes the code → the real click fails
+
+**Friction-vs-security rationale** (see
+`~/.claude/projects/.../memory/feedback_friction_vs_security.md`):
+
+The threat model here is "drunk friend mistypes their email," not
+"nation-state phishing campaign." PKCE's protection against authorization
+code interception doesn't earn its friction in this context. The token-hash
+flow gives us the same one-time-use guarantee (the hash is burned after
+`verifyOtp`) without requiring same-browser round-trip.
+
+From the memory note: *"I'm not sure why we even need such high security
+and email verification for what should be a simple website (low friction)."*
+That feedback is load-bearing product direction.
+
+**Implementation:**
+- `lib/auth/callback-handler.ts` — new module, extracted from the route so
+  it can be unit-tested. Contains all branching logic.
+- `app/auth/callback/route.ts` — now delegates entirely to
+  `resolveCallbackResult()`. No inline auth logic.
+- `lib/supabase/server.ts`, `lib/supabase/browser.ts` — no changes needed;
+  `verifyOtp` works on the standard `@supabase/ssr` server client without
+  any flow-type override.
+- `lib/auth/safe-next.ts` — unchanged.
+- `lib/auth/__tests__/callback.test.ts` — 8 new unit tests covering both
+  paths (token-hash, PKCE) and edge cases (missing params, both params
+  present).
+- `e2e/cross-device-magic-link.spec.ts` — cross-device E2E using two
+  isolated browser contexts + Supabase Admin API `generateLink` to mint
+  a real `token_hash` without needing an inbox.
+
+**Human-only Supabase Dashboard step (not automated):**
+Authentication → Email Templates → Magic Link: change the link from
+`{{ .ConfirmationURL }}` to the token-hash variant. See PR body for exact
+template text. Without this change, the Dashboard still generates PKCE
+`code` URLs — the callback handles those as backward-compat, but new links
+will continue to be cross-device-fragile until the template is flipped.
+
+**Alternatives considered:**
+- **Option A — implicit flow** (`flowType: 'implicit'` on
+  `createServerClient`): `@supabase/ssr` v0.x doesn't fully support
+  implicit flow on the server-side cookie client; the package is optimized
+  for PKCE and the implicit path is not documented for SSR. Option B
+  (token-hash) is the Supabase-recommended pattern for cross-device flows.
+- **OTP code entry fallback UI**: explicitly killed per issue body. Adds
+  a step, breaks the "link just works" mental model, out of scope for this
+  app's threat model.
+
+---
+
+## 2026-05-19 (late PM) — M2 follow-up — Upstash provisioned via Vercel Marketplace (#124)
+
+**Decision:** Provisioned Upstash for Redis through the Vercel Marketplace ("Upstash for Redis" integration, `upstash/upstash-kv` product slug), region `us-east-1`. Auto-injects `KV_REST_API_URL` + `KV_REST_API_TOKEN` (plus `KV_URL`, `REDIS_URL`, `KV_REST_API_READ_ONLY_TOKEN`) into Production, Preview, and Development environments.
+
+**Why this matters:** Closes the M2 follow-up gate that blocked sending the invite link to real attendees. Until #124, the rate-limit module fell through to the in-memory always-allow shim on prod — `AUTH_MAGIC_LINK`, `CREATE_TRIP`, `ACCEPT_INVITE`, `SET_RSVP`, `CAST_DATE_VOTE` had no per-user budget, and email-bombing was technically possible against any inbox. Real users gate.
+
+**Load-bearing implementation details:**
+
+- **Dual-name env var resolution.** Vercel Marketplace injects `KV_*` naming; existing dev setups and `.env.example` documented `UPSTASH_*`. The rate-limit module now reads both via `__resolveUpstashCreds()`, preferring `KV_*` when present so the production source of truth (Vercel) always wins over a stale local override. Test coverage in `lib/rate-limit/__tests__/index.test.ts` pins this precedence (7 cases) so a future rename doesn't silently regress to the in-memory shim.
+- **`buildInMemoryLimiter` shim retained, not deleted.** The v4 history comment in `lib/rate-limit/index.ts` documents why: a future env-var regression on Vercel or a fresh fork running without provisioning must still bootstrap. The shim's loud Sentry warning (`console.error`) is the regression alarm.
+- **Direct-Upstash console NOT used.** The Marketplace path was chosen over `console.upstash.com` direct provisioning despite the Marketplace's paid-only plan presentation, because unified Vercel billing + auto-injection + dashboard visibility outweighed the (negligible at MVP traffic) per-request cost on the cheapest paid plan.
+- **Scope budgets unchanged.** The default 30-req / 60-sec sliding window applies uniformly across all scopes for now. Issue tracking a per-scope ratchet (e.g., `AUTH_MAGIC_LINK` should likely drop to ~5/hr for production-grade abuse resistance) lives at the JSDoc comment at `RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK` and is deferred to a follow-up.
+
+**Alternatives considered:**
+
+- **Direct Upstash + manually injected env vars** — true $0 free tier, but split billing and a manual env-var sync chore on token rotation. Marketplace path won on operational simplicity for a two-dev project.
+- **Rename in code to KV_\* only** — would have been the simplest patch but breaks the documented `.env.example` for anyone running local Upstash. Dual-name resolution costs ~10 LoC and preserves both setup paths.
+- **Skip the env-var rename, manually mirror `KV_*` → `UPSTASH_*` on Vercel** — would have kept the code untouched, but adds an invisible env-var dependency that future Carl would not remember. Code change is the durable solution.
+
+**In-PR fix (#138 H1, pre-merge):** Security review surfaced that `@upstash/ratelimit` fails OPEN on network timeout — the upstream returns `{success: true, reason: "timeout"}` after its internal 5s ceiling, silently bypassing rate-limit during an Upstash outage. Two-line fix in this PR: tighten `Ratelimit.timeout` to 1500ms and add an `isTimeoutAllow()` guard at both call sites (`rateLimitedAction`, `rateLimitRequest`) that promotes timeout-allow to a deny. Two new tests (one per call site) pin the behavior. Brings live tests to 23/23 in this module, 162/162 overall.
+
+**Follow-ups (not blocking #124 closure):**
+
+- #130 — pin production-mode rate-limit shim behavior (separate test surface; the v4 path is now the assumed default and worth a regression guard)
+- #139 — per-scope fail-closed when shim is active (defense-in-depth from #138 M1; deliberate punt per [[feedback-friction-vs-security]])
+- #140 — hostname allow-list on Upstash REST URL (defense-in-depth from #138 M2; same deliberate punt)
+- Per-scope budget ratcheting (especially `AUTH_MAGIC_LINK` → ~5/hr) — file as new issue if not already
+- Confirm the Vercel Marketplace billing line item appears as expected on next invoice; if usage is genuinely zero across the month, no surprise
+
+**Pre-merge acceptance (verified):** 159/159 unit tests green (7 new for env precedence in `lib/rate-limit/__tests__/index.test.ts`); typecheck + lint + build clean.
+
+**Post-merge smoke (gates #124 closure):** prod auto-deploy from `main`; 35-request burst against a guarded scope should surface the `rate_limit` toast on the 31st; Vercel logs should stop emitting `[rate-limit] Upstash creds unset in production` on cold start. Update this entry to "verified" once observed.
+
+---
+
 ## 2026-05-19 (PM) — M2 — Trip is real — milestone closed
 
 **Decision:** M2's seven planned PRs all landed on `main` with CI + code-reviewer + (where applicable) security-reviewer approval:

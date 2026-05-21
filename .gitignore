@@ -15,6 +15,10 @@
 /test-results
 /playwright-report
 /playwright/.cache
+# auth storage-state written by `pnpm exec playwright test --project=setup`
+/playwright/.auth/
+# scratch dir for Playwright MCP browser snapshots (per-session, not source)
+/.playwright-mcp/
 
 # next.js
 /.next/
@@ -58,6 +62,8 @@ supabase/.temp
 .claude/settings.local.json
 # agent scratch worktrees created by Claude Code subagent runs
 .claude/worktrees/
+# session-state lock file written by the Claude Code harness
+.claude/scheduled_tasks.lock
 
 # generated Supabase types (verification only; lib/db/types.ts is the
 # committed source of truth — see notes/database-workflow.md)
