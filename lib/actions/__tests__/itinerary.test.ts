@@ -255,6 +255,108 @@ describe("addItineraryItem", () => {
 });
 
 // ---------------------------------------------------------------------------
+// updateItineraryItem — W2a address place_id fields
+// ---------------------------------------------------------------------------
+
+describe("updateItineraryItem — address place fields", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("persists addressPlaceId and addressProvider when both are set (autocomplete selection)", async () => {
+    primeAuth(VALID_USER_ID);
+    const mockItemWithPlace = {
+      ...mockItem,
+      address: "123 Main St, Las Vegas, NV",
+      address_place_id: "place-abc",
+      address_provider: "google",
+    };
+    tableResolvers.set("itinerary_items", () => ({
+      data: mockItemWithPlace,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        address: "123 Main St, Las Vegas, NV",
+        addressPlaceId: "place-abc",
+        addressProvider: "google",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: mockItemWithPlace });
+    // Verify the update payload includes place fields
+    const payload = updateCalls[0]?.payload as Record<string, unknown>;
+    expect(payload.address_place_id).toBe("place-abc");
+    expect(payload.address_provider).toBe("google");
+  });
+
+  it("persists address only when addressPlaceId and addressProvider are null (freeform)", async () => {
+    primeAuth(VALID_USER_ID);
+    const mockItemFreeform = {
+      ...mockItem,
+      address: "Somewhere cool",
+      address_place_id: null,
+      address_provider: null,
+    };
+    tableResolvers.set("itinerary_items", () => ({
+      data: mockItemFreeform,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        address: "Somewhere cool",
+        addressPlaceId: null,
+        addressProvider: null,
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: mockItemFreeform });
+    const payload = updateCalls[0]?.payload as Record<string, unknown>;
+    expect(payload.address_place_id).toBeNull();
+    expect(payload.address_provider).toBeNull();
+  });
+
+  it("returns validation_failed when addressPlaceId exceeds 255 chars", async () => {
+    primeAuth(VALID_USER_ID);
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        addressPlaceId: "x".repeat(256),
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed when addressProvider is not 'google'", async () => {
+    primeAuth(VALID_USER_ID);
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        // @ts-expect-error intentionally invalid provider
+        addressProvider: "bing",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // deleteItineraryItem
 // ---------------------------------------------------------------------------
 
