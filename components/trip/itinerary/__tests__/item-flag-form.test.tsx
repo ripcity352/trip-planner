@@ -1,7 +1,11 @@
 /**
- * Unit tests for ItemFlagForm — client component for per-item dietary/
- * participation flag entry.
- * TDD: written before implementation.
+ * Unit tests for ItemFlagForm — wrapper that delegates to MemberFlagPicker.
+ *
+ * M4 W1c: ItemFlagForm now renders MemberFlagPicker. These tests verify the
+ * delegation contract: the form passes itemId through and the underlying
+ * chip picker + freeform input is rendered.
+ *
+ * Detailed picker behavior is tested in member-flag-picker.test.tsx.
  */
 
 import "@testing-library/jest-dom/vitest";
@@ -26,33 +30,29 @@ describe("ItemFlagForm", () => {
     mockRemove.mockResolvedValue({ ok: true });
   });
 
-  it("renders the flag text input and save button", () => {
+  it("renders the chip picker via MemberFlagPicker (heading visible)", () => {
+    render(<ItemFlagForm itemId="item-1" />);
+    // Heading from M4_UI_STRINGS — confirms MemberFlagPicker is rendered
+    expect(screen.getByText("Anything we should know?")).toBeInTheDocument();
+  });
+
+  it("renders the freeform input with Anything else? placeholder", () => {
     render(<ItemFlagForm itemId="item-1" />);
     expect(
-      screen.getByPlaceholderText(/allergic|vegetarian|leaving early/i)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /save the heads-up/i })
+      screen.getByPlaceholderText(/anything else/i)
     ).toBeInTheDocument();
   });
 
-  it("renders the label from M3_UI_STRINGS", () => {
-    render(<ItemFlagForm itemId="item-1" />);
-    expect(screen.getByText(/heads up to the organizers/i)).toBeInTheDocument();
-  });
+  it("calls addItemFlag with correct itemId on freeform submit", async () => {
+    render(<ItemFlagForm itemId="item-99" />);
 
-  it("calls addItemFlag with form data on submit", async () => {
-    render(<ItemFlagForm itemId="item-1" />);
-
-    const input = screen.getByPlaceholderText(
-      /allergic|vegetarian|leaving early/i
-    );
+    const input = screen.getByPlaceholderText(/anything else/i);
     fireEvent.change(input, { target: { value: "vegan" } });
-    fireEvent.click(screen.getByRole("button", { name: /save the heads-up/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add/i }));
 
     await waitFor(() => {
       expect(mockAdd).toHaveBeenCalledWith(
-        expect.objectContaining({ itemId: "item-1", flag: "vegan" })
+        expect.objectContaining({ itemId: "item-99", flag: "vegan" })
       );
     });
   });
@@ -61,23 +61,21 @@ describe("ItemFlagForm", () => {
     mockAdd.mockResolvedValue({ ok: false, errorKey: "item_flag_save_failed" });
     render(<ItemFlagForm itemId="item-1" />);
 
-    const input = screen.getByPlaceholderText(
-      /allergic|vegetarian|leaving early/i
-    );
+    const input = screen.getByPlaceholderText(/anything else/i);
     fireEvent.change(input, { target: { value: "late arrival" } });
-    fireEvent.click(screen.getByRole("button", { name: /save the heads-up/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
   });
 
-  it("does not submit if flag field is empty", async () => {
+  it("does not submit if freeform flag field is empty", async () => {
     render(<ItemFlagForm itemId="item-1" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /save the heads-up/i }));
-
-    // addItemFlag should not have been called
+    // Add button is disabled when freeform is empty
+    const addBtn = screen.getByRole("button", { name: /add/i });
+    expect(addBtn).toBeDisabled();
     expect(mockAdd).not.toHaveBeenCalled();
   });
 });
