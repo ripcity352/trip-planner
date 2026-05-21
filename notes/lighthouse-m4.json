@@ -1,0 +1,12 @@
+{
+  "_stub": true,
+  "_note": "Real Lighthouse run happens at M4 closure walk (manual step). Target: ≥90 a11y score on /trips/[tripId]. Replace this file with the actual lhr.json output from `npx lighthouse <url> --output=json --output-path=notes/lighthouse-m4.json --only-categories=accessibility`.",
+  "_target": {
+    "url": "/trips/[tripId]",
+    "category": "accessibility",
+    "min_score": 90
+  },
+  "_generated_at": "2026-05-21T00:00:00.000Z",
+  "_wave": "W4b",
+  "_issue": "#82"
+}

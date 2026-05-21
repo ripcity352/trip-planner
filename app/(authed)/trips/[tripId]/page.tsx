@@ -202,22 +202,6 @@ export default async function TripDashboardPage({ params }: PageProps) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {M2_UI_STRINGS.dashboard_section_invite_heading}
-            </CardTitle>
-            <CardDescription>
-              {M2_UI_STRINGS.dashboard_section_invite_body}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground text-sm">
-              {M2_UI_STRINGS.dashboard_invite_placeholder}
-            </p>
-          </CardContent>
-        </Card>
-
         {/* Wave 3 link — drops the date-poll surface one click away
             from the dashboard. Server Component, no client behavior. */}
         <Link

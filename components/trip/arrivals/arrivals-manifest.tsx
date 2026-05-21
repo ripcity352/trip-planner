@@ -40,10 +40,12 @@ export function ArrivalsManifest({
     router.refresh();
   };
 
-  // Build a lookup: trip_member_id → display_name
+  // Build a lookup: trip_member_id → display name.
+  // Fallback chain mirrors lodging-roster.tsx: display_name → email → id.
+  // "Someone" was the M3 placeholder; real trips need something grounded (#162).
   const memberNameMap = new Map<string, string>();
   for (const m of tripMembers) {
-    memberNameMap.set(m.id, m.display_name ?? "Someone");
+    memberNameMap.set(m.id, m.display_name ?? m.email ?? m.id);
   }
 
   return (
@@ -60,7 +62,7 @@ export function ArrivalsManifest({
               key={leg.id}
               leg={leg}
               myTripMemberId={myTripMemberId}
-              ownerName={memberNameMap.get(leg.trip_member_id) ?? "Someone"}
+              ownerName={memberNameMap.get(leg.trip_member_id) ?? leg.trip_member_id}
             />
           ))}
         </div>
