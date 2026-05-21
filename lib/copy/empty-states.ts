@@ -354,6 +354,18 @@ export const M4_UI_STRINGS = {
   me_label_email: "Email",
   me_sign_out_cta: "Sign out",
   me_display_name_fallback: "Crew member",
+  // RSVP chip + aggregate aria-labels (#45, Wave 3b).
+  // Voice test: warm, specific — "Yep", "Maybe", "Can't" per Party Trip tone.
+  // These are NOT color-only signals; icons + aria-labels carry the state.
+  rsvp_chip_aria_going: "Yep — going",
+  rsvp_chip_aria_maybe: "Maybe — not sure yet",
+  rsvp_chip_aria_declined: "Can't make it",
+  rsvp_chip_aria_no_response: "No answer yet",
+  // Aggregate icon+count aria-labels for the count display.
+  rsvp_aggregate_aria_going: "going",
+  rsvp_aggregate_aria_maybe: "maybe",
+  rsvp_aggregate_aria_declined: "can't make it",
+  rsvp_aggregate_aria_no_response: "no answer yet",
 } as const;
 
 export type M4UIStringKey = keyof typeof M4_UI_STRINGS;
