@@ -257,15 +257,10 @@ CLI prints them at startup. See `notes/database-workflow.md`.
 
 ## Current phase
 
-See `/notes/roadmap.md` for the milestone plan (M1–M5). We are currently
-on **M3 — Trip is useful**. M1 closed 2026-05-19 (foundation + schema).
-M2 closed 2026-05-19 (auth, trip creation, invites, RSVP, celebrant-
-weighted date poll, PulsePoll). See `notes/decisions.md` for the M1 +
-M2 closure entries and the load-bearing decisions made during execution;
-`notes/killed-and-deferred.md` for what was cut and why.
-
-**MVP target:** ship M1 → M4 for one real bachelor party. Stop at M4.
-M5 is gated on a real-trip retrospective.
+M4 — Trip is shippable — **Closed (2026-05-21).** M1–M4 shipped; MVP scope complete.
+**Next:** real-trip retrospective gates M5. See `notes/retros/m4-retro.md` for
+the M4 closure and `notes/decisions.md` "M4 — Trip is shippable — milestone closed"
+ADR for the load-bearing decisions made during execution.
 
 When you complete a milestone, update `/notes/roadmap.md` to mark it done
 and add any deviations or follow-ups to `/notes/decisions.md`.
