@@ -266,10 +266,21 @@ CLI prints them at startup. See `notes/database-workflow.md`.
 
 ## Current phase
 
-M4 — Trip is shippable — **Closed (2026-05-21).** M1–M4 shipped; MVP scope complete.
-**Next:** real-trip retrospective gates M5. See `notes/retros/m4-retro.md` for
-the M4 closure and `notes/decisions.md` "M4 — Trip is shippable — milestone closed"
-ADR for the load-bearing decisions made during execution.
+M5 — auth redesign — **Closed (2026-05-21).** Password + 6-digit OTP +
+Google OAuth shipped across 5 sequential PRs (#226–#231). Phase 6
+production walk verified the OTP/State-C-recovery/password-signin chain
+end-to-end on `travelston.com`. OAuth round-trip + State B walks
+deferred to follow-up (#232 + Supabase Dashboard provider step).
+See `notes/retros/m5-retro.md` for the M5 closure and `notes/decisions.md`
+"M5 auth redesign — milestone closed" ADR for the load-bearing
+decisions made during execution.
+
+**Next:** real-trip retrospective gates M6 — same bright line as M4.
+M1–M5 shipped the MVP + auth substrate; use the app for the real
+bachelor party before scoping M6. M5 carry-backs:
+- **#230** — chronic flake in `rsvp-toggle.test.tsx:192` (gate on M6 Wave 0)
+- **#232** — OAuth-existing-user alert detection wiring
+- **#233** — `/account/sign-in-and-security` State B identity check
 
 When you complete a milestone, update `/notes/roadmap.md` to mark it done
 and add any deviations or follow-ups to `/notes/decisions.md`.

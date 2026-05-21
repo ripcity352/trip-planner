@@ -118,7 +118,16 @@ realtime.
 #147, #148, #149, #150, #151, #152) merged to `main`. See
 `notes/decisions.md` "M3 — Trip is useful — milestone closed" entry for
 the load-bearing decisions and `notes/retros/m3-retro.md` for the retro.
-**Current phase: M4.**
+**Current phase: M5 — Closed (2026-05-21).**
+M5 auth redesign shipped: password (primary) + 6-digit OTP (fallback)
++ Google OAuth (alternative; round-trip walk deferred to follow-up).
+`/account/sign-in-and-security` State A/A+/B/C state machine landed.
+See `notes/retros/m5-retro.md` for closure details. Carry-backs filed:
+#230 (flake), #232 (OAuth detection), #233 (State B identity check),
+#135 (Resend domain — carried from M4).
+
+**Stop here.** Use M1–M5 for the real bachelor party. M6 gates on the
+post-trip retro — don't scope it until you've actually used the app.
 
 **Definition of done:**
 - **Itinerary**
