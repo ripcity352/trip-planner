@@ -140,7 +140,7 @@ describe("<LoginForm />", () => {
 
   it("renders the rate_limit copy when the server action throttles", async () => {
     // Covers the PR #102 hardening: magic-link issuance is now wrapped
-    // in `rateLimitedAction("authMagicLink", ...)`. When the bucket is
+    // in `rateLimitedAction("authOtpVerify", ...)`. When the bucket is
     // empty, `requestMagicLink` returns `{ ok: false, errorKey:
     // "rate_limit" }` and the form should surface the matching copy.
     requestMagicLinkMock.mockResolvedValue({

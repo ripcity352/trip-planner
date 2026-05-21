@@ -17,7 +17,7 @@
  *     spoofed those headers could trick Supabase into emailing the magic
  *     link to a redirect URL pointing at attacker-controlled hosts.
  *   - Magic-link issuance is rate-limited per (lowercased) email via the
- *     `authMagicLink` scope. Prevents email-bombing arbitrary inboxes
+ *     `authOtpVerify` scope. Prevents email-bombing arbitrary inboxes
  *     and bulk pollution of `auth.users` (we ship with
  *     `shouldCreateUser: true`). Supabase's own throttle is too generous
  *     to be the only line of defense.
