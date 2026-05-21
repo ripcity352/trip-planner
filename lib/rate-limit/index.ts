@@ -69,17 +69,19 @@ const ANON_CLIENT_ID = "anon";
  * unrecognized scopes are rejected at the type level so callers can't
  * silently typo a new bucket into existence.
  *
- * `AUTH_MAGIC_LINK` (#102 fix-up) covers the `/login` server action and
- * shares the default budget (30 / 60s). The default is generous for an
- * auth-issuance endpoint; before production we should ratchet this
- * down to ~5 / hour by introducing a per-scope budget map. Tracking as
- * a follow-up: the surgical fix here keeps the seam in place without
- * rebuilding the limiter config surface.
+ * `AUTH_OTP_VERIFY` (#102 fix-up, renamed M5/PR1) covers the `/login`
+ * server action and shares the default budget (30 / 60s). The default
+ * is generous for an auth-issuance endpoint; before production we
+ * should ratchet this down to ~5 / hour by introducing a per-scope
+ * budget map. Tracking as a follow-up: the surgical fix here keeps the
+ * seam in place without rebuilding the limiter config surface.
+ * AUTH_OTP_VERIFY covers both magic-link URLs and 6-digit codes — both
+ * call verifyOtp.
  */
 export const RATE_LIMIT_SCOPES = {
   CREATE_TRIP: "createTrip",
   ACCEPT_INVITE: "acceptInvite",
-  AUTH_MAGIC_LINK: "authMagicLink",
+  AUTH_OTP_VERIFY: "authOtpVerify",
   // `setRsvp` (#74) gets its own bucket so a user spamming RSVP taps
   // doesn't starve their `createTrip` / `acceptInvite` budget. Default
   // 30/60s is generous for the drunk-double-tap pattern.
@@ -133,7 +135,7 @@ export const SCOPE_BUDGETS: Readonly<
  *
  * Rationale: `MINT_INVITE` and `PLACES_AUTOCOMPLETE` are sensitive enough
  * that an unconfigured deployment (shim active) should fail-closed rather
- * than silently allow. Contrast with `AUTH_MAGIC_LINK` and `ACCEPT_INVITE`
+ * than silently allow. Contrast with `AUTH_OTP_VERIFY` and `ACCEPT_INVITE`
  * which keep the allow-with-warning posture so a bootstrapping deployment
  * doesn't brick login or invite acceptance.
  *

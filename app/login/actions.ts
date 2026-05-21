@@ -131,7 +131,7 @@ export async function requestMagicLink(
   try {
     const supabase = await createClient();
     const { error } = await rateLimitedAction(
-      RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK,
+      RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY,
       normalizedEmail,
       () =>
         supabase.auth.signInWithOtp({
@@ -166,7 +166,7 @@ export async function requestMagicLink(
   } catch (err) {
     if (err instanceof RateLimitError) {
       console.error("[auth] app-layer rate-limit fired", {
-        scope: RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK,
+        scope: RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY,
       });
       return { ok: false, errorKey: "rate_limit" };
     }
