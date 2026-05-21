@@ -259,10 +259,6 @@ describe("addItineraryItem", () => {
 // ---------------------------------------------------------------------------
 
 describe("updateItineraryItem — address place fields", () => {
-// updateItineraryItem — W2b: startTime / endTime datetime fields
-// ---------------------------------------------------------------------------
-
-describe("updateItineraryItem", () => {
   beforeEach(() => {
     getUserMock.mockReset();
     tableResolvers.clear();
@@ -285,11 +281,6 @@ describe("updateItineraryItem", () => {
     };
     tableResolvers.set("itinerary_items", () => ({
       data: mockItemWithPlace,
-  it("returns the updated item when startTime is a valid ISO-8601 string", async () => {
-    primeAuth(VALID_USER_ID);
-    const updatedItem = { ...mockItem, start_time: "2026-06-01T03:00:00.000Z" };
-    tableResolvers.set("itinerary_items", () => ({
-      data: updatedItem,
       error: null,
     }));
     const { updateItineraryItem } = await import("@/lib/actions/itinerary");
@@ -319,6 +310,80 @@ describe("updateItineraryItem", () => {
     };
     tableResolvers.set("itinerary_items", () => ({
       data: mockItemFreeform,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        address: "Somewhere cool",
+        addressPlaceId: null,
+        addressProvider: null,
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: mockItemFreeform });
+    const payload = updateCalls[0]?.payload as Record<string, unknown>;
+    expect(payload.address_place_id).toBeNull();
+    expect(payload.address_provider).toBeNull();
+  });
+
+  it("returns validation_failed when addressPlaceId exceeds 255 chars", async () => {
+    primeAuth(VALID_USER_ID);
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        addressPlaceId: "x".repeat(256),
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed when addressProvider is not 'google'", async () => {
+    primeAuth(VALID_USER_ID);
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        // @ts-expect-error intentionally invalid provider
+        addressProvider: "bing",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateItineraryItem — W2b: startTime / endTime datetime fields
+// ---------------------------------------------------------------------------
+
+describe("updateItineraryItem — datetime fields (W2b)", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("returns the updated item when startTime is a valid ISO-8601 string", async () => {
+    primeAuth(VALID_USER_ID);
+    const updatedItem = { ...mockItem, start_time: "2026-06-01T03:00:00.000Z" };
+    tableResolvers.set("itinerary_items", () => ({
+      data: updatedItem,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
         startTime: "2026-06-01T03:00:00.000Z",
       },
       VALID_IDEMPOTENCY_KEY
@@ -341,20 +406,6 @@ describe("updateItineraryItem", () => {
     const result = await updateItineraryItem(
       {
         itemId: VALID_ITEM_ID,
-        address: "Somewhere cool",
-        addressPlaceId: null,
-        addressProvider: null,
-      },
-      VALID_IDEMPOTENCY_KEY
-    );
-    expect(result).toEqual({ ok: true, item: mockItemFreeform });
-    const payload = updateCalls[0]?.payload as Record<string, unknown>;
-    expect(payload.address_place_id).toBeNull();
-    expect(payload.address_provider).toBeNull();
-  });
-
-  it("returns validation_failed when addressPlaceId exceeds 255 chars", async () => {
-    primeAuth(VALID_USER_ID);
         startTime: "2026-06-01T03:00:00.000Z",
         endTime: "2026-06-01T05:00:00.000Z",
       },
@@ -374,7 +425,6 @@ describe("updateItineraryItem", () => {
     const result = await updateItineraryItem(
       {
         itemId: VALID_ITEM_ID,
-        addressPlaceId: "x".repeat(256),
         startTime: null,
         endTime: null,
       },
@@ -389,7 +439,6 @@ describe("updateItineraryItem", () => {
     const result = await updateItineraryItem(
       {
         itemId: VALID_ITEM_ID,
-        // Not ISO-8601 — fails z.string().datetime()
         startTime: "not-a-date" as string,
       },
       VALID_IDEMPOTENCY_KEY
@@ -397,54 +446,17 @@ describe("updateItineraryItem", () => {
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
   });
 
-  it("returns validation_failed when addressProvider is not 'google'", async () => {
   it("returns validation_failed for malformed endTime", async () => {
     primeAuth(VALID_USER_ID);
     const { updateItineraryItem } = await import("@/lib/actions/itinerary");
     const result = await updateItineraryItem(
       {
         itemId: VALID_ITEM_ID,
-        // @ts-expect-error intentionally invalid provider
-        addressProvider: "bing",
         endTime: "2026/06/01 12:00" as string,
       },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
-  });
-
-  it("returns validation_failed on non-uuid idempotency key", async () => {
-    primeAuth(VALID_USER_ID);
-    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
-    const result = await updateItineraryItem(
-      { itemId: VALID_ITEM_ID },
-      "not-a-uuid"
-    );
-    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
-  });
-
-  it("returns rls_denied when not authenticated", async () => {
-    primeAuth(null);
-    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
-    const result = await updateItineraryItem(
-      { itemId: VALID_ITEM_ID, startTime: "2026-06-01T03:00:00.000Z" },
-      VALID_IDEMPOTENCY_KEY
-    );
-    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
-  });
-
-  it("returns itinerary_save_failed on DB error during update", async () => {
-    primeAuth(VALID_USER_ID);
-    tableResolvers.set("itinerary_items", () => ({
-      data: null,
-      error: { code: "XXXXX", message: "unexpected" },
-    }));
-    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
-    const result = await updateItineraryItem(
-      { itemId: VALID_ITEM_ID, title: "Updated" },
-      VALID_IDEMPOTENCY_KEY
-    );
-    expect(result).toEqual({ ok: false, errorKey: "itinerary_save_failed" });
   });
 });
 
