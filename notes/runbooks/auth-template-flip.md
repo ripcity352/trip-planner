@@ -85,8 +85,12 @@ After the drain:
 - [ ] Squash-merge PR #228.
 - [ ] Vercel auto-deploys `main` to production.
 - [ ] Once deployed, monitor `[auth] callback missing required params`
-      log entries for ~30 min. Any `has_token_hash: true` entries are
-      lingering legacy links — expected to be zero or trace volume.
+      log entries for ~30 min. After PR3, the log emits
+      `has_type / has_token / has_email / has_code` (no `has_token_hash`
+      — that field was removed alongside the legacy branch). An entry
+      with all four false (no useful query params at all) is the only
+      remaining "this looks like a stale magic-link URL" signal —
+      expected to be zero or trace volume given the 1-h drain.
 
 ## Rollback
 
