@@ -1,4 +1,12 @@
-# Runbook — Supabase email-template flip (magic link → 6-digit code)
+# Runbook — Auth setup (M5)
+
+> **Renamed from `auth-template-flip.md`** (M5/PR5). The original runbook
+> covered the email-template flip (PR3). This file now also covers the
+> Google OAuth provider setup (PR5). Both are one-time operator steps.
+
+---
+
+# Section 1 — Supabase email-template flip (magic link → 6-digit code)
 
 Operational guide for M5 PR3 of the auth redesign chain. This runbook is
 the canonical record of the dashboard step that pairs with the code-only
@@ -123,10 +131,114 @@ Run the following as a real user (375px, production URL):
 
 Any failure here is a rollback trigger. Otherwise, the flip is durable.
 
-## See also
+## See also (Section 1)
 
 - `notes/decisions.md` — "M5 auth redesign — password + OTP + OAuth" ADR
 - `notes/m5-auth-execution-plan.md` — full milestone plan
 - `lib/auth/callback-handler.ts` — post-PR3 callback logic
 - Issue #223 — PR3 tracking issue (closed by #228)
 - Issue #206 — "verify template flip" — closed by this PR
+
+---
+
+# Section 2 — Enable Google OAuth provider (M5/PR5)
+
+Operational guide for the Google OAuth dashboard step. This is a **one-time
+operator step** — code changes that call `signInWithOAuthAction` are in
+PR5 (#225). The code ships first; the dashboard step follows.
+
+## Prerequisites
+
+- PR5 (#225) merged and deployed to production.
+- A Google Cloud project linked to `travelston.com` with the OAuth consent
+  screen configured. (`ripcity352` owns the project.)
+- The Supabase project's callback URL handy: it's on the Supabase Dashboard →
+  Authentication → Providers → Google (before you enable — Supabase shows
+  the redirect URL you need to whitelist in Google Cloud first).
+
+## Deploy ordering
+
+```
+PR5 (#225) deploy → [DASHBOARD STEP] → smoke test
+```
+
+Unlike the template flip, this step is safe to revert: disabling the Google
+provider in Supabase simply makes the OAuth button fail gracefully
+(`oauth_redirect_failed` error toast) — it does not break password or OTP
+sign-in for existing users.
+
+## Step-by-step
+
+### A — Google Cloud: create OAuth 2.0 credentials
+
+1. Open [Google Cloud Console](https://console.cloud.google.com) → project
+   `ripcity352` → APIs & Services → Credentials.
+2. Click **+ Create Credentials** → **OAuth client ID**.
+3. Application type: **Web application**.
+4. Name: `Travelston (Supabase)` (or similar).
+5. Under **Authorized redirect URIs**, add:
+   - The Supabase callback URL shown in step B below. It looks like:
+     `https://<project-ref>.supabase.co/auth/v1/callback`
+6. Click **Create**. Copy the **Client ID** and **Client Secret** — you will
+   not see the secret again after closing the dialog.
+
+### B — Supabase Dashboard: enable the Google provider
+
+1. Supabase Dashboard → project `trip-planner` → Authentication → Providers.
+2. Find **Google** → click **Edit** → toggle **Enable**.
+3. Paste the **Client ID** and **Client Secret** from step A.
+4. Note the **Callback URL (for OAuth)** displayed — this is the redirect URI
+   you added in Google Cloud step A.5 above. Confirm they match exactly.
+5. Click **Save**.
+
+### C — Vercel: add env vars
+
+```bash
+vercel env add GOOGLE_OAUTH_CLIENT_ID production
+vercel env add GOOGLE_OAUTH_CLIENT_SECRET production
+# Repeat for preview if you want OAuth working in preview deploys.
+```
+
+Then redeploy:
+
+```bash
+vercel deploy --prod
+```
+
+### D — Smoke test (production, 375px)
+
+1. Navigate to `https://travelston.com/login`.
+2. Click **Continue with Google**.
+3. Confirm browser navigates to the Google consent screen.
+4. Complete consent (use a test Google account, not your main one).
+5. Confirm redirect to `https://travelston.com/trips` (or the `?next=` target).
+6. Confirm the Supabase user record in the dashboard shows the Google identity.
+
+### E — State B smoke test (optional but recommended)
+
+If you have a test account with only a Google identity:
+
+1. Sign in via Google OAuth (step D).
+2. Navigate to `/account/sign-in-and-security`.
+3. Confirm the "Add a password" form appears (not the "coming soon" stub and
+   not the change-password form).
+4. Set a password. Confirm the success toast.
+5. Sign out. Sign back in with email + password.
+6. Confirm the user now has both identities in the Supabase dashboard.
+
+## Rollback
+
+To disable Google OAuth:
+
+1. Supabase Dashboard → Authentication → Providers → Google → toggle **off**.
+2. Users who only have a Google identity will be unable to sign in until
+   re-enabled. Notify them if this is intentional.
+3. Remove `GOOGLE_OAUTH_CLIENT_ID` + `GOOGLE_OAUTH_CLIENT_SECRET` from Vercel
+   env vars at your discretion — not strictly required for rollback.
+
+## See also (Section 2)
+
+- `notes/deployment-readiness.md` — `GOOGLE_OAUTH_CLIENT_ID` +
+  `GOOGLE_OAUTH_CLIENT_SECRET` rows (H6 — env-var ownership)
+- `notes/decisions.md` — "PR5 addendum — State B no-OTP-gate rationale"
+- Issue #225 — PR5 tracking issue

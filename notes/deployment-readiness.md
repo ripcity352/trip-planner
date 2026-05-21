@@ -45,6 +45,8 @@
 | `SENTRY_AUTH_TOKEN` | Source maps don't upload; stack traces in Sentry are minified. | Sentry org → Auth Tokens | M1 | 2026-05-19 |
 | `RESEND_API_KEY` *(consumed by Supabase Auth, not the app)* | Outgoing magic-link emails route through the project-wide Supabase email cap (3/hr free tier) → real users hit `over_email_send_rate_limit` past 3 attempts. | Resend dashboard | M2 (PM session 2026-05-19) | 2026-05-19 |
 | `GOOGLE_PLACES_API_KEY` | `/api/places/autocomplete` 502s with `places_proxy_failed`; W2a address-autocomplete UI falls back to freeform. Without billing on the Google Cloud project, the upstream returns 403. | Google Cloud project (`ripcity352`) | M4 (#166, W0c) | **Verified in W0c smoke (2026-05-20). Confirmed live in prod as of W4b walk.** |
+| `GOOGLE_OAUTH_CLIENT_ID` | `signInWithOAuthAction` returns `oauth_redirect_failed` on every attempt; the Supabase Dashboard Google provider is not enabled. Without it, "Continue with Google" is broken for all users. See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider" for the dashboard click-path. | Google Cloud project → OAuth 2.0 → Client ID (type: Web application) | M5 (#225) | **Not yet verified — add after dashboard step below.** |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Same as above — Supabase requires both client ID and secret to complete the OAuth round-trip. **Service-sensitive; never expose to browser.** | Google Cloud project → OAuth 2.0 → Client secret | M5 (#225) | **Not yet verified — add after dashboard step below.** |
 
 **Note on KV_* vs UPSTASH_* dual-name resolution:** `lib/rate-limit/index.ts`
 reads both prefixes via `__resolveUpstashCreds()`, preferring `KV_*`
@@ -154,6 +156,26 @@ counts as a hard-stop trigger per `m3-execution-plan.md` Appendix B.
 Everything else in this file was verified at W4b smoke (2026-05-20) or
 earlier. The two items above are the only remaining M4 closure-walk
 blockers.
+
+---
+
+## M5 deployment notes (2026-05-21)
+
+### Google OAuth dashboard step (load-bearing — do BEFORE verifying above rows)
+
+1. **Supabase Dashboard** → Authentication → Providers → Google → Enable.
+2. Paste `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` from the
+   Google Cloud project (OAuth 2.0 → Web application credentials).
+3. Add `https://travelston.com/auth/callback` to the "Authorized redirect URIs"
+   in the Google Cloud console (OAuth consent screen → credentials).
+4. Copy the "Callback URL (for OAuth)" from Supabase Dashboard → Providers →
+   Google and paste it into the Google Cloud redirect URIs list.
+5. Flip `NEXT_PUBLIC_SUPABASE_ANON_KEY` if Supabase auto-rotates on provider
+   enablement (check Supabase API settings after the step above).
+6. Redeploy on Vercel after adding the env vars.
+
+See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider" for the
+full click-path with screenshots.
 
 ---
 

@@ -97,6 +97,67 @@ password — but that's because the current password is the existing
 credential to be rotated. State B has no existing credential to
 verify; the existing identity is the verification.
 
+### PR5 addendum — State B no-OTP-gate rationale (2026-05-21)
+
+This section expands the brief bullet above with the full threat-model
+reasoning, written as the spec was locked (v3.2) and confirmed during PR5
+implementation. It is NOT a re-litigation — this is the decision the operator
+already made. The purpose is to document the reasoning deeply enough that
+a future reviewer can reconstruct it without re-opening the spec conversation.
+
+**The attack scenario for State B:**
+
+A malicious actor has access to the victim's authenticated browser session
+(borrowed laptop, unattended phone, XSS-escalated session token). They
+navigate to `/account/sign-in-and-security`, see the State B form (because
+the victim is an OAuth-only user), and set a password of their choosing.
+
+**Why this is accepted:**
+
+1. **The victim is NOT locked out.** The victim's Google OAuth identity
+   remains intact. The attacker added a credential; they did NOT replace
+   or remove the existing one. The victim can still sign in via Google
+   and then (now that they have State A, not State B) change or remove
+   the attacker's password via the existing `changePasswordAction`.
+
+2. **The OTP gate would not meaningfully close the gap.** If an attacker
+   has session-level access, they can also trigger the OTP request email.
+   On a borrowed laptop, the victim's email inbox may also be open. The
+   OTP gate is effective when we are trying to prove identity before
+   crossing a privilege boundary (State C's rationale). In State B, we
+   are not crossing such a boundary — the user is already authenticated
+   at a session level.
+
+3. **The invite-flow auto-signin precedent.** M2's accept-invite flow
+   creates an authenticated session without a separate challenge after
+   the invite link is clicked. That invite link IS the proof of
+   identity. State B is structurally similar: the OAuth session IS the
+   proof of identity. Both flows accept the risk of borrowed-session
+   abuse as the price of frictionless UX for the real-trip use case.
+
+4. **The friction cost is real.** The target user (bachelor-party
+   attendee, likely on a phone, likely arriving via a group-chat link)
+   setting a password for the first time after Google sign-in should
+   not be interrupted by a second email code. The friction cost to
+   legitimate users is high; the security benefit (against an attacker
+   who already has session access) is low.
+
+**What we DID NOT do (and why):**
+
+- `signOut({scope:'others'})` after `setPasswordAction`: would log the
+  current session out of other devices, which is surprising when the
+  user just ADDED a credential rather than rotated one. No prior
+  credential exists to invalidate.
+
+- An OTP gate: see reasoning above (point 2). Explicitly rejected in
+  the v3.2 spec and confirmed in PR5 implementation.
+
+**The load-bearing memory file:**
+`~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md`
+encodes this trade-off at the project level. State B is a specific
+instance of the general principle: "default to simplest auth/security
+pattern that meets the actual (bachelor-party) threat model."
+
 ### Rate-limit posture
 
 | Scope | Budget | Fail-closed on shim? |
