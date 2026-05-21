@@ -41,10 +41,19 @@ in a group chat. Desktop should work but is not the priority.
 3. **Mutations use Server Actions**, not API routes, unless there's a reason
    to expose an HTTP endpoint (e.g. webhooks).
 
-4. **Auth via Supabase magic links.** No passwords. The login flow is:
-   user enters email → receives link → clicks link → lands on
-   `/auth/callback` → redirected into the app. There is no "sign up" — first
-   login creates the account.
+4. **Auth via email + password (primary), 6-digit OTP code (fallback),
+   and Google OAuth (alternative — PR5).** Progressive-disclosure form
+   at `/login` and inline on `/invite/[token]`. Sign-up is explicit
+   (`signUpAction`); first password-sign-in does NOT auto-provision an
+   account. Magic-link URLs were demoted to a verification primitive
+   in M5 PR3 — the email template now issues `{{ .Token }}` (6-digit
+   code) and the user submits it via `verifyEmailCodeAction`. The
+   callback handler at `/auth/callback` still verifies via
+   `verifyOtp({email, token, type})` and PKCE `code` (for OAuth in
+   PR5). See `notes/decisions.md` "M5 auth redesign" ADR for the
+   threat-model rationale behind every non-default choice
+   (6-char password minimum, no breach check, no recent-reauth gate,
+   no separate `/forgot-password` route).
 
 5. **Row-Level Security is the source of truth for access control.** Do not
    gate access in application code as the only check. Every table with
