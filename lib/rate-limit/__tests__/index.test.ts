@@ -271,7 +271,9 @@ describe("rateLimitRequest", () => {
   it("returns null for non-guarded paths", async () => {
     const limit = vi.fn();
     __setLimiterForTest({ limit });
-    const req = makeReq("http://localhost/login", { method: "POST" });
+    // /profile is not in GUARDED_PATH_PATTERNS — use it as the example.
+    // Note: /login IS now guarded (M5/PR2 added it), so we can't use that here.
+    const req = makeReq("http://localhost/profile", { method: "POST" });
     expect(await rateLimitRequest(req)).toBeNull();
     expect(limit).not.toHaveBeenCalled();
   });

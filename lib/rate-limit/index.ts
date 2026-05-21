@@ -110,6 +110,12 @@ export const RATE_LIMIT_SCOPES = {
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED
   // on shim so the proxy can't be abused if Upstash is unconfigured.
   PLACES_AUTOCOMPLETE: "placesAutocomplete",
+  // M5 PR2 — password sign-in and sign-up. Deliberately tighter than
+  // the default (5 / 15 min) because brute-forcing a password requires
+  // many rapid attempts. NOT in FAIL_CLOSED_ON_SHIM so bootstrapping
+  // deploys (no Upstash yet) can still use the password form — consistent
+  // with AUTH_OTP_VERIFY precedent.
+  AUTH_PASSWORD: "authPassword",
 } as const;
 
 export type RateLimitScope =
@@ -128,6 +134,10 @@ export const SCOPE_BUDGETS: Readonly<
 > = {
   [RATE_LIMIT_SCOPES.MINT_INVITE]: { limit: 10, window: "1 h" },
   [RATE_LIMIT_SCOPES.PLACES_AUTOCOMPLETE]: { limit: 30, window: "60 s" },
+  // Password auth: 5 attempts per 15 minutes per email. Tight enough
+  // to blunt online brute-force; loose enough that a real user with
+  // fat fingers never hits it (5 bad attempts in 15 min is unusual).
+  [RATE_LIMIT_SCOPES.AUTH_PASSWORD]: { limit: 5, window: "15 m" },
 } as const;
 
 /**
@@ -159,6 +169,12 @@ const GUARDED_PATH_PATTERNS: ReadonlyArray<RegExp> = [
   // `/invite/<token>/accept` is a public POST endpoint — unauthenticated
   // abuse needs the HTTP-edge throttle before it reaches the action.
   /^\/invite\//,
+  // M5 PR2 — password sign-in / sign-up POST and auth callback are now
+  // mutation-class paths that need the HTTP-edge throttle. The action-
+  // level AUTH_PASSWORD scope is the primary defence; the path pattern
+  // here is a belt-and-suspenders guard at the edge.
+  /^\/login(\/|$)/,
+  /^\/auth\//,
 ];
 
 // --- error -------------------------------------------------------------
