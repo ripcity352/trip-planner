@@ -5,6 +5,168 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-21 — M5 — auth redesign — milestone closed
+
+**Decision:** M5 closed. The v3.2 auth redesign shipped across 5
+sequential PRs (#226 PR1 foundation → #227 PR2 password form → #228 PR3
+template flip → #229 PR4 /account/sign-in-and-security → #231 PR5
+Google OAuth + State B). Phase 6 closure walk on
+`https://travelston.com` verified the end-to-end chain
+(OTP sign-in → State C atomic recovery → password sign-in → /trips)
+on production at 375×812. M3/M4 overrides A–I held; Override J
+(deploy-ordering enforcement) earned its keep on PR3.
+
+See `notes/retros/m5-retro.md` for the full closure retrospective
+(reconciled from parallel code-reviewer + senior-engineer agent lenses
+plus the production walk findings).
+
+**What shipped (verified end-to-end on production):**
+
+- Email + password as primary auth path (`signInWithPasswordAction`)
+- 6-digit OTP code as fallback (`requestEmailCode` /
+  `verifyEmailCodeAction` — Supabase template flipped from
+  `{{ .ConfirmationURL }}` to `{{ .Token }}`)
+- `signUpAction` for explicit signup (no auto-provision on first
+  password attempt)
+- `signInWithOAuthAction` for Google OAuth — button renders, server
+  action wired; full round-trip walk deferred (Supabase Dashboard
+  provider step pending)
+- `/account/sign-in-and-security` route with State A/A+/B/C state
+  machine, `changePasswordAction` (re-auth + `signOut({scope:'others'})`),
+  and the atomic `setPasswordViaRecoveryAction({token, newPassword})`
+  for State C OTP-recovery (PR4 HIGH-1 fix-up — the canonical
+  atomic-action pattern)
+- Three new rate-limit scopes: `AUTH_OTP_VERIFY` (renamed),
+  `AUTH_PASSWORD`, `AUTH_CHANGE_PASSWORD`
+- Inline auth on `/invite/[token]` — anon viewer sees the form on the
+  preview card without bouncing through `/login?next=`
+- Voice-locked canonical strings in `lib/copy/auth.ts` (~50 keys)
+  pinned by `lib/copy/__tests__/m5-auth-voice-locks.test.ts`
+- Consolidated v3.2 ADR section above this entry (PR3 + PR5 addendum)
+- Runbook `notes/runbooks/auth-setup.md` (renamed from
+  `auth-template-flip.md`) covers the operator's Supabase Dashboard
+  click-path for both the OTP template flip and the Google OAuth
+  provider setup
+
+**Load-bearing decisions made during execution:**
+
+1. **Atomic-action pattern for recovery flows (PR4 HIGH-1 fix-up
+   `de83f8e`).** The original State C two-action sequence
+   (`verifyEmailCodeAction` → `setPasswordAfterRecoveryAction`) was
+   bypassable: any authed session satisfied `auth.getUser() != null`
+   without proving OTP possession. Collapsed to a single
+   `setPasswordViaRecoveryAction({token, newPassword})` where `verifyOtp`
+   short-circuits before `updateUser` inside one `rateLimitedAction`
+   closure. **Canonical pattern: any "verify-then-mutate" two-action
+   sequence in an auth/recovery flow collapses to one atomic action
+   where the credential is passed into the mutating action.**
+
+2. **Override J (deploy-ordering enforcement) for milestone-coupled
+   dashboard steps.** PR3 paired code with a Supabase Dashboard
+   template flip + 1-hour drain. Flip timestamp recorded in PR body,
+   `Monitor` watcher ran the drain, production walk caught a
+   Supabase OTP-length config drift (set to 8, code expected 6) that
+   no CI / typecheck / preview could have caught. Operator fixed in
+   dashboard mid-walk. Carry pattern forward to any milestone pairing
+   code with a dashboard/provider step.
+
+3. **Dead-code wiring stripped from PR5 (HIGH-1 fix-up `9cefeef`).**
+   The `OAuthExistingUserAlert` UI + tests + e2e + voice-locks all
+   referenced an `auth_email_taken_oauth` error key that no server
+   path returned. Detection requires server-side identity probing,
+   which can't be done from app code without service-role access (banned
+   per CLAUDE.md). UI scaffolding stripped; copy keys + voice-locks
+   retained for the M5-followup PR; **issue #232** tracks proper
+   detection via a new SECURITY DEFINER RPC or app-schema
+   `has_password` tracking.
+
+4. **OAuth-start has no inner rate-limit; middleware path-throttle
+   handles per-IP at the edge (PR5 HIGH-2 fix-up `9cefeef`).** The
+   original `signInWithOAuthAction` wrapped the call in
+   `rateLimitedAction(AUTH_PASSWORD, "oauth-start", ...)` — a fixed
+   key bucket that any single client could exhaust globally for 15
+   minutes. Removed the inner limiter; rely on the existing
+   `GUARDED_PATH_PATTERNS` for `/login` which keys by IP.
+
+5. **`app/page.tsx` kept as-is.** The marketing landing page's CTA
+   "Sign in to your trip" → `/login` is auth-method-agnostic — works
+   for password / OTP / OAuth equally. No update needed; Override G
+   acknowledged.
+
+**Verified `[v]` (Phase 6 production walk, 2026-05-21 ~20:55-21:33 UTC):**
+
+- `/login` email-only mode → password mode → "Email me a code instead"
+  → real-inbox 6-digit code → `verifyEmailCodeAction` → `/trips` ✓
+- H3 button order on password mode: Sign in → Email me a code →
+  Continue with Google ✓
+- `/account/sign-in-and-security` middleware redirect for anon → ✓
+  (PR4 preview smoke + Phase 6 confirmation)
+- State C OTP recovery: form C-verify → C-set → atomic
+  `setPasswordViaRecoveryAction({token, newPassword})` → success toast
+  *"Password updated. Other devices were signed out."* ✓
+- Invalid token bounces form back to C-verify with voice-correct error
+  *"That code didn't take. Double-check or get a fresh one."* ✓
+- Sign out → email + password sign-in → `/trips` with existing trip
+  data — confirms `signInWithPassword` works against the password that
+  was set by State C ✓
+
+**Deferred / carry-forward (`[v]` not yet ticked):**
+
+- Google OAuth round-trip + State B set-password — requires Supabase
+  Dashboard Google provider enabled + Vercel/Supabase env vars set.
+  Operator chose to defer; tracks in **#232**.
+- Cross-device `signOut({scope:'others'})` verification — covered by
+  `e2e/account-change-password.spec.ts`; not exercised on production.
+- Resend sender domain (`travelston.com`) verification — carried
+  forward from M4 in **#135**. Phase 6 walk used the default Supabase
+  sender; the carry remains open until Resend is verified.
+
+**Newly filed M5 carry-back follow-ups:**
+
+- **#230** — chronic flake in `components/trip/__tests__/rsvp-toggle.test.tsx:192`.
+  Flaked in M4, flaked again on PR4's first CI run, passed on re-run with no
+  code change. Two-deferral threshold hit. Gate M6 Wave 0 on the fix.
+- **#232** — OAuth-existing-user alert detection wiring. UI scaffolding
+  stripped from PR5 fix-up; copy keys + voice-locks retained for the
+  follow-up PR.
+- **#233** — `/account/sign-in-and-security` renders State A for OTP-only
+  users (identity check is provider-only, not password-set). Discovered
+  during Phase 6 walk. State C recovery path is unaffected; first-arrival
+  UX is wrong. Recommended fix: track `has_password` in app schema
+  (option 3 in the issue body — no service-role API required).
+
+**Process learnings carried to M6 (from the retro):**
+
+1. **Phantom-wiring audit** — pre-merge reviewer prompt: for each new
+   error key / copy key / state branch, `rg <symbol>` must show both a
+   producer AND a consumer. Only consumers → flag dead-code HIGH.
+2. **`(human-step)` annotations** at plan-lock time for items requiring
+   Dashboard, RPC creation, or third-party setup — the TDD chain
+   stubs-and-defers rather than fake-and-passes.
+3. **Pre-commit grep flagging tdd-guide softens-prod-for-tests
+   patterns** — same class as M4's tdd-guide-hallucination, caught
+   pre-review on PR2 (`0054bfd`).
+4. **Atomic-action pattern codified** above; reviewer prompt: any
+   multi-step auth action is one rate-limited closure.
+5. **Supabase dashboard config-drift checklist** — pre-walk eyeball
+   checks (OTP Length, Site URL, template body, Google OAuth state)
+   should land in `notes/runbooks/auth-setup.md`. Next walk a glance,
+   not a discovery.
+
+**Memory:**
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md`
+  — updated alongside this closure to reflect M5's new reality
+  (password + OTP + OAuth, magic-link demoted to recovery primitive).
+  The underlying principle (low-friction default, defense-in-depth
+  only where the actual threat model demands it) holds.
+
+**Bright line unchanged from M4:** *use the app for one real bachelor
+party.* M5 made the auth flow real; whether M1–M5 are sufficient is
+still the post-trip retrospective gate. **Don't start M6 just because
+the chain is green — gate on the actual trip.**
+
+---
+
 ## 2026-05-21 — M5 auth redesign — password + OTP + OAuth (PR3 template flip)
 
 **Decision:** Replace Supabase magic-link-as-primary with email+password
