@@ -49,6 +49,9 @@ const formSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, M3_UI_STRINGS.itineraryForm_validation_day_format),
   address: z.string().trim().max(500).optional(),
+  // W2a: Places autocomplete columns (#166).
+  addressPlaceId: z.string().trim().max(255).optional(),
+  addressProvider: z.enum(["google"]).optional(),
   dressCode: z.string().trim().max(200).optional(),
   visibility: z.enum(VISIBILITY_OPTIONS),
   // W1b: chip picker emits string[]; server action takes string[] (#164).
@@ -101,6 +104,8 @@ export function EditItemForm({
       kind: item.kind,
       day: item.day,
       address: item.address ?? "",
+      addressPlaceId: item.address_place_id ?? undefined,
+      addressProvider: (item.address_provider as "google" | undefined) ?? undefined,
       dressCode: item.dress_code ?? "",
       visibility:
         (item.visibility as (typeof VISIBILITY_OPTIONS)[number]) ?? "everyone",
@@ -119,6 +124,8 @@ export function EditItemForm({
         kind: values.kind,
         day: values.day,
         address: values.address || null,
+        addressPlaceId: values.addressPlaceId || null,
+        addressProvider: values.addressProvider || null,
         dressCode: values.dressCode || null,
         visibility: values.visibility,
         activityTag: values.activityTags ?? [],
@@ -208,10 +215,15 @@ export function EditItemForm({
         error={errors.day?.message}
       />
 
-      {/* Address — pre-split into AddressField (W2a will add places-API widget) */}
+      {/* Address — W2a: places-API autocomplete widget (#166) */}
       <AddressField
-        value={watch("address") ?? ""}
-        onChange={(v) => setValue("address", v)}
+        address={watch("address") ?? ""}
+        addressPlaceId={watch("addressPlaceId")}
+        onChange={(addr, placeId, provider) => {
+          setValue("address", addr, { shouldValidate: true });
+          setValue("addressPlaceId", placeId, { shouldValidate: true });
+          setValue("addressProvider", provider, { shouldValidate: true });
+        }}
         disabled={isBusy}
       />
 

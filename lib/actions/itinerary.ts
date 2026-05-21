@@ -47,6 +47,8 @@ const addItemSchema = z.object({
   endTime: z.string().nullable().optional(),
   location: z.string().trim().max(200).nullable().optional(),
   address: z.string().trim().max(500).nullable().optional(),
+  addressPlaceId: z.string().trim().max(255).nullable().optional(),
+  addressProvider: z.enum(["google"]).nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
   costCents: z.number().int().min(0).nullable().optional(),
   currency: z.string().length(3).optional().default("USD"),
@@ -102,6 +104,8 @@ export interface AddItineraryItemInput {
   endTime?: string | null;
   location?: string | null;
   address?: string | null;
+  addressPlaceId?: string | null;
+  addressProvider?: "google" | null;
   notes?: string | null;
   costCents?: number | null;
   currency?: string;
@@ -144,6 +148,8 @@ export async function addItineraryItem(
     endTime,
     location,
     address,
+    addressPlaceId,
+    addressProvider,
     notes,
     costCents,
     currency,
@@ -168,6 +174,8 @@ export async function addItineraryItem(
             end_time: endTime ?? null,
             location: location ?? null,
             address: address ?? null,
+            address_place_id: addressPlaceId ?? null,
+            address_provider: addressProvider ?? null,
             notes: notes ?? null,
             cost_cents: costCents ?? null,
             currency: currency ?? "USD",
@@ -178,7 +186,7 @@ export async function addItineraryItem(
             created_by: userId,
           })
           .select(
-            "id, trip_id, day, start_time, end_time, title, location, address, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
+            "id, trip_id, day, start_time, end_time, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
           )
           .single();
 
@@ -189,7 +197,7 @@ export async function addItineraryItem(
             const { data: existing, error: fetchError } = await supabase
               .from("itinerary_items")
               .select(
-                "id, trip_id, day, start_time, end_time, title, location, address, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
+                "id, trip_id, day, start_time, end_time, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
               )
               .eq("trip_id", tripId)
               .eq("idempotency_key", idempotencyKey)
@@ -239,6 +247,8 @@ export interface UpdateItineraryItemInput {
   endTime?: string | null;
   location?: string | null;
   address?: string | null;
+  addressPlaceId?: string | null;
+  addressProvider?: "google" | null;
   notes?: string | null;
   costCents?: number | null;
   currency?: string;
@@ -285,6 +295,8 @@ export async function updateItineraryItem(
   if (fields.endTime !== undefined) updatePayload.end_time = fields.endTime;
   if (fields.location !== undefined) updatePayload.location = fields.location;
   if (fields.address !== undefined) updatePayload.address = fields.address;
+  if (fields.addressPlaceId !== undefined) updatePayload.address_place_id = fields.addressPlaceId;
+  if (fields.addressProvider !== undefined) updatePayload.address_provider = fields.addressProvider;
   if (fields.notes !== undefined) updatePayload.notes = fields.notes;
   if (fields.costCents !== undefined) updatePayload.cost_cents = fields.costCents;
   if (fields.currency !== undefined) updatePayload.currency = fields.currency;
@@ -302,7 +314,7 @@ export async function updateItineraryItem(
           .update(updatePayload)
           .eq("id", itemId)
           .select(
-            "id, trip_id, day, start_time, end_time, title, location, address, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
+            "id, trip_id, day, start_time, end_time, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
           )
           .single();
 
