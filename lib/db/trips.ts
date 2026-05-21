@@ -23,7 +23,7 @@ import type { Trip, TripMember, TripRole } from "./types";
 // also pass `.is("deleted_at", null)` on list queries as defense-in-depth
 // + an explicit signal to the reader.
 const TRIP_COLUMNS =
-  "id, slug, name, description, location, starts_at, ends_at, created_by, created_at, updated_at, kind, is_template, deleted_at, archived_at, vibe_tags";
+  "id, slug, name, description, location, starts_at, ends_at, created_by, created_at, updated_at, kind, is_template, deleted_at, archived_at, vibe_tags, timezone";
 
 /**
  * Get a trip by its URL slug. Returns null if the trip doesn't exist or

@@ -118,6 +118,8 @@ const baseProps = {
   isCelebrant: false,
   lodgingAssignments: [] as LodgingAssignment[],
   tripMembers: [] as TripMember[],
+  // W2b: tripTimezone required by EditItemFormSheet
+  tripTimezone: "America/New_York",
 };
 
 describe("ItemCard", () => {

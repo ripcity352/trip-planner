@@ -26,8 +26,9 @@ const baseItem: ItineraryItem = {
   title: "Dinner at the Wynn",
   kind: "meal",
   day: "2026-08-01",
-  start_time: "19:00",
-  end_time: "21:00",
+  // W2b: startTime/endTime are now UTC ISO-8601 strings (datetime-local widget).
+  start_time: "2026-08-01T19:00:00.000Z",
+  end_time: "2026-08-01T21:00:00.000Z",
   location: null,
   address: "3131 Las Vegas Blvd S, Las Vegas, NV 89109",
   notes: null,
@@ -45,6 +46,9 @@ const baseItem: ItineraryItem = {
 describe("EditItemForm", () => {
   const defaultProps = {
     item: baseItem,
+    // W2b: tripTimezone is now required so the datetime-local widget renders
+    // in the correct timezone. Use America/New_York as a representative value.
+    tripTimezone: "America/New_York",
     onSuccess: vi.fn(),
     onCancel: vi.fn(),
     onDeleted: vi.fn(),

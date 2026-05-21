@@ -21,10 +21,12 @@ import type { ItineraryItem } from "@/lib/db/types";
 
 export interface EditItemFormSheetProps {
   item: ItineraryItem;
+  /** IANA timezone from `trips.timezone` — passed from the page level. */
+  tripTimezone: string;
   className?: string;
 }
 
-export function EditItemFormSheet({ item, className }: EditItemFormSheetProps) {
+export function EditItemFormSheet({ item, tripTimezone, className }: EditItemFormSheetProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
 
@@ -43,6 +45,7 @@ export function EditItemFormSheet({ item, className }: EditItemFormSheetProps) {
       <div className={cn("rounded-xl border border-border bg-card p-4 shadow-sm", className)}>
         <EditItemForm
           item={item}
+          tripTimezone={tripTimezone}
           onSuccess={handleSuccess}
           onCancel={() => setOpen(false)}
           onDeleted={handleDeleted}

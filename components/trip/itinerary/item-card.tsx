@@ -46,6 +46,8 @@ export interface ItemCardProps {
   lodgingAssignments: LodgingAssignment[];
   /** All trip members — used by LodgingRoster to display names. */
   tripMembers: TripMember[];
+  /** IANA timezone from `trips.timezone` — forwarded to EditItemFormSheet. */
+  tripTimezone: string;
 }
 
 export function ItemCard({
@@ -56,6 +58,7 @@ export function ItemCard({
   celebrantName,
   lodgingAssignments,
   tripMembers,
+  tripTimezone,
 }: ItemCardProps) {
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
 
@@ -86,7 +89,7 @@ export function ItemCard({
           ) : null}
         </div>
         {isOrganizer ? (
-          <EditItemFormSheet item={item} />
+          <EditItemFormSheet item={item} tripTimezone={tripTimezone} />
         ) : null}
       </div>
 

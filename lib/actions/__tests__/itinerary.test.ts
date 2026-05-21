@@ -357,6 +357,110 @@ describe("updateItineraryItem — address place fields", () => {
 });
 
 // ---------------------------------------------------------------------------
+// updateItineraryItem — W2b: startTime / endTime datetime fields
+// ---------------------------------------------------------------------------
+
+describe("updateItineraryItem — datetime fields (W2b)", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("returns the updated item when startTime is a valid ISO-8601 string", async () => {
+    primeAuth(VALID_USER_ID);
+    const updatedItem = { ...mockItem, start_time: "2026-06-01T03:00:00.000Z" };
+    tableResolvers.set("itinerary_items", () => ({
+      data: updatedItem,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        startTime: "2026-06-01T03:00:00.000Z",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: updatedItem });
+  });
+
+  it("returns the updated item when endTime is a valid ISO-8601 string", async () => {
+    primeAuth(VALID_USER_ID);
+    const updatedItem = {
+      ...mockItem,
+      start_time: "2026-06-01T03:00:00.000Z",
+      end_time: "2026-06-01T05:00:00.000Z",
+    };
+    tableResolvers.set("itinerary_items", () => ({
+      data: updatedItem,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        startTime: "2026-06-01T03:00:00.000Z",
+        endTime: "2026-06-01T05:00:00.000Z",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: updatedItem });
+  });
+
+  it("accepts null startTime and endTime (clearing time fields)", async () => {
+    primeAuth(VALID_USER_ID);
+    const updatedItem = { ...mockItem, start_time: null, end_time: null };
+    tableResolvers.set("itinerary_items", () => ({
+      data: updatedItem,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        startTime: null,
+        endTime: null,
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: updatedItem });
+  });
+
+  it("returns validation_failed for malformed startTime (datetime_invalid path)", async () => {
+    primeAuth(VALID_USER_ID);
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        startTime: "not-a-date" as string,
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed for malformed endTime", async () => {
+    primeAuth(VALID_USER_ID);
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      {
+        itemId: VALID_ITEM_ID,
+        endTime: "2026/06/01 12:00" as string,
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // deleteItineraryItem
 // ---------------------------------------------------------------------------
 

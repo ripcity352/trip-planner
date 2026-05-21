@@ -47,6 +47,8 @@ const sharedProps = {
   isCelebrant: false,
   lodgingAssignmentsMap: new Map(),
   tripMembers: [],
+  // W2b: tripTimezone required by DaySection → ItemCard → EditItemFormSheet
+  tripTimezone: "America/New_York",
 };
 
 describe("DaySection", () => {

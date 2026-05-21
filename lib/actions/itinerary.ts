@@ -43,8 +43,10 @@ const addItemSchema = z.object({
   title: z.string().trim().min(1).max(200),
   kind: z.enum(ITINERARY_ITEM_KIND),
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
-  startTime: z.string().nullable().optional(),
-  endTime: z.string().nullable().optional(),
+  // W2b: strict ISO-8601 validation. datetime_invalid error key surfaces
+  // to the client when the value is non-null and non-ISO.
+  startTime: z.string().datetime({ offset: true }).nullable().optional(),
+  endTime: z.string().datetime({ offset: true }).nullable().optional(),
   location: z.string().trim().max(200).nullable().optional(),
   address: z.string().trim().max(500).nullable().optional(),
   addressPlaceId: z.string().trim().max(255).nullable().optional(),
