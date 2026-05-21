@@ -33,6 +33,7 @@ const signInWithPasswordActionMock = vi.fn();
 const signUpActionMock = vi.fn();
 const verifyEmailCodeActionMock = vi.fn();
 const requestEmailCodeMock = vi.fn();
+const signInWithOAuthActionMock = vi.fn();
 
 vi.mock("@/app/login/actions", () => ({
   signInWithPasswordAction: (...args: unknown[]) =>
@@ -41,6 +42,8 @@ vi.mock("@/app/login/actions", () => ({
   verifyEmailCodeAction: (...args: unknown[]) =>
     verifyEmailCodeActionMock(...args),
   requestEmailCode: (...args: unknown[]) => requestEmailCodeMock(...args),
+  signInWithOAuthAction: (...args: unknown[]) =>
+    signInWithOAuthActionMock(...args),
 }));
 
 import { LoginForm } from "@/app/login/_form";
@@ -403,5 +406,181 @@ describe("<LoginForm /> — next prop", () => {
     expect(() =>
       render(<LoginForm next="/invite/abc123/accept" />)
     ).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Google OAuth button (PR5)
+// ---------------------------------------------------------------------------
+
+describe("<LoginForm /> — Google OAuth button", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders the 'Continue with Google' button in email-only mode", () => {
+    render(<LoginForm />);
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.continueWithGoogleButton })
+    ).toBeInTheDocument();
+  });
+
+  it("renders the OAuth button BELOW the email field (H3 ordering)", () => {
+    render(<LoginForm />);
+    const continueBtn = screen.getByRole("button", { name: AUTH_COPY.continueButton });
+    const googleBtn = screen.getByRole("button", { name: AUTH_COPY.continueWithGoogleButton });
+    // continueBtn should appear before googleBtn in DOM order
+    const allButtons = screen.getAllByRole("button");
+    const continueIdx = allButtons.indexOf(continueBtn);
+    const googleIdx = allButtons.indexOf(googleBtn);
+    expect(continueIdx).toBeLessThan(googleIdx);
+  });
+
+  it("calls signInWithOAuthAction with provider=google when clicked", async () => {
+    // Mock window.location.assign since jsdom doesn't implement it
+    const assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { assign: assignMock },
+    });
+
+    signInWithOAuthActionMock.mockResolvedValue({
+      ok: true,
+      url: "https://accounts.google.com/o/oauth2/v2/auth",
+    });
+
+    render(<LoginForm />);
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.continueWithGoogleButton })
+    );
+
+    await waitFor(() => {
+      expect(signInWithOAuthActionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "google" })
+      );
+    });
+  });
+
+  it("navigates to the OAuth URL on success (window.location.assign)", async () => {
+    const assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { assign: assignMock },
+    });
+
+    signInWithOAuthActionMock.mockResolvedValue({
+      ok: true,
+      url: "https://accounts.google.com/o/oauth2/v2/auth",
+    });
+
+    render(<LoginForm />);
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.continueWithGoogleButton })
+    );
+
+    await waitFor(() => {
+      expect(assignMock).toHaveBeenCalledWith(
+        "https://accounts.google.com/o/oauth2/v2/auth"
+      );
+    });
+  });
+
+  it("shows an error when signInWithOAuthAction fails", async () => {
+    signInWithOAuthActionMock.mockResolvedValue({
+      ok: false,
+      errorKey: "oauth_redirect_failed",
+    });
+
+    render(<LoginForm />);
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.continueWithGoogleButton })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OAuth-existing-user alert (PR5)
+// ---------------------------------------------------------------------------
+
+describe("<LoginForm /> — OAuth-existing-user alert", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function triggerOAuthAlert() {
+    signInWithPasswordActionMock.mockResolvedValue({
+      ok: false,
+      errorKey: "auth_email_taken_oauth",
+    });
+    render(<LoginForm />);
+    await advanceToPasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "wrongpass" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: AUTH_COPY.signInButton }));
+    await waitFor(() => {
+      // The alert must be visible
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+  }
+
+  it("shows the OAuth-existing-user alert when signInWithPassword returns auth_email_taken_oauth", async () => {
+    await triggerOAuthAlert();
+    expect(
+      screen.getByText(AUTH_COPY.oauth_account_prompt_text)
+    ).toBeInTheDocument();
+  });
+
+  it("renders 'Sign in with Google' button in the alert", async () => {
+    await triggerOAuthAlert();
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_google_button })
+    ).toBeInTheDocument();
+  });
+
+  it("renders 'Email me a code instead' button in the alert", async () => {
+    await triggerOAuthAlert();
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_code_button })
+    ).toBeInTheDocument();
+  });
+
+  it("'Sign in with Google' button in alert triggers signInWithOAuthAction", async () => {
+    const assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { assign: assignMock },
+    });
+    signInWithOAuthActionMock.mockResolvedValue({
+      ok: true,
+      url: "https://accounts.google.com/oauth",
+    });
+
+    await triggerOAuthAlert();
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_google_button })
+    );
+
+    await waitFor(() => {
+      expect(signInWithOAuthActionMock).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: "google" })
+      );
+    });
+  });
+
+  it("'Email me a code instead' in alert triggers requestEmailCode and transitions to code-verify", async () => {
+    requestEmailCodeMock.mockResolvedValue({ ok: true });
+    await triggerOAuthAlert();
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_code_button })
+    );
+
+    await waitFor(() => {
+      expect(requestEmailCodeMock).toHaveBeenCalledWith("dave@example.com");
+    });
   });
 });

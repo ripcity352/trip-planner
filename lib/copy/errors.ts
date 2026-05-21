@@ -73,7 +73,9 @@ export type ErrorKey =
   // string locked. Do NOT change without updating the voice-lock test.
   // auth_unauthenticated: returned by server actions when auth.getUser() returns null.
   | "auth_current_password_incorrect"
-  | "auth_unauthenticated";
+  | "auth_unauthenticated"
+  // M5 PR5 — Google OAuth redirect failure (e.g. Supabase returns no URL).
+  | "oauth_redirect_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -141,4 +143,7 @@ export const ERRORS: Record<ErrorKey, string> = {
   // auth_unauthenticated: shown when the server action resolves getUser() to null.
   // Blame-free — the session just expired or was revoked on another device.
   auth_unauthenticated: "Your session expired. Sign in again to continue.",
+  // M5 PR5 — returned when supabase.auth.signInWithOAuth() returns no redirect URL.
+  // Blame-free, actionable.
+  oauth_redirect_failed: "Couldn't start Google sign-in. Try again in a sec.",
 };

@@ -63,6 +63,7 @@ vi.mock("@/lib/rate-limit", () => ({
 import {
   changePasswordAction,
   setPasswordViaRecoveryAction,
+  setPasswordAction,
 } from "@/app/(authed)/account/sign-in-and-security/actions";
 import { RateLimitError } from "@/lib/rate-limit";
 
@@ -506,6 +507,206 @@ describe("setPasswordViaRecoveryAction", () => {
       token: "123456",
       newPassword: "freshpassword",
     });
+
+    expect(result).toEqual({ ok: false, errorKey: "network" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setPasswordAction (State B — first-ever password, no OTP gate)
+// ---------------------------------------------------------------------------
+
+describe("setPasswordAction", () => {
+  // OAuth-only user: Google identity, no email/password identity.
+  const oauthOnlyUser = {
+    id: "user-oauth",
+    email: "dave@example.com",
+    identities: [{ provider: "google", id: "google-1" }],
+  };
+
+  // OTP-only user: no identities at all (empty).
+  const otpOnlyUser = {
+    id: "user-otp",
+    email: "dave@example.com",
+    identities: [],
+  };
+
+  // User who already has a password (State A territory).
+  const passwordUser = {
+    id: "user-pw",
+    email: "dave@example.com",
+    identities: [{ provider: "email", id: "email-1" }],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRateLimitedAction.mockImplementation(
+      async <T>(_scope: unknown, _key: unknown, fn: () => Promise<T>) => fn()
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Happy path
+  // -------------------------------------------------------------------------
+
+  it("returns { ok: true } when OAuth-only user sets password for the first time", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockUpdateUser).toHaveBeenCalledWith({ password: "freshpassword" });
+  });
+
+  it("returns { ok: true } when OTP-only user (empty identities) sets password", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: otpOnlyUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: otpOnlyUser }, error: null });
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockUpdateUser).toHaveBeenCalledWith({ password: "freshpassword" });
+  });
+
+  // -------------------------------------------------------------------------
+  // Critical: signOut must NEVER be called (v3.2 locked — nothing to invalidate)
+  // -------------------------------------------------------------------------
+
+  it("does NOT call signOut after setPasswordAction success (v3.2 ADR locked)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+
+    await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call signOut even on a failure path", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+    mockUpdateUser.mockResolvedValue({
+      data: { user: null },
+      error: { status: 500, message: "Server error", name: "AuthError" },
+    });
+
+    await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // State guard: user already has password identity → validation_failed
+  // -------------------------------------------------------------------------
+
+  it("returns validation_failed when user already has a password identity (State A territory)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: passwordUser }, error: null });
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Validation
+  // -------------------------------------------------------------------------
+
+  it("returns validation_failed when newPassword is under 6 chars", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+
+    const result = await setPasswordAction({ newPassword: "abc" });
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("returns validation_failed when newPassword is empty", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+
+    const result = await setPasswordAction({ newPassword: "" });
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Auth guard
+  // -------------------------------------------------------------------------
+
+  it("returns auth_unauthenticated when auth.getUser() returns null", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(result).toEqual({ ok: false, errorKey: "auth_unauthenticated" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("returns auth_unauthenticated when user has no email", async () => {
+    mockGetUser.mockResolvedValue({
+      data: {
+        user: { id: "user-no-email", email: null, identities: [] },
+      },
+      error: null,
+    });
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(result).toEqual({ ok: false, errorKey: "auth_unauthenticated" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Rate limit
+  // -------------------------------------------------------------------------
+
+  it("returns rate_limit when the rate-limiter throws RateLimitError", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+    mockRateLimitedAction.mockRejectedValueOnce(
+      new RateLimitError("authChangePassword", { remaining: 0, reset: 0 })
+    );
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+
+  it("uses AUTH_CHANGE_PASSWORD scope keyed by user.id", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+
+    await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(mockRateLimitedAction).toHaveBeenCalledWith(
+      "authChangePassword",
+      "user-oauth",
+      expect.any(Function)
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Error paths
+  // -------------------------------------------------------------------------
+
+  it("returns network error when updateUser fails", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+    mockUpdateUser.mockResolvedValue({
+      data: { user: null },
+      error: { status: 500, message: "Server error", name: "AuthError" },
+    });
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
+
+    expect(result).toEqual({ ok: false, errorKey: "network" });
+  });
+
+  it("never throws — returns network key on unexpected errors", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: oauthOnlyUser }, error: null });
+    mockRateLimitedAction.mockImplementation(async () => {
+      throw new Error("Unexpected");
+    });
+
+    const result = await setPasswordAction({ newPassword: "freshpassword" });
 
     expect(result).toEqual({ ok: false, errorKey: "network" });
   });

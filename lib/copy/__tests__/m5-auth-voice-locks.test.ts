@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 import { ERRORS } from "@/lib/copy/errors";
+import { AUTH_COPY } from "@/lib/copy/auth";
 
 describe("ERRORS — M5 auth voice locks (Phase 4 audit H7)", () => {
   it("auth_wrong_password is voice-locked (H7 rewrite)", () => {
@@ -104,6 +105,109 @@ describe("ERRORS — M5 auth voice locks (Phase 4 audit H7)", () => {
         ERRORS[key].length,
         `${key} must be under 120 chars`
       ).toBeLessThanOrEqual(120);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PR5 voice locks — Google OAuth + State B strings
+// ---------------------------------------------------------------------------
+
+describe("AUTH_COPY — PR5 voice locks (Google OAuth + State B)", () => {
+  // -------------------------------------------------------------------------
+  // continueWithGoogleButton
+  // -------------------------------------------------------------------------
+
+  it("continueWithGoogleButton is voice-locked", () => {
+    expect(AUTH_COPY.continueWithGoogleButton).toBe("Continue with Google");
+  });
+
+  // -------------------------------------------------------------------------
+  // oauth_account_prompt_text — the load-bearing voice lock
+  //
+  // Spec-mandated string: "You signed up with Google. Sign in with Google,
+  // or get a code emailed instead?" (Phase 4 audit C1 / Voice).
+  // -------------------------------------------------------------------------
+
+  it("oauth_account_prompt_text is voice-locked to the spec-mandated copy", () => {
+    expect(AUTH_COPY.oauth_account_prompt_text).toBe(
+      "You signed up with Google. Sign in with Google, or get a code emailed instead?"
+    );
+  });
+
+  it("oauth_account_prompt_text does not contain corporate SaaS language", () => {
+    const v = AUTH_COPY.oauth_account_prompt_text.toLowerCase();
+    expect(v).not.toContain("authentication");
+    expect(v).not.toContain("an error occurred");
+    expect(v).not.toContain("account already exists");
+    expect(v).not.toContain("email address is already");
+  });
+
+  it("oauth_account_prompt_text passes the 'pre-trip dinner' voice test (warm, specific)", () => {
+    // The string must contain the provider name (Google — specific, not abstract)
+    expect(AUTH_COPY.oauth_account_prompt_text).toContain("Google");
+    // Under 150 chars — readable in a small mobile alert
+    expect(AUTH_COPY.oauth_account_prompt_text.length).toBeLessThanOrEqual(150);
+  });
+
+  it("oauth_account_prompt_google_button is non-empty and specific", () => {
+    expect(AUTH_COPY.oauth_account_prompt_google_button.length).toBeGreaterThan(0);
+    expect(AUTH_COPY.oauth_account_prompt_google_button).toContain("Google");
+  });
+
+  it("oauth_account_prompt_code_button is non-empty", () => {
+    expect(AUTH_COPY.oauth_account_prompt_code_button.length).toBeGreaterThan(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // State B copy keys
+  // -------------------------------------------------------------------------
+
+  it("accountSecurity_stateB_title is non-empty and under 80 chars", () => {
+    expect(AUTH_COPY.accountSecurity_stateB_title.trim().length).toBeGreaterThan(0);
+    expect(AUTH_COPY.accountSecurity_stateB_title.length).toBeLessThanOrEqual(80);
+  });
+
+  it("accountSecurity_stateB_helperOauthOnly mentions Google (specific, not generic)", () => {
+    expect(AUTH_COPY.accountSecurity_stateB_helperOauthOnly).toContain("Google");
+  });
+
+  it("accountSecurity_stateB_helperOtpOnly does NOT contain corporate language", () => {
+    const v = AUTH_COPY.accountSecurity_stateB_helperOtpOnly.toLowerCase();
+    expect(v).not.toContain("one-time password");
+    expect(v).not.toContain("authentication failed");
+    expect(v).not.toContain("an error");
+  });
+
+  it("accountSecurity_stateB_setButton is non-empty", () => {
+    expect(AUTH_COPY.accountSecurity_stateB_setButton.trim().length).toBeGreaterThan(0);
+  });
+
+  it("oauth_redirect_failed error string is warm and blame-free", () => {
+    const v = ERRORS.oauth_redirect_failed.toLowerCase();
+    expect(v).not.toContain("an error occurred");
+    expect(v).not.toContain("authentication failed");
+    expect(v).not.toContain("oauth failed");
+    expect(ERRORS.oauth_redirect_failed.length).toBeLessThanOrEqual(120);
+  });
+
+  it("all PR5 AUTH_COPY strings are under 200 chars", () => {
+    const keys = [
+      "continueWithGoogleButton",
+      "oauth_account_prompt_text",
+      "oauth_account_prompt_google_button",
+      "oauth_account_prompt_code_button",
+      "accountSecurity_stateB_title",
+      "accountSecurity_stateB_helperOauthOnly",
+      "accountSecurity_stateB_helperOtpOnly",
+      "accountSecurity_stateB_setButton",
+    ] as const;
+    for (const key of keys) {
+      const val = AUTH_COPY[key] as string;
+      expect(
+        val.length,
+        `${key} must be under 200 chars, got ${val.length}`
+      ).toBeLessThanOrEqual(200);
     }
   });
 });
