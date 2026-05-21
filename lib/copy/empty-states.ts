@@ -324,3 +324,30 @@ export const M3_UI_STRINGS = {
 } as const;
 
 export type M3UIStringKey = keyof typeof M3_UI_STRINGS;
+
+/**
+ * M4 UI strings — itinerary item chip pickers (dress code, activity tags,
+ * member flags) and travel-leg airline input. Same voice rules as M3.
+ * Keys grouped by surface for greppability.
+ *
+ * Voice-locked per Override H — these strings are the source of truth for
+ * every later wave. Change here = change everywhere.
+ *
+ * Naming: `<surface>_<role>` (consistent with M2/M3 convention).
+ */
+export const M4_UI_STRINGS = {
+  // Itinerary item — member-flag picker (per-item, organizer-visible only)
+  // Override H voice locks — exact strings pinned in lib/copy/__tests__/m4-voice-locks.test.ts
+  itineraryItem_memberFlag_heading: "Anything we should know?",
+  itineraryItem_memberFlag_subhead:
+    "Just for the organizer — private to you.",
+  // Itinerary item — dress-code chip picker
+  itineraryItem_dressCode_placeholder: "Pick a vibe or type your own",
+  // Itinerary item — activity-tag chip picker
+  itineraryItem_activityTag_placeholder: "Add a tag",
+  // Travel leg — airline typeahead
+  // Voice lock: matches arrivals_leg_form_carrier_label palette tone.
+  travelLeg_airline_placeholder: "Type your airline",
+} as const;
+
+export type M4UIStringKey = keyof typeof M4_UI_STRINGS;

@@ -49,7 +49,15 @@ export type ErrorKey =
   | "travel_leg_delete_failed"
   | "lodging_assign_failed"
   | "invite_mint_failed"
-  | "invite_revoke_failed";
+  | "invite_revoke_failed"
+  // M4 error keys (Wave 0a). Naming follows `<feature>_<verb>_failed`.
+  // Voice rule: blame-free, warm, specific — NO "An error occurred",
+  // NO bare "error". These pass the "would you say this at a pre-trip
+  // dinner?" test. Anti-corporate guard is pinned in
+  // lib/copy/__tests__/m4-voice-locks.test.ts.
+  | "address_lookup_failed"
+  | "datetime_invalid"
+  | "places_proxy_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -85,4 +93,11 @@ export const ERRORS: Record<ErrorKey, string> = {
   invite_mint_failed:
     "Couldn't mint a link. Try once more — sometimes the server takes a sec.",
   invite_revoke_failed: "Couldn't revoke that link yet. Try once more.",
+  // M4 error strings — same voice rules. Blame-free, specific, no corporate language.
+  // "Couldn't pull" / "snoozing" / "Type the address instead" — casual, actionable.
+  address_lookup_failed:
+    "Couldn't pull suggestions. Type the address instead.",
+  datetime_invalid: "That doesn't look like a real time.",
+  places_proxy_failed:
+    "Place lookup's snoozing. Type the address instead.",
 };

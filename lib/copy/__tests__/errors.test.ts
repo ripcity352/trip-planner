@@ -31,6 +31,10 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "lodging_assign_failed",
   "invite_mint_failed",
   "invite_revoke_failed",
+  // M4 keys (Wave 0a)
+  "address_lookup_failed",
+  "datetime_invalid",
+  "places_proxy_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user
