@@ -67,4 +67,43 @@ describe("ERRORS — M5 auth voice locks (Phase 4 audit H7)", () => {
       ).toBeLessThanOrEqual(120);
     }
   });
+
+  // --- PR4 voice locks -------------------------------------------------------
+
+  it("auth_current_password_incorrect is voice-locked (H7)", () => {
+    // Exact string mandated by Phase 4 audit H7. DO NOT change without
+    // updating this test. The original plan had "Current password is
+    // incorrect." — SaaS/clinical. This version is warm, actionable,
+    // and offers the OTP recovery path explicitly.
+    expect(ERRORS.auth_current_password_incorrect).toBe(
+      "That's not the current password. Try once more — or use a code to reset."
+    );
+  });
+
+  it("auth_current_password_incorrect does not contain corporate SaaS language", () => {
+    const v = ERRORS.auth_current_password_incorrect.toLowerCase();
+    expect(v).not.toContain("incorrect password");
+    expect(v).not.toContain("current password is incorrect");
+    expect(v).not.toContain("an error occurred");
+    expect(v).not.toContain("authentication failed");
+    expect(v).not.toContain("invalid");
+  });
+
+  it("auth_unauthenticated is non-empty and under 120 chars", () => {
+    expect(ERRORS.auth_unauthenticated.trim().length).toBeGreaterThan(0);
+    expect(ERRORS.auth_unauthenticated.length).toBeLessThanOrEqual(120);
+  });
+
+  it("all PR4 auth error strings are under 120 chars", () => {
+    const keys = [
+      "auth_current_password_incorrect",
+      "auth_unauthenticated",
+    ] as const;
+    for (const key of keys) {
+      expect(
+        ERRORS[key].length,
+        `${key} must be under 120 chars`
+      ).toBeLessThanOrEqual(120);
+    }
+  });
 });

@@ -40,6 +40,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "auth_code_invalid",
   "auth_code_expired",
   "auth_email_taken_oauth",
+  // M5 PR4 account security keys
+  "auth_current_password_incorrect",
+  "auth_unauthenticated",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user
