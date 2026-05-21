@@ -60,6 +60,7 @@ stale local override. See ADR 2026-05-19 (late PM) in
 |---|---|---|---|
 | **Redirect URL allowlist** includes production domain | Authentication → URL Configuration → Redirect URLs | Magic-link callbacks fail; Supabase rejects the redirect after `verifyOtp` / `exchangeCodeForSession`. Must include `https://travelston.com/auth/callback` + Vercel preview wildcard `https://*.vercel.app/auth/callback`. | 2026-05-19 |
 | **Site URL** matches production | Authentication → URL Configuration → Site URL | Email-template `{{ .SiteURL }}` interpolates wrong → links 404 on click. Currently `https://travelston.com`. | 2026-05-19 |
+| **Google OAuth provider enabled** with Client ID + Secret | Authentication → Sign In / Providers → Google | `signInWithOAuthAction` returns `oauth_redirect_failed`; the "Continue with Google" button is broken. Credentials are pasted directly into Supabase (Supabase holds them server-side; the Next.js app does NOT read `GOOGLE_OAUTH_CLIENT_*` env vars — they belong in the Supabase Dashboard only). See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider". | **Not yet verified — Phase 6 closure step (M5 #225).** |
 | **Custom SMTP (Resend)** wired | Project Settings → Auth → SMTP Settings | Without it: Supabase's free-tier project-wide email cap (3/hr) bricks magic-link sign-ins past the third attempt. The 2026-05-19 retro caught this within minutes of going live. | 2026-05-19 |
 | **Email Templates → Magic Link** uses the cross-device-safe variant | Authentication → Email Templates → Magic Link | If template emits `{{ .ConfirmationURL }}` (PKCE-bound), cross-device clicks fail with `pkce_code_verifier_not_found` (#137). Template must emit a `token_hash` link consumable by `verifyOtp`. **Wave 0c (M3) flips this.** | 2026-05-20 (Wave 0c #137) |
 | **Realtime publication includes the right tables** | Database → Replication → Publications → `supabase_realtime` | Without `date_poll_votes` in the publication, PulsePoll renders but never updates live. M3 adds `announcements`. | 2026-05-19 (M2) / 2026-05-20 (M3 Wave 1 #79) |
@@ -154,6 +155,26 @@ counts as a hard-stop trigger per `m3-execution-plan.md` Appendix B.
 Everything else in this file was verified at W4b smoke (2026-05-20) or
 earlier. The two items above are the only remaining M4 closure-walk
 blockers.
+
+---
+
+## M5 deployment notes (2026-05-21)
+
+### Google OAuth dashboard step (load-bearing — do BEFORE verifying above rows)
+
+1. **Supabase Dashboard** → Authentication → Providers → Google → Enable.
+2. Paste `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` from the
+   Google Cloud project (OAuth 2.0 → Web application credentials).
+3. Add `https://travelston.com/auth/callback` to the "Authorized redirect URIs"
+   in the Google Cloud console (OAuth consent screen → credentials).
+4. Copy the "Callback URL (for OAuth)" from Supabase Dashboard → Providers →
+   Google and paste it into the Google Cloud redirect URIs list.
+5. Flip `NEXT_PUBLIC_SUPABASE_ANON_KEY` if Supabase auto-rotates on provider
+   enablement (check Supabase API settings after the step above).
+6. Redeploy on Vercel after adding the env vars.
+
+See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider" for the
+full click-path with screenshots.
 
 ---
 

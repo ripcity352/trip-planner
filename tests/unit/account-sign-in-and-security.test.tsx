@@ -21,6 +21,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 const mockChangePasswordAction = vi.fn();
 const mockSetPasswordViaRecoveryAction = vi.fn();
+const mockSetPasswordAction = vi.fn();
 
 vi.mock(
   "@/app/(authed)/account/sign-in-and-security/actions",
@@ -28,6 +29,7 @@ vi.mock(
     changePasswordAction: (...args: unknown[]) => mockChangePasswordAction(...args),
     setPasswordViaRecoveryAction: (...args: unknown[]) =>
       mockSetPasswordViaRecoveryAction(...args),
+    setPasswordAction: (...args: unknown[]) => mockSetPasswordAction(...args),
   })
 );
 
@@ -142,10 +144,12 @@ describe("SecurityForm", () => {
     expect(screen.queryByText(/google/i)).toBeNull();
   });
 
-  it("renders the no-password stub when identityState is 'no-password'", () => {
+  it("renders the State B form (not the stub) when identityState is 'no-password'", () => {
     render(<SecurityForm {...baseProps} identityState="no-password" />);
-    // Stub copy from AUTH_COPY.accountSecurity_noPasswordStub
-    expect(screen.getByText(/coming soon/i)).toBeDefined();
+    // State B shows the set-password form, not "coming soon"
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
+    // Should show the new-password field
+    expect(screen.getByLabelText(/new password/i)).toBeDefined();
   });
 
   // -------------------------------------------------------------------------
@@ -370,6 +374,118 @@ describe("SecurityForm", () => {
       // and the error message from ERRORS.auth_code_invalid is visible.
       expect(screen.getByLabelText(/6-digit code/i)).toBeDefined();
       expect(screen.getByText(/that code didn't take/i)).toBeDefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// State B — set-password form for OAuth-only / OTP-only users
+// ---------------------------------------------------------------------------
+
+describe("SecurityForm — State B (no-password identity)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const stateBProps = {
+    identityState: "no-password" as IdentityState,
+    userEmail: "dave@example.com",
+  };
+
+  it("renders the new-password field (no current-password field)", () => {
+    render(<SecurityForm {...stateBProps} />);
+    expect(screen.getByLabelText(/new password/i)).toBeDefined();
+    // Must NOT have a current-password field — State B has no existing password
+    expect(screen.queryByLabelText(/current password/i)).toBeNull();
+  });
+
+  it("renders the Set password button (not Update password)", () => {
+    render(<SecurityForm {...stateBProps} />);
+    expect(
+      screen.getByRole("button", { name: /set password/i })
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /update password/i })
+    ).toBeNull();
+  });
+
+  it("shows helper copy for OAuth-only user (mentions Google)", () => {
+    // When the user has only Google identities — identityState is no-password
+    // but the form needs to know if it's OAuth-only or OTP-only.
+    // The component derives this from identityState only in PR5;
+    // for test purposes we check that Google-related copy appears.
+    render(<SecurityForm {...stateBProps} identitySubtype="oauth" />);
+    expect(screen.getByText(/google/i)).toBeDefined();
+  });
+
+  it("shows helper copy for OTP-only user (mentions code)", () => {
+    render(<SecurityForm {...stateBProps} identitySubtype="otp" />);
+    expect(screen.getByText(/code/i)).toBeDefined();
+  });
+
+  it("calls setPasswordAction with newPassword on submit", async () => {
+    mockSetPasswordAction.mockResolvedValue({ ok: true });
+
+    render(<SecurityForm {...stateBProps} />);
+
+    fireEvent.change(screen.getByLabelText(/new password/i), {
+      target: { value: "mynewpass123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    await waitFor(() => {
+      expect(mockSetPasswordAction).toHaveBeenCalledWith({
+        newPassword: "mynewpass123",
+      });
+    });
+  });
+
+  it("does NOT pass an email field to setPasswordAction", async () => {
+    mockSetPasswordAction.mockResolvedValue({ ok: true });
+
+    render(<SecurityForm {...stateBProps} />);
+
+    fireEvent.change(screen.getByLabelText(/new password/i), {
+      target: { value: "mynewpass123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    await waitFor(() => {
+      const callArg = mockSetPasswordAction.mock.calls[0]?.[0];
+      expect(callArg).not.toHaveProperty("email");
+    });
+  });
+
+  it("shows success toast after setPasswordAction returns { ok: true }", async () => {
+    mockSetPasswordAction.mockResolvedValue({ ok: true });
+
+    render(<SecurityForm {...stateBProps} />);
+
+    fireEvent.change(screen.getByLabelText(/new password/i), {
+      target: { value: "mynewpass123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toBeDefined();
+    });
+  });
+
+  it("shows an error on network failure", async () => {
+    mockSetPasswordAction.mockResolvedValue({
+      ok: false,
+      errorKey: "network",
+    });
+
+    render(<SecurityForm {...stateBProps} />);
+
+    fireEvent.change(screen.getByLabelText(/new password/i), {
+      target: { value: "mynewpass123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeDefined();
     });
   });
 });

@@ -39,6 +39,7 @@ import {
   signUpAction,
   verifyEmailCodeAction,
   requestEmailCode,
+  signInWithOAuthAction,
 } from "@/app/login/actions";
 import {
   type Mode,
@@ -93,6 +94,19 @@ export function LoginForm({ next }: LoginFormProps) {
   // Handlers
   // -------------------------------------------------------------------------
 
+  // Starts a Google OAuth round-trip. The server returns a URL; we navigate there.
+  const handleGoogleSignIn = () => {
+    setServerError(null);
+    startTransition(async () => {
+      const result = await signInWithOAuthAction({ provider: "google", next });
+      if (result.ok) {
+        window.location.assign(result.url);
+        return;
+      }
+      setServerError(result.errorKey);
+    });
+  };
+
   const handleEmailContinue = emailForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
@@ -118,6 +132,11 @@ export function LoginForm({ next }: LoginFormProps) {
       if (result.errorKey === "auth_wrong_password") {
         setShowCreateAccount(true);
       }
+      // TODO(M5-followup): when signInWithPassword can return
+      // auth_email_taken_oauth (currently the detection isn't wired —
+      // see follow-up issue), branch to show the OAuth-existing-user
+      // prompt here. The UI scaffolding was stripped from PR5 to avoid
+      // dead-code wiring; the copy keys remain in lib/copy/auth.ts.
     });
   });
 
@@ -193,88 +212,97 @@ export function LoginForm({ next }: LoginFormProps) {
 
   if (mode === "email-only") {
     return (
-      <form onSubmit={handleEmailContinue} noValidate className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-email">{AUTH_COPY.emailFieldLabel}</Label>
-          <Input
-            id="login-email"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            aria-invalid={emailForm.formState.errors.email ? "true" : undefined}
-            aria-describedby={inlineError ? "login-error" : undefined}
-            disabled={isPending}
-            {...emailForm.register("email")}
-          />
-        </div>
-        <ErrorNote id="login-error" message={inlineError} />
-        <Button type="submit" disabled={isPending} aria-busy={isPending}>
-          {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.continueButton}</span>}
-        </Button>
-      </form>
+      <div className="flex flex-col gap-3">
+        <form onSubmit={handleEmailContinue} noValidate className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="login-email">{AUTH_COPY.emailFieldLabel}</Label>
+            <Input
+              id="login-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-invalid={emailForm.formState.errors.email ? "true" : undefined}
+              aria-describedby={inlineError ? "login-error" : undefined}
+              disabled={isPending}
+              {...emailForm.register("email")}
+            />
+          </div>
+          <ErrorNote id="login-error" message={inlineError} />
+          <Button type="submit" disabled={isPending} aria-busy={isPending}>
+            {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.continueButton}</span>}
+          </Button>
+        </form>
+        {/* H3 ordering: Google button is BELOW the primary CTA — OTP-as-floor first */}
+        <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+      </div>
     );
   }
 
   if (mode === "password") {
     return (
-      <form onSubmit={handleSignIn} noValidate className="flex flex-col gap-3">
-        {hiddenUsernameField}
-        <p className="text-muted-foreground text-sm">{email}</p>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-password">{AUTH_COPY.passwordFieldLabel}</Label>
-          <div className="relative">
-            <Input
-              id="login-password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              aria-invalid={
-                passwordForm.formState.errors.password ? "true" : undefined
-              }
-              aria-describedby={inlineError ? "login-error" : undefined}
-              disabled={isPending}
-              {...passwordForm.register("password")}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
-              aria-label={
-                showPassword
-                  ? AUTH_COPY.togglePasswordHide
-                  : AUTH_COPY.togglePasswordShow
-              }
-            >
-              {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
-            </button>
+      <div className="flex flex-col gap-3">
+        <form onSubmit={handleSignIn} noValidate className="flex flex-col gap-3">
+          {hiddenUsernameField}
+          <p className="text-muted-foreground text-sm">{email}</p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="login-password">{AUTH_COPY.passwordFieldLabel}</Label>
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                aria-invalid={
+                  passwordForm.formState.errors.password ? "true" : undefined
+                }
+                aria-describedby={inlineError ? "login-error" : undefined}
+                disabled={isPending}
+                {...passwordForm.register("password")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
+                aria-label={
+                  showPassword
+                    ? AUTH_COPY.togglePasswordHide
+                    : AUTH_COPY.togglePasswordShow
+                }
+              >
+                {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
+              </button>
+            </div>
+            <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
           </div>
-          <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
-        </div>
-        <ErrorNote id="login-error" message={inlineError} />
-        <Button type="submit" disabled={isPending} aria-busy={isPending}>
-          {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
-        </Button>
-        {showCreateAccount ? (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={isPending}
-            onClick={handleCreateAccount}
-          >
-            {AUTH_COPY.createAccountLink}
+          <ErrorNote id="login-error" message={inlineError} />
+          <Button type="submit" disabled={isPending} aria-busy={isPending}>
+            {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
           </Button>
-        ) : null}
-        <button
-          type="button"
-          onClick={handleEmailMeCode}
-          disabled={isPending}
-          className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
-          {AUTH_COPY.emailMeCodeLink}
-        </button>
-      </form>
+          {showCreateAccount ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isPending}
+              onClick={handleCreateAccount}
+            >
+              {AUTH_COPY.createAccountLink}
+            </Button>
+          ) : null}
+          {/* H3 ordering: OTP link is floor (universal); Google button is above OTP */}
+          <button
+            type="button"
+            onClick={handleEmailMeCode}
+            disabled={isPending}
+            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            {AUTH_COPY.emailMeCodeLink}
+          </button>
+        </form>
+        {/* H3 ordering: Google button BELOW the "Email me a code" link */}
+        <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+      </div>
     );
   }
 
@@ -359,3 +387,33 @@ function PendingSpinner() {
     </>
   );
 }
+
+/**
+ * "Continue with Google" — muted outline button (H3: OTP-as-floor first,
+ * Google-as-affordance second; visually distinct from the primary CTA).
+ * Copy sourced from AUTH_COPY — no inline JSX literals (Phase 4 C5).
+ */
+function GoogleButton({
+  onClick,
+  disabled,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full text-muted-foreground"
+    >
+      {AUTH_COPY.continueWithGoogleButton}
+    </Button>
+  );
+}
+
+// (M5-followup) OAuth-existing-user alert removed from PR5 — the server-side
+// detection it depends on was never wired. The copy keys remain in
+// lib/copy/auth.ts so a follow-up PR can re-introduce the component once
+// `signInWithPasswordAction` learns to return `auth_email_taken_oauth`.

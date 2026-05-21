@@ -32,6 +32,7 @@ import {
   RateLimitError,
   rateLimitedAction,
 } from "@/lib/rate-limit";
+import { safeNext } from "@/lib/auth/safe-next";
 
 // ---------------------------------------------------------------------------
 // Zod schemas (M4 W1b — co-located with actions)
@@ -55,11 +56,27 @@ const verifyEmailCodeSchema = z.object({
   token: z.string().length(6).regex(/^\d{6}$/),
 });
 
+// signInWithOAuthSchema — only google for now; Apple deferred per ADR.
+const signInWithOAuthSchema = z.object({
+  provider: z.enum(["google"]),
+  // 2048 cap matches RFC 7230 practical URL length; safeNext sanitizes
+  // protocol-relative / off-origin / scheme-prefixed inputs further.
+  next: z.string().max(2048).optional(),
+});
+
 // ---------------------------------------------------------------------------
-// Result type
+// Result types
 // ---------------------------------------------------------------------------
 
 export type AuthResult = { ok: true } | { ok: false; errorKey: ErrorKey };
+
+/**
+ * OAuthStartResult: caller receives a URL to navigate to (window.location.assign).
+ * Using a discriminated union so the caller never has to guess whether url is set.
+ */
+export type OAuthStartResult =
+  | { ok: true; url: string }
+  | { ok: false; errorKey: ErrorKey };
 
 // Keep the old alias name for compatibility with any import that still
 // uses MagicLinkResult (should be none after PR2 but belt-and-suspenders).
@@ -372,6 +389,88 @@ export async function requestEmailCode(email: string): Promise<AuthResult> {
       return { ok: false, errorKey: "rate_limit" };
     }
     console.error("[auth] requestEmailCode threw", {
+      name: err instanceof Error ? err.name : "unknown",
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, errorKey: "network" };
+  }
+}
+
+/**
+ * Starts a Google OAuth sign-in round-trip.
+ *
+ * Returns { ok: true, url } — caller does `window.location.assign(url)`.
+ * The `next` param is sanitized by safeNext before embedding in redirectTo.
+ *
+ * Rate-limit scope: AUTH_PASSWORD (OAuth start is keyed by IP/device,
+ * not by user; reusing the same scope keeps the budget shared with
+ * password attempts from the same session).
+ *
+ * Security notes:
+ *   - `next` is validated via safeNext before it reaches the redirectTo URL.
+ *   - `provider` is constrained to the z.enum(["google"]) allowlist.
+ *   - We never read the OAuth `state` parameter on the server — Supabase
+ *     handles round-trip state internally (PKCE code verifier).
+ *   - Origin is built from env vars, never from request headers.
+ */
+export async function signInWithOAuthAction(input: {
+  provider: "google";
+  next?: string;
+}): Promise<OAuthStartResult> {
+  const parsed = signInWithOAuthSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  let origin: string;
+  try {
+    origin = resolveOrigin();
+  } catch {
+    return { ok: false, errorKey: "network" };
+  }
+
+  const nextPath = safeNext(parsed.data.next ?? null);
+  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
+
+  // No app-layer rate-limit — OAuth start is pre-auth (no user.id, no email
+  // yet), so the only sensible key would be IP. The middleware path-throttle
+  // on `/login` already provides per-IP rate-limiting at the edge (see
+  // GUARDED_PATH_PATTERNS in lib/rate-limit/index.ts). Stacking an action-
+  // level limiter with a constant key would create a global DoS bucket where
+  // any single client could exhaust the budget for all OAuth-start attempts.
+  // Reviewer HIGH on PR #231 fix-up `<sha>` for the original mistake.
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: parsed.data.provider,
+      options: { redirectTo },
+    });
+
+    if (error) {
+      console.error("[auth] signInWithOAuth failed", {
+        status: (error as { status?: number }).status,
+        code: (error as { code?: string }).code,
+        name: error.name,
+      });
+      return { ok: false, errorKey: "oauth_redirect_failed" };
+    }
+
+    if (!data.url) {
+      console.error("[auth] signInWithOAuth returned no URL");
+      return { ok: false, errorKey: "oauth_redirect_failed" };
+    }
+
+    return { ok: true, url: data.url };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      // Defensive — no inner rate-limit anymore, but if middleware-level
+      // throttle bubbles up via a rejected promise we still translate.
+      console.error("[auth] app-layer rate-limit fired (oauth-start)", {
+        scope: RATE_LIMIT_SCOPES.AUTH_PASSWORD,
+      });
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[auth] signInWithOAuthAction threw", {
       name: err instanceof Error ? err.name : "unknown",
       message: err instanceof Error ? err.message : String(err),
     });

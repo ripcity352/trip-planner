@@ -51,6 +51,7 @@ export type FormMode =
   | "C-verify"        // State C step 2: OTP code entry
   | "C-verifying"     // State C step 2: submitting OTP
   | "C-set"           // State C step 3: new-password entry (no current-pass)
+  | "B-set"           // State B: first-ever password (no current-pass, no OTP gate)
   | "success";        // Password updated
 
 // ---------------------------------------------------------------------------
@@ -73,6 +74,13 @@ export const newPasswordClientSchema = z.object({
   newPassword: z.string().min(6, { message: ERRORS.validation_failed }),
 });
 
+// State B: set password for the first time (OAuth-only or OTP-only users).
+// Mirrors the server-side setPasswordSchema in actions.ts.
+// No current-password field — there is no current password.
+export const setPasswordClientSchema = z.object({
+  newPassword: z.string().min(6, { message: ERRORS.validation_failed }),
+});
+
 // ---------------------------------------------------------------------------
 // Inferred form value types
 // ---------------------------------------------------------------------------
@@ -80,3 +88,4 @@ export const newPasswordClientSchema = z.object({
 export type ChangePasswordValues = z.infer<typeof changePasswordClientSchema>;
 export type OtpCodeValues = z.infer<typeof otpCodeClientSchema>;
 export type NewPasswordValues = z.infer<typeof newPasswordClientSchema>;
+export type SetPasswordValues = z.infer<typeof setPasswordClientSchema>;

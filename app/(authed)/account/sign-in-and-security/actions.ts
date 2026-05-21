@@ -56,6 +56,13 @@ const setPasswordViaRecoverySchema = z.object({
   newPassword: z.string().min(6),
 });
 
+// setPasswordSchema — State B: first-ever password for OAuth/OTP-only users.
+// No current-password field — there is no current password to verify.
+// Per v3.2 ADR: no OTP gate, no signOut after success (nothing to invalidate).
+const setPasswordSchema = z.object({
+  newPassword: z.string().min(6),
+});
+
 // ---------------------------------------------------------------------------
 // Result type
 // ---------------------------------------------------------------------------
@@ -307,6 +314,95 @@ export async function setPasswordViaRecoveryAction(input: {
       return { ok: false, errorKey: "rate_limit" };
     }
     console.error("[account-security] setPasswordViaRecoveryAction threw", {
+      name: err instanceof Error ? err.name : "unknown",
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, errorKey: "network" };
+  }
+}
+
+/**
+ * Sets a password for the first time (State B).
+ *
+ * For users who only have OAuth (Google) or OTP-based identities — no
+ * existing password to rotate. No OTP gate; no signOut after success.
+ *
+ * v3.2 ADR locked:
+ *   - NO current-password verify (there is none).
+ *   - NO OTP gate (State B threat: attacker on borrowed-laptop adds a
+ *     password the victim doesn't know — bad but victim's OAuth/OTP
+ *     identities remain intact and they're NOT locked out).
+ *   - NO signOut({scope:'others'}) — no prior credential to invalidate.
+ *
+ * Identity-state guard: if the user already has a password identity,
+ * this action returns validation_failed — they should use State A
+ * (changePasswordAction) instead.
+ *
+ * Rate-limit scope: AUTH_CHANGE_PASSWORD (5 / 15 min per user.id).
+ */
+export async function setPasswordAction(input: {
+  newPassword: string;
+}): Promise<ChangePasswordResult> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user || !user.email) {
+    return { ok: false, errorKey: "auth_unauthenticated" };
+  }
+
+  try {
+    return await rateLimitedAction(
+      RATE_LIMIT_SCOPES.AUTH_CHANGE_PASSWORD,
+      user.id,
+      async (): Promise<ChangePasswordResult> => {
+        // 1. Validate input shape.
+        const parsed = setPasswordSchema.safeParse(input);
+        if (!parsed.success) {
+          return { ok: false, errorKey: "validation_failed" };
+        }
+
+        // 2. Guard: ensure this user is actually in State B (no-password).
+        //    If they already have a password identity, they must use State A.
+        const identities = user.identities ?? [];
+        const hasPasswordIdentity = identities.some(
+          (id) => id.provider === "email",
+        );
+        if (hasPasswordIdentity) {
+          // This is State A territory — caller should use changePasswordAction.
+          return { ok: false, errorKey: "validation_failed" };
+        }
+
+        // 3. Set the password for the first time.
+        const { error: updateErr } = await supabase.auth.updateUser({
+          password: parsed.data.newPassword,
+        });
+
+        if (updateErr) {
+          console.error("[account-security] setPasswordAction updateUser failed", {
+            status: updateErr.status,
+            code: (updateErr as { code?: string }).code,
+          });
+          const mapped = mapAuthErrorToKey(updateErr);
+          return { ok: false, errorKey: mapped ?? "network" };
+        }
+
+        // NOTE: No signOut({scope:'others'}) — State B has no prior credential
+        // to invalidate. Per v3.2 ADR.
+
+        return { ok: true };
+      },
+    );
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      console.error("[account-security] app-layer rate-limit fired (setPassword)", {
+        scope: RATE_LIMIT_SCOPES.AUTH_CHANGE_PASSWORD,
+      });
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[account-security] setPasswordAction threw", {
       name: err instanceof Error ? err.name : "unknown",
       message: err instanceof Error ? err.message : String(err),
     });

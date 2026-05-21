@@ -85,7 +85,10 @@ export const AUTH_COPY = {
   accountSecurity_cancelLink: "Never mind — go back",
   /** Nav link on the /me tab pointing to this page */
   accountSecurity_meNavLink: "Sign-in & security",
-  /** Stub copy when user has no password identity (PR5 builds State B) */
+  /**
+   * Stub copy when user has no password identity (PR5 builds State B).
+   * @deprecated Remove once State B is fully wired — no longer rendered.
+   */
   accountSecurity_noPasswordStub:
     "Set a password for your Google sign-in — coming soon.",
   /** Step 1 helper for State C: confirm code is on its way */
@@ -93,6 +96,49 @@ export const AUTH_COPY = {
     `Code's heading to ${email}. Enter it to reset your password.`,
   /** Step 3 heading for State C: set new password after OTP verified */
   accountSecurity_setNewPasswordTitle: "Set a new password",
+
+  // ---------------------------------------------------------------------------
+  // Google OAuth sign-in (M5/PR5)
+  // ---------------------------------------------------------------------------
+
+  /** Button label for Google OAuth sign-in on /login */
+  continueWithGoogleButton: "Continue with Google",
+
+  /**
+   * Alert text shown on /login when wrong-password fires against an
+   * account that only has a Google (OAuth) identity.
+   * Voice test: warm, specific, blame-free. Not corporate.
+   */
+  oauth_account_prompt_text:
+    "You signed up with Google. Sign in with Google, or get a code emailed instead?",
+  /** First action button in the OAuth-existing-user alert */
+  oauth_account_prompt_google_button: "Sign in with Google",
+  /** Second action button in the OAuth-existing-user alert */
+  oauth_account_prompt_code_button: "Get a code emailed instead",
+
+  // ---------------------------------------------------------------------------
+  // State B — set password for OAuth-only or OTP-only users (M5/PR5)
+  // ---------------------------------------------------------------------------
+
+  /** Page heading for State B (no current password to rotate — first set) */
+  accountSecurity_stateB_title: "Add a password",
+
+  /**
+   * Helper copy for OAuth-only users setting a password for the first time.
+   * Voice: reassuring, explains what signing-in with Google continues to work.
+   */
+  accountSecurity_stateB_helperOauthOnly:
+    "You currently sign in with Google. Add a password and you can use either — Google sign-in stays active.",
+
+  /**
+   * Helper copy for OTP-only users (no OAuth, no password) setting a password.
+   * Voice: explains they can use code OR password going forward.
+   */
+  accountSecurity_stateB_helperOtpOnly:
+    "You currently sign in with a code. Add a password and you can use either one.",
+
+  /** Primary CTA button for State B: save the first-ever password */
+  accountSecurity_stateB_setButton: "Set password",
 } as const;
 
 export type AuthCopyKey = keyof typeof AUTH_COPY;

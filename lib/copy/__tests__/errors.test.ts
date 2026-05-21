@@ -43,6 +43,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   // M5 PR4 account security keys
   "auth_current_password_incorrect",
   "auth_unauthenticated",
+  // M5 PR5 — Google OAuth error key
+  "oauth_redirect_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user
