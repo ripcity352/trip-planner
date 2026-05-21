@@ -1,31 +1,25 @@
 "use server";
 
 /**
- * Server actions for the magic-link login flow (#71).
+ * Server actions for the progressive-disclosure login flow (M5/PR2).
  *
- * Surface contract:
- *   - `requestMagicLink(email)` accepts an email string from the client
- *     form, validates with zod, and asks Supabase to email a magic link.
- *   - Always returns a discriminated union — `{ ok: true }` on success,
- *     `{ ok: false, errorKey: ErrorKey }` on any failure. Never throws.
+ * Surface contract — all actions return a discriminated union:
+ *   { ok: true } | { ok: false; errorKey: ErrorKey }
+ * None throw. All wrapped in rateLimitedAction.
  *
- * Hardening notes (PR #102 fix-up):
+ * Zod schemas are co-located with actions (M4 W1b — never split contract
+ * from consumer).
+ *
+ * Security notes:
  *   - The redirect origin is built from a server-set env var
- *     (`NEXT_PUBLIC_SITE_URL` preferred, `VERCEL_URL` as Vercel-preview
- *     fallback). Reading the origin from request headers (forwarded-host
- *     / forwarded-proto) was an open-redirect vector: an attacker who
- *     spoofed those headers could trick Supabase into emailing the magic
- *     link to a redirect URL pointing at attacker-controlled hosts.
- *   - Magic-link issuance is rate-limited per (lowercased) email via the
- *     `authOtpVerify` scope. Prevents email-bombing arbitrary inboxes
- *     and bulk pollution of `auth.users` (we ship with
- *     `shouldCreateUser: true`). Supabase's own throttle is too generous
- *     to be the only line of defense.
- *   - Error mapping reads typed Supabase fields (`AuthError#status`,
- *     `AuthError#code`) rather than substring-matching the message —
- *     the message-based map mis-classified anything containing "email"
- *     (e.g. network errors with "email server unreachable") as
- *     `validation_failed`.
+ *     (NEXT_PUBLIC_SITE_URL preferred, VERCEL_URL as Vercel-preview
+ *     fallback). Never read from request headers (open-redirect vector).
+ *   - signInWithPasswordAction / signUpAction use the AUTH_PASSWORD scope
+ *     (5 / 15 min) — tighter than the default to blunt online brute-force.
+ *   - verifyEmailCodeAction / requestEmailCode use AUTH_OTP_VERIFY scope.
+ *   - requestEmailCode passes shouldCreateUser: false — explicit sign-up
+ *     is now handled by signUpAction. An email-code request for an unknown
+ *     address must NOT silently provision a phantom account.
  */
 
 import { z } from "zod";
@@ -39,95 +33,306 @@ import {
   rateLimitedAction,
 } from "@/lib/rate-limit";
 
-export type MagicLinkResult =
-  | { ok: true }
-  | { ok: false; errorKey: ErrorKey };
+// ---------------------------------------------------------------------------
+// Zod schemas (M4 W1b — co-located with actions)
+// ---------------------------------------------------------------------------
 
 const emailSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
 });
 
+const signInWithPasswordSchema = emailSchema.extend({
+  // 6-char minimum — v3.2 locked. No complexity rules.
+  password: z.string().min(6),
+});
+
+// signUpSchema has the same shape as signInWithPasswordSchema, different intent.
+const signUpSchema = signInWithPasswordSchema;
+
+const verifyEmailCodeSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  // 6 digits exactly.
+  token: z.string().length(6).regex(/^\d{6}$/),
+});
+
+// ---------------------------------------------------------------------------
+// Result type
+// ---------------------------------------------------------------------------
+
+export type AuthResult = { ok: true } | { ok: false; errorKey: ErrorKey };
+
+// Keep the old alias name for compatibility with any import that still
+// uses MagicLinkResult (should be none after PR2 but belt-and-suspenders).
+export type MagicLinkResult = AuthResult;
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
 /**
- * Maps a Supabase `AuthError` to one of our error-toast keys.
+ * Maps a Supabase AuthError to one of our error-toast keys.
  *
- * Uses typed fields (status + code) rather than message-substring
- * matching: the previous heuristic flagged anything containing "email"
- * as `validation_failed`, which silently mis-classified network errors
- * whose messages mentioned "email server" etc.
- *
- * Returns `null` when the input is `null` (no error to map).
+ * Uses typed fields (status + code) rather than message-substring matching.
+ * Returns null when the input is null.
  */
-function mapAuthErrorToKey(error: AuthError | null): ErrorKey | null {
+function mapAuthErrorToKey(
+  error: AuthError | { status?: number; code?: string | null; message?: string } | null,
+): ErrorKey | null {
   if (!error) return null;
   // Supabase surfaces rate-limit responses as HTTP 429.
   if (error.status === 429) return "rate_limit";
+  // Wrong password / invalid credentials — HTTP 400 with invalid_credentials code.
+  if (
+    error.status === 400 &&
+    (error.code === "invalid_credentials" ||
+      error.code === "email_not_confirmed" ||
+      // Some Supabase versions use "invalid_grant" in error.code for bad creds
+      error.code === "invalid_grant")
+  ) {
+    return "auth_wrong_password";
+  }
   // Typed validation-error code from the GoTrue REST API.
   if (error.code === "validation_failed") return "validation_failed";
-  // Anything else from Supabase is a network/server-class failure as
-  // far as the user is concerned.
+  // Anything else is a network/server-class failure.
   return "network";
 }
 
 /**
- * Builds the origin (`https://example.com`) the magic-link redirect
- * should use.
+ * Maps an OTP/code verification error to one of our error keys.
+ */
+function mapOtpErrorToKey(
+  error: AuthError | { status?: number; code?: string | null; message?: string } | null,
+): ErrorKey | null {
+  if (!error) return null;
+  if (error.status === 429) return "rate_limit";
+  // otp_expired covers both expired and invalid tokens in Supabase's GoTrue.
+  if (error.code === "otp_expired" || error.status === 401) {
+    return "auth_code_invalid";
+  }
+  if (error.code === "validation_failed") return "validation_failed";
+  return "network";
+}
+
+/**
+ * Builds the origin (https://example.com) the redirect should use.
  *
- * Strict env-var resolution, no header reads. The previous
- * implementation derived the origin from `x-forwarded-host` /
- * `x-forwarded-proto`, which an attacker could spoof to redirect
- * Supabase's magic-link email at evil.com.
- *
- * Resolution order:
- *   1. `NEXT_PUBLIC_SITE_URL` — operator-set, canonical
- *   2. `VERCEL_URL` — auto-populated on Vercel preview deploys, served
- *      over HTTPS
- *   3. `http://localhost:3000` — dev fallback only
- *   4. Fail closed in production — refuse to issue the link
+ * Strict env-var resolution, no header reads. Resolution order:
+ *   1. NEXT_PUBLIC_SITE_URL — operator-set, canonical
+ *   2. VERCEL_URL — auto-populated on Vercel preview deploys
+ *   3. http://localhost:3000 — dev fallback only
+ *   4. Fail closed in production
  */
 function resolveOrigin(): string {
-  // Prefer a configured site URL — these are server-set in Vercel.
   if (process.env.NEXT_PUBLIC_SITE_URL) {
     return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
   }
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`;
   }
-  // Dev fallback only when actually in dev.
   if (process.env.NODE_ENV !== "production") {
     return "http://localhost:3000";
   }
-  // Fail closed in prod.
   throw new Error(
     "Origin unresolved — set NEXT_PUBLIC_SITE_URL or VERCEL_URL",
   );
 }
 
-export async function requestMagicLink(
-  email: string,
-): Promise<MagicLinkResult> {
-  // 1. Validate. The zod schema lowercases the email — the same
-  //    normalized value is used as the rate-limit key so casing tricks
-  //    can't expand the budget.
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+
+/**
+ * Signs in a returning user with email + password.
+ *
+ * Rate-limit scope: AUTH_PASSWORD (5 / 15 min per email).
+ * On wrong password: returns { ok: false, errorKey: "auth_wrong_password" }.
+ */
+export async function signInWithPasswordAction(input: {
+  email: string;
+  password: string;
+}): Promise<AuthResult> {
+  const parsed = signInWithPasswordSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { email, password } = parsed.data;
+
+  try {
+    const supabase = await createClient();
+    const { error } = await rateLimitedAction(
+      RATE_LIMIT_SCOPES.AUTH_PASSWORD,
+      email,
+      () => supabase.auth.signInWithPassword({ email, password }),
+    );
+
+    if (error) {
+      console.error("[auth] signInWithPassword failed", {
+        status: error.status,
+        code: (error as { code?: string }).code,
+        name: error.name,
+      });
+      const mapped = mapAuthErrorToKey(error);
+      return { ok: false, errorKey: mapped ?? "network" };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      console.error("[auth] app-layer rate-limit fired", {
+        scope: RATE_LIMIT_SCOPES.AUTH_PASSWORD,
+      });
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[auth] signInWithPasswordAction threw", {
+      name: err instanceof Error ? err.name : "unknown",
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, errorKey: "network" };
+  }
+}
+
+/**
+ * Creates a new account with email + password and signs in immediately.
+ *
+ * Rate-limit scope: AUTH_PASSWORD (5 / 15 min per email).
+ */
+export async function signUpAction(input: {
+  email: string;
+  password: string;
+}): Promise<AuthResult> {
+  const parsed = signUpSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { email, password } = parsed.data;
+
+  let origin: string;
+  try {
+    origin = resolveOrigin();
+  } catch {
+    return { ok: false, errorKey: "network" };
+  }
+  const emailRedirectTo = `${origin}/auth/callback?next=/trips`;
+
+  try {
+    const supabase = await createClient();
+    const { error } = await rateLimitedAction(
+      RATE_LIMIT_SCOPES.AUTH_PASSWORD,
+      email,
+      () =>
+        supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo },
+        }),
+    );
+
+    if (error) {
+      console.error("[auth] signUp failed", {
+        status: error.status,
+        code: (error as { code?: string }).code,
+        name: error.name,
+      });
+      const mapped = mapAuthErrorToKey(error);
+      return { ok: false, errorKey: mapped ?? "network" };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      console.error("[auth] app-layer rate-limit fired", {
+        scope: RATE_LIMIT_SCOPES.AUTH_PASSWORD,
+      });
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[auth] signUpAction threw", {
+      name: err instanceof Error ? err.name : "unknown",
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, errorKey: "network" };
+  }
+}
+
+/**
+ * Verifies a 6-digit email code (OTP) for the code-fallback login path.
+ *
+ * Rate-limit scope: AUTH_OTP_VERIFY.
+ * On invalid/expired code: returns { ok: false, errorKey: "auth_code_invalid" }.
+ */
+export async function verifyEmailCodeAction(input: {
+  email: string;
+  token: string;
+}): Promise<AuthResult> {
+  const parsed = verifyEmailCodeSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { email, token } = parsed.data;
+
+  try {
+    const supabase = await createClient();
+    const { error } = await rateLimitedAction(
+      RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY,
+      email,
+      () => supabase.auth.verifyOtp({ email, token, type: "email" }),
+    );
+
+    if (error) {
+      console.error("[auth] verifyOtp failed", {
+        status: error.status,
+        code: (error as { code?: string }).code,
+        name: error.name,
+      });
+      const mapped = mapOtpErrorToKey(error);
+      return { ok: false, errorKey: mapped ?? "network" };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      console.error("[auth] app-layer rate-limit fired", {
+        scope: RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY,
+      });
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[auth] verifyEmailCodeAction threw", {
+      name: err instanceof Error ? err.name : "unknown",
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, errorKey: "network" };
+  }
+}
+
+/**
+ * Sends a 6-digit OTP email to the given address.
+ *
+ * Renamed from `requestMagicLink` (M5/PR2). The rename signals a
+ * deliberate API change: this now sends a numeric code rather than a
+ * click-to-sign-in link.
+ *
+ * IMPORTANT — shouldCreateUser: false
+ * The legacy requestMagicLink had shouldCreateUser: true (first-login
+ * provisioning). After PR2, sign-up is explicit via signUpAction. Setting
+ * shouldCreateUser: false here ensures that a code request for an unknown
+ * email does NOT silently provision a phantom account in auth.users.
+ *
+ * Rate-limit scope: AUTH_OTP_VERIFY.
+ */
+export async function requestEmailCode(email: string): Promise<AuthResult> {
   const parsed = emailSchema.safeParse({ email });
   if (!parsed.success) {
     return { ok: false, errorKey: "validation_failed" };
   }
   const normalizedEmail = parsed.data.email;
 
-  // 2. Build redirect URL — `next=/trips` so the callback lands users
-  //    on their trips index after the code exchange succeeds.
   let origin: string;
   try {
     origin = resolveOrigin();
   } catch {
-    // Mis-configured deploy — surface as a network-class failure to
-    // the user (the action never throws to the caller).
     return { ok: false, errorKey: "network" };
   }
   const emailRedirectTo = `${origin}/auth/callback?next=/trips`;
 
-  // 3. Ask Supabase to issue the OTP / magic link, wrapped in our
-  //    rate-limiter so a single email can't be bombed.
   try {
     const supabase = await createClient();
     const { error } = await rateLimitedAction(
@@ -138,23 +343,19 @@ export async function requestMagicLink(
           email: normalizedEmail,
           options: {
             emailRedirectTo,
-            // Magic-link only — first login provisions the auth.users
-            // row automatically.
-            shouldCreateUser: true,
+            // shouldCreateUser: false — explicit sign-up is now via
+            // signUpAction. An email-code request for an unknown address
+            // must NOT silently provision a phantom account.
+            shouldCreateUser: false,
           },
         }),
     );
 
     if (error) {
-      // Diagnostic logging — surfaces the underlying Supabase failure in
-      // Vercel/Sentry so we can distinguish per-IP throttle vs per-email
-      // throttle vs PKCE mismatch vs allowlist rejection. Never logs the
-      // email or any other PII at this layer.
       console.error("[auth] signInWithOtp failed", {
         status: error.status,
         code: (error as { code?: string }).code,
         name: error.name,
-        message: error.message,
       });
     }
     const mapped = mapAuthErrorToKey(error);
@@ -170,9 +371,7 @@ export async function requestMagicLink(
       });
       return { ok: false, errorKey: "rate_limit" };
     }
-    // Network failures, misconfigured env vars, etc. We never throw to
-    // the caller — `_form.tsx` reads `errorKey` and renders a toast.
-    console.error("[auth] requestMagicLink threw", {
+    console.error("[auth] requestEmailCode threw", {
       name: err instanceof Error ? err.name : "unknown",
       message: err instanceof Error ? err.message : String(err),
     });

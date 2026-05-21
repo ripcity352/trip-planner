@@ -40,6 +40,7 @@ import {
 import { getInvitePreview } from "@/lib/db/invites";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type { InvitePreview } from "@/lib/db/types";
+import { LoginForm } from "@/app/login/_form";
 
 type PageProps = {
   params: Promise<{ token: string }>;
@@ -147,12 +148,16 @@ export default async function InvitePreviewPage({
               </Button>
             </form>
           ) : (
-            <Link
-              href={`/login?next=/invite/${token}/accept`}
-              className={buttonVariants({ size: "lg", className: "w-full" })}
-            >
-              {M2_UI_STRINGS.invitePreview_cta_anon}
-            </Link>
+            // Anonymous viewer — render the LoginForm inline so they
+            // never leave the invite page. On successful sign-in the
+            // form redirects to the accept route.
+            // M5/PR2: replaces the old /login?next= bounce link.
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                {M2_UI_STRINGS.invitePreview_cta_anon}
+              </p>
+              <LoginForm next={`/invite/${token}/accept`} />
+            </div>
           )}
         </CardContent>
       </Card>
