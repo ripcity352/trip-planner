@@ -188,18 +188,12 @@ export class RateLimitError extends Error {
   readonly reset: number;
   readonly remaining: number;
 
-  constructor(
-    scope: string,
-    response?: Pick<RateLimitResult, "reset" | "remaining">,
-  ) {
+  constructor(scope: string, response: Pick<RateLimitResult, "reset" | "remaining">) {
     super(`Rate limit exceeded for scope "${scope}"`);
     this.name = "RateLimitError";
     this.scope = scope;
-    // `response` is optional so test code can instantiate with scope alone
-    // (the mock replaces the class at runtime, but TypeScript still checks
-    // call-site arity against the real class signature).
-    this.reset = response?.reset ?? Date.now() + 60_000;
-    this.remaining = response?.remaining ?? 0;
+    this.reset = response.reset;
+    this.remaining = response.remaining;
   }
 }
 

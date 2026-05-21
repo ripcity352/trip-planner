@@ -109,7 +109,7 @@ describe("signInWithPasswordAction", () => {
 
   it("returns rate_limit when the rate-limiter throws", async () => {
     mockRateLimitedAction.mockRejectedValueOnce(
-      new RateLimitError("authPassword")
+      new RateLimitError("authPassword", { remaining: 0, reset: 0 })
     );
     const result = await signInWithPasswordAction({
       email: "dave@example.com",
@@ -226,7 +226,7 @@ describe("signUpAction", () => {
 
   it("returns rate_limit when the rate-limiter throws", async () => {
     mockRateLimitedAction.mockRejectedValueOnce(
-      new RateLimitError("authPassword")
+      new RateLimitError("authPassword", { remaining: 0, reset: 0 })
     );
     const result = await signUpAction({
       email: "dave@example.com",
@@ -355,7 +355,7 @@ describe("verifyEmailCodeAction", () => {
 
   it("returns rate_limit when the rate-limiter throws", async () => {
     mockRateLimitedAction.mockRejectedValueOnce(
-      new RateLimitError("authOtpVerify")
+      new RateLimitError("authOtpVerify", { remaining: 0, reset: 0 })
     );
     const result = await verifyEmailCodeAction({
       email: "dave@example.com",
@@ -417,7 +417,7 @@ describe("requestEmailCode (renamed from requestMagicLink)", () => {
 
   it("returns rate_limit when the rate-limiter throws", async () => {
     mockRateLimitedAction.mockRejectedValueOnce(
-      new RateLimitError("authOtpVerify")
+      new RateLimitError("authOtpVerify", { remaining: 0, reset: 0 })
     );
     const result = await requestEmailCode("dave@example.com");
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
