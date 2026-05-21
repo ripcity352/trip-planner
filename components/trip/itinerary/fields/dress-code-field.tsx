@@ -1,44 +1,48 @@
 "use client";
 
 /**
- * DressCodeField — extracted from edit-item-form.tsx (pre-split).
+ * DressCodeField — form-field wrapper around DressCodePicker.
  *
- * W1a (dress-code) will replace this freeform input with a chip picker.
- * Pre-split here to eliminate the four-way line conflict risk across
- * W1a/W1b/W2a/W2b. Net behavior: identical to the inline field in EditItemForm.
+ * Adapts DressCodePicker to the react-hook-form watch+setValue bridge pattern
+ * used throughout edit-item-form.tsx. Preserves:
+ *   - Same `value` / `onChange` prop shape consumed by the parent form.
+ *   - Same field label and a11y attributes (htmlFor links label to freeform input).
+ *   - Same disabled state passthrough.
+ *
+ * W0d pre-split target: this file was extracted from edit-item-form.tsx so
+ * the dress-code UI can evolve independently. The parent form passes
+ * react-hook-form `watch("dressCode")` as `value` and `field.onChange`
+ * (or `setValue("dressCode", ...)`) as `onChange`.
  */
 
-import { cn } from "@/lib/utils";
+import * as React from "react";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { DressCodePicker } from "./dress-code-picker";
 
 export interface DressCodeFieldProps {
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
+  value?: string;
+  onChange: (value: string | undefined) => void;
+  disabled?: boolean;
 }
 
-const inputClass = cn(
-  "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
-  "placeholder:text-muted-foreground",
-  "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
-  "disabled:cursor-not-allowed disabled:opacity-60"
-);
+export function DressCodeField({
+  value,
+  onChange,
+  disabled = false,
+}: DressCodeFieldProps) {
+  const inputId = "field-dress-code";
+  const labelClass = "block text-sm font-medium text-foreground mb-1";
 
-const labelClass = "block text-sm font-medium text-foreground mb-1";
-
-export function DressCodeField({ value, onChange, disabled }: DressCodeFieldProps) {
   return (
     <div>
-      <label htmlFor="edit-dress" className={labelClass}>
+      <label htmlFor={inputId} className={labelClass}>
         {M3_UI_STRINGS.itineraryForm_dress_label}
       </label>
-      <input
-        id="edit-dress"
-        type="text"
+      <DressCodePicker
+        id={inputId}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
         disabled={disabled}
-        className={inputClass}
       />
     </div>
   );

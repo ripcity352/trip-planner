@@ -64,7 +64,11 @@ describe("EditItemForm", () => {
 
   it("pre-fills the dress code from the item", () => {
     render(<EditItemForm {...defaultProps} />);
-    const dressInput = screen.getByLabelText(/dress code/i) as HTMLInputElement;
+    // Target the textbox specifically — W1a's chip group also exposes
+    // "Dress code" as an aria-label, so getByLabelText is ambiguous.
+    const dressInput = screen.getByRole("textbox", {
+      name: /dress code/i,
+    }) as HTMLInputElement;
     expect(dressInput.value).toBe("Smart casual");
   });
 
