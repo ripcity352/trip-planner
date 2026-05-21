@@ -70,6 +70,7 @@ export const AUTH_COPY = {
    * Helper copy for State A+ (password + OAuth identities).
    * Mentions that OAuth sign-in is also wired — full OAuth management lands in PR5.
    */
+  // TODO(M5/PR5): provider-aware copy when OAuth choices expand beyond Google.
   accountSecurity_helperAPlus:
     "You're signed in with a password and Google. You can change your password here — Google sign-in stays active either way.",
   /** Inline link that triggers the OTP recovery sub-flow (State C) */

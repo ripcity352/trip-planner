@@ -4,9 +4,10 @@
  * Covers:
  *   - changePasswordAction: zod validation, email pinning, rate-limit,
  *     current-password verification, signOut({scope:'others'}) side effect,
- *     error mapping
- *   - setPasswordAfterRecoveryAction: no current-password verify step,
- *     rate-limit, signOut({scope:'others'}) side effect
+ *     error mapping, signOut-failure-degraded-to-success
+ *   - setPasswordViaRecoveryAction (M5/PR4 HIGH-1 fix): atomic verify-OTP
+ *     + updateUser + signOut; bypass-attempt regression test asserts
+ *     updateUser is NOT called when verifyOtp fails
  *
  * All external dependencies (Supabase, rate-limiter) are mocked.
  *
@@ -21,6 +22,7 @@ const mockGetUser = vi.fn();
 const mockSignInWithPassword = vi.fn();
 const mockUpdateUser = vi.fn();
 const mockSignOut = vi.fn();
+const mockVerifyOtp = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() =>
@@ -30,6 +32,7 @@ vi.mock("@/lib/supabase/server", () => ({
         signInWithPassword: mockSignInWithPassword,
         updateUser: mockUpdateUser,
         signOut: mockSignOut,
+        verifyOtp: mockVerifyOtp,
       },
     })
   ),
@@ -59,7 +62,7 @@ vi.mock("@/lib/rate-limit", () => ({
 // Import AFTER mocks are set up.
 import {
   changePasswordAction,
-  setPasswordAfterRecoveryAction,
+  setPasswordViaRecoveryAction,
 } from "@/app/(authed)/account/sign-in-and-security/actions";
 import { RateLimitError } from "@/lib/rate-limit";
 
@@ -96,8 +99,6 @@ describe("changePasswordAction", () => {
   });
 
   it("pins email from session, NOT from form payload", async () => {
-    // Even if a caller somehow passes an email field, it must be ignored.
-    // The action only reads email from auth.getUser() server-side.
     mockSignInWithPassword.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockSignOut.mockResolvedValue({ error: null });
@@ -107,7 +108,6 @@ describe("changePasswordAction", () => {
       newPassword: "newpassword123",
     });
 
-    // Verify Supabase re-auth call used the session email, not a form-submitted one.
     expect(mockSignInWithPassword).toHaveBeenCalledWith(
       expect.objectContaining({ email: "dave@example.com" })
     );
@@ -128,6 +128,21 @@ describe("changePasswordAction", () => {
 
   it("returns auth_unauthenticated when auth.getUser() returns null", async () => {
     mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
+
+    const result = await changePasswordAction({
+      currentPassword: "oldpassword",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "auth_unauthenticated" });
+    expect(mockSignInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it("returns auth_unauthenticated when user has no email", async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-123", email: null, identities: [] } },
+      error: null,
+    });
 
     const result = await changePasswordAction({
       currentPassword: "oldpassword",
@@ -213,7 +228,6 @@ describe("changePasswordAction", () => {
       newPassword: "newpassword123",
     });
 
-    // Must use user.id (not email) as the rate-limit key.
     expect(mockRateLimitedAction).toHaveBeenCalledWith(
       expect.any(String),
       "user-123",
@@ -234,8 +248,23 @@ describe("changePasswordAction", () => {
     });
 
     expect(result).toEqual({ ok: false, errorKey: "network" });
-    // signOut({scope:'others'}) must NOT be called when updateUser fails.
     expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  // MEDIUM-1 regression — signOut failure must NOT flip a successful
+  // password rotation into a "network" error toast.
+  it("still returns { ok: true } when signOut({scope:'others'}) throws (password was rotated)", async () => {
+    mockSignInWithPassword.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockSignOut.mockRejectedValueOnce(new Error("Network blip"));
+
+    const result = await changePasswordAction({
+      currentPassword: "oldpassword",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockUpdateUser).toHaveBeenCalled();
   });
 
   it("never throws — catches unexpected errors and returns network key", async () => {
@@ -253,10 +282,10 @@ describe("changePasswordAction", () => {
 });
 
 // ---------------------------------------------------------------------------
-// setPasswordAfterRecoveryAction (State C — OTP verified, no current-pass check)
+// setPasswordViaRecoveryAction (State C — atomic verify-OTP + updateUser)
 // ---------------------------------------------------------------------------
 
-describe("setPasswordAfterRecoveryAction", () => {
+describe("setPasswordViaRecoveryAction", () => {
   const authedUser = {
     id: "user-456",
     email: "dave@example.com",
@@ -271,47 +300,140 @@ describe("setPasswordAfterRecoveryAction", () => {
     );
   });
 
-  it("returns { ok: true } on successful password set", async () => {
+  it("returns { ok: true } on successful atomic verify+update", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockSignOut.mockResolvedValue({ error: null });
 
-    const result = await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
 
     expect(result).toEqual({ ok: true });
   });
 
-  it("does NOT call signInWithPassword (no current-password verification step)", async () => {
+  it("calls verifyOtp with email from session AND form-supplied token", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockSignOut.mockResolvedValue({ error: null });
 
-    await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
+
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      email: "dave@example.com",
+      token: "123456",
+      type: "email",
+    });
+  });
+
+  it("calls signOut with scope='others' on success", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockSignOut.mockResolvedValue({ error: null });
+
+    await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
+
+    expect(mockSignOut).toHaveBeenCalledWith({ scope: "others" });
+  });
+
+  it("does NOT call signInWithPassword (no current-password verification step)", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockSignOut.mockResolvedValue({ error: null });
+
+    await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
 
     expect(mockSignInWithPassword).not.toHaveBeenCalled();
   });
 
-  it("calls signOut with scope='others' on success", async () => {
-    mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
-    mockSignOut.mockResolvedValue({ error: null });
+  // M5/PR4 HIGH-1 — the bypass regression test.
+  // Before the atomic refactor, an authed attacker could call the post-OTP
+  // action directly via DevTools and rotate the password without ever proving
+  // OTP possession. After the refactor, verifyOtp is the gate inside the
+  // SAME server call as updateUser — without a valid token, no rotation.
+  it("does NOT call updateUser when verifyOtp fails (bypass-prevention regression)", async () => {
+    mockVerifyOtp.mockResolvedValue({
+      data: { user: null },
+      error: { status: 400, code: "otp_expired", message: "Token has expired or is invalid" },
+    });
 
-    await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    const result = await setPasswordViaRecoveryAction({
+      token: "000000",
+      newPassword: "attacker_chosen",
+    });
 
-    expect(mockSignOut).toHaveBeenCalledWith({ scope: "others" });
+    expect(result).toEqual({ ok: false, errorKey: "auth_code_invalid" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+    expect(mockSignOut).not.toHaveBeenCalled();
   });
 
   it("returns auth_unauthenticated when auth.getUser() returns null", async () => {
     mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
 
-    const result = await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
 
     expect(result).toEqual({ ok: false, errorKey: "auth_unauthenticated" });
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
+  it("returns auth_unauthenticated when user has no email", async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-456", email: null, identities: [] } },
+      error: null,
+    });
+
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "auth_unauthenticated" });
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
+  });
+
   it("returns validation_failed when newPassword is under 6 chars", async () => {
-    const result = await setPasswordAfterRecoveryAction({ newPassword: "abc" });
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "abc",
+    });
 
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
     expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("returns validation_failed when token is not 6 digits", async () => {
+    const result = await setPasswordViaRecoveryAction({
+      token: "12345", // 5 digits
+      newPassword: "freshpassword",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
+  });
+
+  it("returns validation_failed when token contains non-digits", async () => {
+    const result = await setPasswordViaRecoveryAction({
+      token: "12345a",
+      newPassword: "freshpassword",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
   });
 
   it("returns rate_limit when the rate-limiter throws", async () => {
@@ -319,16 +441,23 @@ describe("setPasswordAfterRecoveryAction", () => {
       new RateLimitError("authChangePassword", { remaining: 0, reset: 0 })
     );
 
-    const result = await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
 
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
   });
 
-  it("uses AUTH_CHANGE_PASSWORD scope for rate-limiting", async () => {
+  it("uses AUTH_CHANGE_PASSWORD scope keyed by user.id", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockSignOut.mockResolvedValue({ error: null });
 
-    await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
 
     expect(mockRateLimitedAction).toHaveBeenCalledWith(
       "authChangePassword",
@@ -338,15 +467,34 @@ describe("setPasswordAfterRecoveryAction", () => {
   });
 
   it("returns network error when updateUser fails", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: authedUser }, error: null });
     mockUpdateUser.mockResolvedValue({
       data: { user: null },
       error: { status: 500, message: "Server error" },
     });
 
-    const result = await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
 
     expect(result).toEqual({ ok: false, errorKey: "network" });
     expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  // MEDIUM-1 regression for recovery path.
+  it("still returns { ok: true } when signOut({scope:'others'}) throws (password was rotated)", async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockUpdateUser.mockResolvedValue({ data: { user: authedUser }, error: null });
+    mockSignOut.mockRejectedValueOnce(new Error("Network blip"));
+
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockUpdateUser).toHaveBeenCalled();
   });
 
   it("never throws — returns network key on unexpected errors", async () => {
@@ -354,7 +502,10 @@ describe("setPasswordAfterRecoveryAction", () => {
       throw new Error("Unexpected");
     });
 
-    const result = await setPasswordAfterRecoveryAction({ newPassword: "freshpassword" });
+    const result = await setPasswordViaRecoveryAction({
+      token: "123456",
+      newPassword: "freshpassword",
+    });
 
     expect(result).toEqual({ ok: false, errorKey: "network" });
   });

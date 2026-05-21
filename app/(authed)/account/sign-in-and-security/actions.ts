@@ -6,9 +6,12 @@
  * Two actions:
  *   1. changePasswordAction — State A / A+: verify current password via
  *      re-auth, then set new password. Revokes other sessions on success.
- *   2. setPasswordAfterRecoveryAction — State C step 3: OTP already verified
- *      upstream (via verifyEmailCodeAction from PR2); just sets the new
- *      password without requiring current. Revokes other sessions on success.
+ *   2. setPasswordViaRecoveryAction — State C atomic flow: takes the 6-digit
+ *      OTP token AND the new password, verifies the OTP and updates the
+ *      password in ONE server call. The OTP verification is the proof-of-
+ *      identity that gates the password update — no separate "OTP-already-
+ *      verified" gate that an authed attacker could bypass via direct POST
+ *      (see notes/decisions.md "M5 auth redesign" ADR: State C bypass fix).
  *
  * Security invariants:
  *   - Email is ALWAYS pinned from auth.getUser() server-side. The form does
@@ -17,6 +20,8 @@
  *   - Zod schemas are TOP-OF-FILE (M4 W1b — never split from consumer).
  *   - No idempotency_key — password rotation is not a money mutation;
  *     rate-limit is the sufficient guard.
+ *   - signOut({scope:'others'}) is wrapped — if it fails AFTER the password
+ *     was rotated, the action still reports success (degraded but correct).
  *
  * Tests: tests/unit/account-actions.test.ts (Override C — never under app/).
  */
@@ -44,7 +49,10 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(6),
 });
 
-const setPasswordAfterRecoverySchema = z.object({
+const setPasswordViaRecoverySchema = z.object({
+  // 6-digit OTP token. The Supabase Email OTP Length is configured to 6 per
+  // the M5/PR3 deploy walk — strict server-side enforcement matches client.
+  token: z.string().length(6).regex(/^\d{6}$/),
   newPassword: z.string().min(6),
 });
 
@@ -84,12 +92,35 @@ function mapAuthErrorToKey(
   return "network";
 }
 
+/**
+ * Revokes all OTHER sessions for the current user, swallowing transient
+ * failures. Called AFTER updateUser succeeds — the password is already
+ * rotated by the time we get here, so a signOut failure must not flip the
+ * outer action result to "network". Logs loudly so a regression surfaces
+ * in Sentry. (Reviewer MEDIUM-1 on PR4.)
+ */
+async function revokeOtherSessions(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  context: "change-password" | "recovery",
+): Promise<void> {
+  try {
+    await supabase.auth.signOut({ scope: "others" });
+  } catch (signOutErr) {
+    console.error(
+      `[account-security] signOut(others) failed AFTER password rotated (${context})`,
+      {
+        name: signOutErr instanceof Error ? signOutErr.name : "unknown",
+      },
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
 
 /**
- * Changes the current user's password.
+ * Changes the current user's password (State A / A+).
  *
  * Steps:
  *   1. getUser() — pins email from session (NEVER from form).
@@ -97,7 +128,7 @@ function mapAuthErrorToKey(
  *   3. Re-authenticate with current password (benign: rotates session
  *      cookies for the same user, documented here).
  *   4. updateUser({ password: newPassword }).
- *   5. signOut({ scope: 'others' }) — revoke all other sessions.
+ *   5. signOut({ scope: 'others' }) — revoke all other sessions (wrapped).
  *
  * Rate-limit scope: AUTH_CHANGE_PASSWORD (5 / 15 min per user.id).
  */
@@ -111,12 +142,12 @@ export async function changePasswordAction(input: {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user || !user.email) {
     return { ok: false, errorKey: "auth_unauthenticated" };
   }
 
   // Email is pinned from session. The form does NOT submit an email field.
-  const email = user.email!;
+  const email = user.email;
 
   try {
     return await rateLimitedAction(
@@ -138,7 +169,6 @@ export async function changePasswordAction(input: {
         });
 
         if (verifyErr) {
-          // Don't leak the underlying Supabase error — map to canonical key.
           console.error("[account-security] current-password verify failed", {
             status: verifyErr.status,
             code: (verifyErr as { code?: string }).code,
@@ -160,11 +190,12 @@ export async function changePasswordAction(input: {
           return { ok: false, errorKey: mapped ?? "network" };
         }
 
-        // 4. Revoke all OTHER sessions (keep this one).
-        await supabase.auth.signOut({ scope: "others" });
+        // 4. Revoke other sessions — wrapped so a transient blip doesn't
+        //    flip a successful rotation into a "network" error.
+        await revokeOtherSessions(supabase, "change-password");
 
         return { ok: true };
-      }
+      },
     );
   } catch (err) {
     if (err instanceof RateLimitError) {
@@ -182,15 +213,28 @@ export async function changePasswordAction(input: {
 }
 
 /**
- * Sets a new password after OTP recovery (State C step 3).
+ * Atomically verifies the 6-digit OTP token AND sets a new password.
+ * State C atomic flow (M5/PR4 HIGH-1 fix per security-reviewer audit).
  *
- * The OTP has already been verified upstream via verifyEmailCodeAction (PR2),
- * which refreshed the session. This action skips the current-password verify
- * step because the OTP verification already proved identity.
+ * Replaces the bypass-vulnerable two-action sequence
+ * (verifyEmailCodeAction → setPasswordAfterRecoveryAction) with a single
+ * server call where the OTP verification GATES the password update. An
+ * attacker on a borrowed authed session cannot reach updateUser without
+ * also providing a valid 6-digit OTP just sent to the victim's inbox.
+ *
+ * Steps:
+ *   1. getUser() — pins email from session.
+ *   2. Validate input (token shape + newPassword length) via zod.
+ *   3. verifyOtp({email, token, type:'email'}) — invalid token short-
+ *      circuits with errorKey:"auth_code_invalid" BEFORE updateUser is
+ *      called. Identity is proved by the OTP, not by session presence.
+ *   4. updateUser({ password: newPassword }).
+ *   5. signOut({ scope: 'others' }) — wrapped.
  *
  * Rate-limit scope: AUTH_CHANGE_PASSWORD (5 / 15 min per user.id).
  */
-export async function setPasswordAfterRecoveryAction(input: {
+export async function setPasswordViaRecoveryAction(input: {
+  token: string;
   newPassword: string;
 }): Promise<ChangePasswordResult> {
   const supabase = await createClient();
@@ -199,9 +243,11 @@ export async function setPasswordAfterRecoveryAction(input: {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (!user || !user.email) {
     return { ok: false, errorKey: "auth_unauthenticated" };
   }
+
+  const email = user.email;
 
   try {
     return await rateLimitedAction(
@@ -209,30 +255,49 @@ export async function setPasswordAfterRecoveryAction(input: {
       user.id,
       async (): Promise<ChangePasswordResult> => {
         // 1. Validate input shape.
-        const parsed = setPasswordAfterRecoverySchema.safeParse(input);
+        const parsed = setPasswordViaRecoverySchema.safeParse(input);
         if (!parsed.success) {
           return { ok: false, errorKey: "validation_failed" };
         }
 
-        // 2. Update password. No current-password verify — OTP already did it.
+        // 2. Verify OTP — this is the gate. Without a valid token, no
+        //    password update happens. Email is server-pinned (not from form).
+        const { error: verifyErr } = await supabase.auth.verifyOtp({
+          email,
+          token: parsed.data.token,
+          type: "email",
+        });
+
+        if (verifyErr) {
+          console.error("[account-security] OTP verify failed (recovery)", {
+            status: verifyErr.status,
+            code: (verifyErr as { code?: string }).code,
+          });
+          return { ok: false, errorKey: "auth_code_invalid" };
+        }
+
+        // 3. Update password. Only reachable AFTER verifyOtp succeeded.
         const { error: updateErr } = await supabase.auth.updateUser({
           password: parsed.data.newPassword,
         });
 
         if (updateErr) {
-          console.error("[account-security] setPasswordAfterRecovery updateUser failed", {
-            status: updateErr.status,
-            code: (updateErr as { code?: string }).code,
-          });
+          console.error(
+            "[account-security] updateUser failed (recovery)",
+            {
+              status: updateErr.status,
+              code: (updateErr as { code?: string }).code,
+            },
+          );
           const mapped = mapAuthErrorToKey(updateErr);
           return { ok: false, errorKey: mapped ?? "network" };
         }
 
-        // 3. Revoke all OTHER sessions (keep this one).
-        await supabase.auth.signOut({ scope: "others" });
+        // 4. Revoke other sessions — wrapped.
+        await revokeOtherSessions(supabase, "recovery");
 
         return { ok: true };
-      }
+      },
     );
   } catch (err) {
     if (err instanceof RateLimitError) {
@@ -241,7 +306,7 @@ export async function setPasswordAfterRecoveryAction(input: {
       });
       return { ok: false, errorKey: "rate_limit" };
     }
-    console.error("[account-security] setPasswordAfterRecoveryAction threw", {
+    console.error("[account-security] setPasswordViaRecoveryAction threw", {
       name: err instanceof Error ? err.name : "unknown",
       message: err instanceof Error ? err.message : String(err),
     });

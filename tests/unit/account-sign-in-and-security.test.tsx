@@ -20,24 +20,25 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 // --- action mocks (must be before dynamic imports) --------------------------
 
 const mockChangePasswordAction = vi.fn();
-const mockSetPasswordAfterRecoveryAction = vi.fn();
+const mockSetPasswordViaRecoveryAction = vi.fn();
 
 vi.mock(
   "@/app/(authed)/account/sign-in-and-security/actions",
   () => ({
     changePasswordAction: (...args: unknown[]) => mockChangePasswordAction(...args),
-    setPasswordAfterRecoveryAction: (...args: unknown[]) =>
-      mockSetPasswordAfterRecoveryAction(...args),
+    setPasswordViaRecoveryAction: (...args: unknown[]) =>
+      mockSetPasswordViaRecoveryAction(...args),
   })
 );
 
-// Login actions (requestEmailCode, verifyEmailCodeAction) used in State C
+// Login actions used in State C step 1 (request OTP).
+// Note: verifyEmailCodeAction is NOT used by the form anymore — State C step 2
+// stores the code client-side and submits it atomically with the new password
+// to setPasswordViaRecoveryAction (M5/PR4 HIGH-1 fix).
 const mockRequestEmailCode = vi.fn();
-const mockVerifyEmailCodeAction = vi.fn();
 
 vi.mock("@/app/login/actions", () => ({
   requestEmailCode: (...args: unknown[]) => mockRequestEmailCode(...args),
-  verifyEmailCodeAction: (...args: unknown[]) => mockVerifyEmailCodeAction(...args),
 }));
 
 // Import AFTER mocks
@@ -270,9 +271,8 @@ describe("SecurityForm", () => {
     });
   });
 
-  it("transitions to State C-set (new password step) after OTP verification", async () => {
+  it("transitions to State C-set (new password step) after the user submits the OTP — client-side only, no server call", async () => {
     mockRequestEmailCode.mockResolvedValue({ ok: true });
-    mockVerifyEmailCodeAction.mockResolvedValue({ ok: true });
 
     render(<SecurityForm {...baseProps} />);
     fireEvent.click(screen.getByText(/forgot.*password/i));
@@ -288,12 +288,14 @@ describe("SecurityForm", () => {
       // Should show the new-password field (without a current-password field)
       expect(screen.getByLabelText(/new password/i)).toBeDefined();
     });
+    // The verify step is purely client-side now — no recovery action fires
+    // until the user submits both the token AND the new password atomically.
+    expect(mockSetPasswordViaRecoveryAction).not.toHaveBeenCalled();
   });
 
-  it("calls setPasswordAfterRecoveryAction (not changePasswordAction) in State C-set", async () => {
+  it("calls setPasswordViaRecoveryAction with BOTH the stored token AND newPassword (atomic submit)", async () => {
     mockRequestEmailCode.mockResolvedValue({ ok: true });
-    mockVerifyEmailCodeAction.mockResolvedValue({ ok: true });
-    mockSetPasswordAfterRecoveryAction.mockResolvedValue({ ok: true });
+    mockSetPasswordViaRecoveryAction.mockResolvedValue({ ok: true });
 
     render(<SecurityForm {...baseProps} />);
     fireEvent.click(screen.getByText(/forgot.*password/i));
@@ -313,7 +315,8 @@ describe("SecurityForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /update password/i }));
 
     await waitFor(() => {
-      expect(mockSetPasswordAfterRecoveryAction).toHaveBeenCalledWith({
+      expect(mockSetPasswordViaRecoveryAction).toHaveBeenCalledWith({
+        token: "654321",
         newPassword: "brandnewpass",
       });
       expect(mockChangePasswordAction).not.toHaveBeenCalled();
@@ -335,12 +338,12 @@ describe("SecurityForm", () => {
       expect(screen.getByLabelText(/current password/i)).toBeDefined();
     });
     expect(mockChangePasswordAction).not.toHaveBeenCalled();
-    expect(mockSetPasswordAfterRecoveryAction).not.toHaveBeenCalled();
+    expect(mockSetPasswordViaRecoveryAction).not.toHaveBeenCalled();
   });
 
-  it("shows error when OTP verification fails", async () => {
+  it("bounces back to C-verify and shows auth_code_invalid when the server rejects the OTP", async () => {
     mockRequestEmailCode.mockResolvedValue({ ok: true });
-    mockVerifyEmailCodeAction.mockResolvedValue({
+    mockSetPasswordViaRecoveryAction.mockResolvedValue({
       ok: false,
       errorKey: "auth_code_invalid",
     });
@@ -355,8 +358,17 @@ describe("SecurityForm", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /verify/i }));
 
+    await waitFor(() => screen.getByLabelText(/new password/i));
+
+    fireEvent.change(screen.getByLabelText(/new password/i), {
+      target: { value: "freshpass" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /update password/i }));
+
     await waitFor(() => {
-      // ERRORS.auth_code_invalid
+      // Form should return to C-verify so the user can re-enter the code,
+      // and the error message from ERRORS.auth_code_invalid is visible.
+      expect(screen.getByLabelText(/6-digit code/i)).toBeDefined();
       expect(screen.getByText(/that code didn't take/i)).toBeDefined();
     });
   });

@@ -35,8 +35,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AUTH_COPY } from "@/lib/copy/auth";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
-import { changePasswordAction, setPasswordAfterRecoveryAction } from "./actions";
-import { requestEmailCode, verifyEmailCodeAction } from "@/app/login/actions";
+import { changePasswordAction, setPasswordViaRecoveryAction } from "./actions";
+import { requestEmailCode } from "@/app/login/actions";
 import {
   type IdentityState,
   type FormMode,
@@ -66,6 +66,9 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   const [mode, setMode] = useState<FormMode>("change-password");
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Holds the 6-digit OTP between C-verify (client-side step) and C-set
+  // (atomic server submit). Never persisted — unmount clears it.
+  const [recoveryToken, setRecoveryToken] = useState<string>("");
 
   const changePasswordForm = useForm<ChangePasswordValues>({
     resolver: zodResolver(changePasswordClientSchema),
@@ -119,24 +122,34 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
     });
   };
 
+  // C-verify is now a purely client-side step — the code is stored in
+  // recoveryToken state and submitted atomically with the new password in
+  // setPasswordViaRecoveryAction. This eliminates the bypass surface where
+  // an authed attacker could call a "post-OTP" action without ever proving
+  // OTP possession (M5/PR4 HIGH-1 fix).
   const handleVerifyCode = otpForm.handleSubmit((values) => {
     setServerError(null);
-    startTransition(async () => {
-      const result = await verifyEmailCodeAction({ email: userEmail, token: values.token });
-      if (result.ok) {
-        setMode("C-set");
-        return;
-      }
-      setServerError(result.errorKey);
-    });
+    setRecoveryToken(values.token);
+    setMode("C-set");
   });
 
   const handleSetNewPassword = newPasswordForm.handleSubmit((values) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await setPasswordAfterRecoveryAction({ newPassword: values.newPassword });
+      const result = await setPasswordViaRecoveryAction({
+        token: recoveryToken,
+        newPassword: values.newPassword,
+      });
       if (result.ok) {
+        setRecoveryToken("");
         setMode("success");
+        return;
+      }
+      // On an invalid code, bounce back to C-verify so the user can re-enter
+      // the OTP (recovery flow stays usable; no full restart needed).
+      if (result.errorKey === "auth_code_invalid") {
+        setServerError(result.errorKey);
+        setMode("C-verify");
         return;
       }
       setServerError(result.errorKey);
@@ -146,6 +159,7 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   const handleCancel = () => {
     setServerError(null);
     setMode("change-password");
+    setRecoveryToken("");
     otpForm.reset();
     newPasswordForm.reset();
   };
@@ -243,7 +257,7 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
           />
           <ErrorNote id="security-error" message={inlineError} />
           <Button type="submit" data-testid="verify-code-button" disabled={isPending} aria-busy={isPending}>
-            {isPending ? <Spinner /> : <span>{AUTH_COPY.verifyCodeButton}</span>}
+            <span>{AUTH_COPY.verifyCodeButton}</span>
           </Button>
           <CancelLink onClick={handleCancel} disabled={isPending} />
         </form>
@@ -395,7 +409,8 @@ function PasswordFieldGroup({ id, testId, label, invalid, disabled, helper, ...i
         <button
           type="button"
           onClick={() => setShow((v) => !v)}
-          className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
+          disabled={disabled}
+          className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground disabled:opacity-50"
           aria-label={show ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
         >
           {show ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
