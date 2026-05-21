@@ -17,7 +17,7 @@
  *     spoofed those headers could trick Supabase into emailing the magic
  *     link to a redirect URL pointing at attacker-controlled hosts.
  *   - Magic-link issuance is rate-limited per (lowercased) email via the
- *     `authMagicLink` scope. Prevents email-bombing arbitrary inboxes
+ *     `authOtpVerify` scope. Prevents email-bombing arbitrary inboxes
  *     and bulk pollution of `auth.users` (we ship with
  *     `shouldCreateUser: true`). Supabase's own throttle is too generous
  *     to be the only line of defense.
@@ -131,7 +131,7 @@ export async function requestMagicLink(
   try {
     const supabase = await createClient();
     const { error } = await rateLimitedAction(
-      RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK,
+      RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY,
       normalizedEmail,
       () =>
         supabase.auth.signInWithOtp({
@@ -166,7 +166,7 @@ export async function requestMagicLink(
   } catch (err) {
     if (err instanceof RateLimitError) {
       console.error("[auth] app-layer rate-limit fired", {
-        scope: RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK,
+        scope: RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY,
       });
       return { ok: false, errorKey: "rate_limit" };
     }

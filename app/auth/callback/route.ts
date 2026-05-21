@@ -32,6 +32,10 @@ export async function GET(request: Request) {
   const params = {
     token_hash: searchParams.get("token_hash"),
     type: searchParams.get("type"),
+    // 6-digit OTP form path — wired in by PR2 of M5 auth redesign.
+    // Kept null here since the URL-based callback does not carry these.
+    token: searchParams.get("token"),
+    email: searchParams.get("email"),
     code: searchParams.get("code"),
     next: safeNext(searchParams.get("next")),
   };
