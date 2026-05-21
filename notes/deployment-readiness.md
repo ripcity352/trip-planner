@@ -44,6 +44,7 @@
 | `SENTRY_DSN` *(server)* + `NEXT_PUBLIC_SENTRY_DSN` *(client)* | No error reporting in production; the diagnostic `console.error` (#134) still surfaces in Vercel runtime logs but Sentry breadcrumbs go silent. | Sentry project | M1 | 2026-05-19 |
 | `SENTRY_AUTH_TOKEN` | Source maps don't upload; stack traces in Sentry are minified. | Sentry org → Auth Tokens | M1 | 2026-05-19 |
 | `RESEND_API_KEY` *(consumed by Supabase Auth, not the app)* | Outgoing magic-link emails route through the project-wide Supabase email cap (3/hr free tier) → real users hit `over_email_send_rate_limit` past 3 attempts. | Resend dashboard | M2 (PM session 2026-05-19) | 2026-05-19 |
+| `GOOGLE_PLACES_API_KEY` | `/api/places/autocomplete` 502s with `places_proxy_failed`; W2a address-autocomplete UI falls back to freeform. Without billing on the Google Cloud project, the upstream returns 403. | Google Cloud project (`ripcity352`) | M4 (#166, W0c) | **NOT YET VERIFIED — M4 blocker for W0c smoke** |
 
 **Note on KV_* vs UPSTASH_* dual-name resolution:** `lib/rate-limit/index.ts`
 reads both prefixes via `__resolveUpstashCreds()`, preferring `KV_*`
