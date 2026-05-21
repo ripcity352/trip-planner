@@ -181,35 +181,21 @@ export async function createInviteRecord(
  * delete the row so we can still surface "this link was revoked" if
  * someone clicks it.
  *
- * IMPORTANT: the `invites` table currently has no UPDATE RLS policy
- * (only SELECT/INSERT/DELETE). Postgres treats "no policy that
- * matches" as deny, but a denied UPDATE returns success with zero
- * affected rows — not an error. We therefore add a `.select()` to the
- * UPDATE so we can confirm a row was actually modified, and throw if
- * not. Without this check, `revokeInvite` would be a silent no-op for
- * every caller and the UI would lie about revocation.
- *
- * Migration follow-up: add a column-scoped UPDATE policy on `invites`
- * for organizers / co-organizers, OR add a `revoke_invite()` SECURITY
- * DEFINER RPC mirroring `accept_invite`. Out of scope for Wave 4c
- * (migration ordering risk); tracked for M4.
+ * Delta 4 (M4) adds "organizers can update invites" RLS policy so the
+ * UPDATE now returns the affected count correctly. The M3 band-aid
+ * (.select("token") + zero-row throw) is removed — the policy is the
+ * authoritative gate.
  */
 export async function revokeInvite(
   supabase: SupabaseClient,
   token: string
 ): Promise<void> {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from("invites")
     .update({ expires_at: new Date().toISOString() })
-    .eq("token", token)
-    .select("token");
+    .eq("token", token);
 
   if (error) {
     throw new Error(`revokeInvite failed: ${error.message}`);
-  }
-  if (!Array.isArray(data) || data.length === 0) {
-    // RLS denied the UPDATE (or the token doesn't exist). Either way the
-    // caller's revoke promise wasn't kept — surface as an error.
-    throw new Error("revokeInvite: no row updated (RLS denied or token missing)");
   }
 }

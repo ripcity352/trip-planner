@@ -40,6 +40,7 @@ function makeTrip(overrides: Partial<Trip> = {}): Trip {
     archived_at: null,
     vibe_tags: [],
     notes: null,
+    timezone: "America/Los_Angeles",
     ...overrides,
   };
 }
