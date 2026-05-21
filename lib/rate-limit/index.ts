@@ -182,12 +182,28 @@ export class RateLimitError extends Error {
 // --- limiter (lazy) ----------------------------------------------------
 
 /**
- * Lazy singleton. Module import must never touch process.env beyond a
- * tag-check, and must never construct a Redis client at load time —
- * otherwise importing this file in a test (where env vars are unset)
- * would crash the suite.
+ * Lazy per-scope cache. Module import must never touch process.env
+ * beyond a tag-check, and must never construct a Redis client at load
+ * time — otherwise importing this file in a test (where env vars are
+ * unset) would crash the suite.
+ *
+ * Keyed by scope so each `SCOPE_BUDGETS` entry gets its own Ratelimit
+ * instance with the right `slidingWindow(limit, window)` config. Scopes
+ * not in `SCOPE_BUDGETS` share the default-budget instance keyed under
+ * `DEFAULT_LIMITER_KEY`. Without per-scope keying, `MINT_INVITE`'s
+ * 10/hour budget never reaches Upstash and silently inherits 30/60s —
+ * the W0c code-review HIGH.
  */
-let cachedLimiter: Ratelimit | InMemoryLimiter | null = null;
+const DEFAULT_LIMITER_KEY = "__default__";
+const cachedLimiters = new Map<
+  RateLimitScope | typeof DEFAULT_LIMITER_KEY,
+  Ratelimit | InMemoryLimiter
+>();
+/**
+ * Test override limiter — when set, takes precedence over `cachedLimiters`
+ * for all scopes. Cleared via `__setLimiterForTest(null)`.
+ */
+let testOverrideLimiter: Ratelimit | InMemoryLimiter | null = null;
 
 /**
  * Minimal in-memory shim that always allows (or denies for fail-closed
@@ -255,13 +271,27 @@ function buildInMemoryLimiter(): InMemoryLimiter {
   };
 }
 
-function buildUpstashLimiter(url: string, token: string): Ratelimit {
+function buildUpstashLimiter(
+  url: string,
+  token: string,
+  scope?: RateLimitScope,
+): Ratelimit {
   const redis = new Redis({ url, token });
+  const budget = scope ? SCOPE_BUDGETS[scope] : undefined;
+  const limit = budget?.limit ?? DEFAULT_LIMIT;
+  const window = (budget?.window ?? DEFAULT_WINDOW) as Parameters<
+    typeof Ratelimit.slidingWindow
+  >[1];
+  // Prefix per scope so different budgets don't share a counter bucket
+  // (an organizer's MINT_INVITE state and a member's SET_RSVP state are
+  // already keyed by `${scope}:${userId}` at call sites, but distinct
+  // prefixes also keep Upstash analytics readable).
+  const prefix = scope ? `trip-planner/rl/${scope}` : "trip-planner/rl";
   return new Ratelimit({
     redis,
-    limiter: Ratelimit.slidingWindow(DEFAULT_LIMIT, DEFAULT_WINDOW),
+    limiter: Ratelimit.slidingWindow(limit, window),
     analytics: false,
-    prefix: "trip-planner/rl",
+    prefix,
     // Tighter than the upstream 5s default — Upstash p99 is well under
     // 1s, so 1500ms is a generous ceiling that still keeps end-user
     // latency bounded during a slow Redis. On timeout the upstream
@@ -278,15 +308,30 @@ function isInMemoryShim(
   return (limiter as InMemoryLimiter).isShim === true;
 }
 
-function getLimiter(): Ratelimit | InMemoryLimiter {
-  if (cachedLimiter) return cachedLimiter;
+function getLimiter(
+  scope?: RateLimitScope,
+): Ratelimit | InMemoryLimiter {
+  if (testOverrideLimiter) return testOverrideLimiter;
+
+  // Scopes WITHOUT a custom budget share the default-keyed limiter.
+  // Scopes WITH a budget get their own keyed limiter so the
+  // `slidingWindow(limit, window)` config actually takes effect.
+  const cacheKey: RateLimitScope | typeof DEFAULT_LIMITER_KEY =
+    scope && SCOPE_BUDGETS[scope] ? scope : DEFAULT_LIMITER_KEY;
+
+  const existing = cachedLimiters.get(cacheKey);
+  if (existing) return existing;
 
   const creds = __resolveUpstashCreds(process.env);
-
-  cachedLimiter = creds
-    ? buildUpstashLimiter(creds.url, creds.token)
+  const limiter = creds
+    ? buildUpstashLimiter(
+        creds.url,
+        creds.token,
+        cacheKey === DEFAULT_LIMITER_KEY ? undefined : cacheKey,
+      )
     : buildInMemoryLimiter();
-  return cachedLimiter;
+  cachedLimiters.set(cacheKey, limiter);
+  return limiter;
 }
 
 /**
@@ -326,7 +371,12 @@ export function __resolveUpstashCreds(
 export function __setLimiterForTest(
   limiter: Pick<Ratelimit, "limit"> | null,
 ): void {
-  cachedLimiter = limiter as Ratelimit | null;
+  testOverrideLimiter = limiter as Ratelimit | null;
+  if (limiter === null) {
+    // Clear scope-keyed cache too so the next getLimiter() rebuilds
+    // (otherwise back-to-back tests would share an old shim instance).
+    cachedLimiters.clear();
+  }
 }
 
 // --- public API --------------------------------------------------------
@@ -363,7 +413,7 @@ export async function rateLimitedAction<T>(
   key: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const limiter = getLimiter();
+  const limiter = getLimiter(scope);
   const identifier = `${scope}:${key}`;
   const result = await limiter.limit(identifier);
 

@@ -99,6 +99,19 @@ export async function fetchPlacesAutocomplete(
 ): Promise<PlacesProxyResult> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
 
+  // Fail-fast on missing API key. Distinct log line so the operator
+  // can grep `[places-proxy] api-key-missing` vs the generic 502 line
+  // when Google rejects the empty-key request. Without the early return
+  // we'd send `X-Goog-Api-Key: ""` and wait for a 403 — wasted RTT and
+  // an indistinguishable error from a real upstream outage.
+  if (!apiKey) {
+    console.error(
+      "[places-proxy] api-key-missing — GOOGLE_PLACES_API_KEY unset; " +
+        "set it in Vercel project env per notes/deployment-readiness.md",
+    );
+    return { ok: false, errorKey: "places_proxy_failed" };
+  }
+
   const requestBody: Record<string, string> = { input: input.query };
   if (input.sessionToken !== undefined) {
     requestBody.sessionToken = input.sessionToken;
@@ -109,7 +122,7 @@ export async function fetchPlacesAutocomplete(
     response = await fetch(PLACES_AUTOCOMPLETE_URL, {
       method: "POST",
       headers: {
-        "X-Goog-Api-Key": apiKey ?? "",
+        "X-Goog-Api-Key": apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
