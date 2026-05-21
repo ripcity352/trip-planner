@@ -164,6 +164,12 @@ balance-audit nudges, notification-outbox seam (#33 killed).
 
 The ship moment. Polish + the bright line marked **STOP HERE.**
 
+**Status (2026-05-21): Closed.** W0a–W4b (#190–#204) merged to `main`;
+closure PR W4c (#205) merges this plan. See `notes/decisions.md`
+"M4 — Trip is shippable — milestone closed" ADR for load-bearing
+decisions and `notes/retros/m4-retro.md` for the full retro.
+**M4 closed; M5 gated on real-trip retro.**
+
 **Sim 2026-05-20:** 16 of 21 future-state-guide open questions
 resolved; see `notes/sim/2026-05-20/findings.md` for the synthesis.
 

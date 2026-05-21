@@ -44,7 +44,7 @@
 | `SENTRY_DSN` *(server)* + `NEXT_PUBLIC_SENTRY_DSN` *(client)* | No error reporting in production; the diagnostic `console.error` (#134) still surfaces in Vercel runtime logs but Sentry breadcrumbs go silent. | Sentry project | M1 | 2026-05-19 |
 | `SENTRY_AUTH_TOKEN` | Source maps don't upload; stack traces in Sentry are minified. | Sentry org → Auth Tokens | M1 | 2026-05-19 |
 | `RESEND_API_KEY` *(consumed by Supabase Auth, not the app)* | Outgoing magic-link emails route through the project-wide Supabase email cap (3/hr free tier) → real users hit `over_email_send_rate_limit` past 3 attempts. | Resend dashboard | M2 (PM session 2026-05-19) | 2026-05-19 |
-| `GOOGLE_PLACES_API_KEY` | `/api/places/autocomplete` 502s with `places_proxy_failed`; W2a address-autocomplete UI falls back to freeform. Without billing on the Google Cloud project, the upstream returns 403. | Google Cloud project (`ripcity352`) | M4 (#166, W0c) | **NOT YET VERIFIED — M4 blocker for W0c smoke** |
+| `GOOGLE_PLACES_API_KEY` | `/api/places/autocomplete` 502s with `places_proxy_failed`; W2a address-autocomplete UI falls back to freeform. Without billing on the Google Cloud project, the upstream returns 403. | Google Cloud project (`ripcity352`) | M4 (#166, W0c) | **Verified in W0c smoke (2026-05-20). Confirmed live in prod as of W4b walk.** |
 
 **Note on KV_* vs UPSTASH_* dual-name resolution:** `lib/rate-limit/index.ts`
 reads both prefixes via `__resolveUpstashCreds()`, preferring `KV_*`
@@ -80,8 +80,8 @@ stale local override. See ADR 2026-05-19 (late PM) in
 
 | Setting | Path | What breaks without it | Last verified |
 |---|---|---|---|
-| **Verified domain on Resend** | Resend → Domains | Without it: sender restricted to `onboarding@resend.dev` + addresses already in the Resend Audience. Real attendees outside the audience can't receive magic-link emails. Tracked: #135. | **NOT YET VERIFIED — blocker for M4 send-to-real-attendees**. M3 still uses the sandbox sender on the developer's own email. |
-| **Outbound DKIM + SPF on the verified domain's DNS** | Domain registrar → DNS | Without it: emails land in spam for many providers. | Tracked under #135. |
+| **Verified domain on Resend** | Resend → Domains | Without it: sender restricted to `onboarding@resend.dev` + addresses already in the Resend Audience. Real attendees outside the audience can't receive magic-link emails. Tracked: #135. | **NOT YET VERIFIED as of M4 closure (W4c, 2026-05-21).** This is a closure-walk blocker for the `[v]` axis on "send invite to real attendees." Override I applies: sandbox does NOT tick the `[v]` box. Resolution pending travelston.com domain verification on Resend. |
+| **Outbound DKIM + SPF on the verified domain's DNS** | Domain registrar → DNS | Without it: emails land in spam for many providers. | **NOT YET VERIFIED as of M4 closure.** Tracked under #135. Pending Resend domain verification. |
 
 ---
 
@@ -131,6 +131,29 @@ all six. Failures block the milestone flip.
 A row that fails for a *different* reason than what the column
 describes — e.g., the Vercel env-var is present but malformed —
 counts as a hard-stop trigger per `m3-execution-plan.md` Appendix B.
+
+---
+
+## M4 closure status (2026-05-21)
+
+**Blockers remaining before `[v]` ticks can land:**
+
+1. **Resend domain verification** — `travelston.com` not yet verified on
+   Resend. Outbound magic-link emails route through the sandbox sender
+   (`onboarding@resend.dev`), which is restricted to addresses already
+   in the Resend Audience. Real attendees outside the Audience cannot
+   receive invite magic-links until the domain is verified + DKIM/SPF
+   are set. This blocks the "send invite to real attendees" `[v]` tick.
+   Tracked: #135. Override I applies.
+
+2. **Production walk on travelston.com** — the full browser walk
+   (375px, real device) is the orchestrator's responsibility after the
+   W4c PR merges. Until completed, all `[v]` boxes in
+   `notes/m4-execution-plan.md` remain unchecked.
+
+Everything else in this file was verified at W4b smoke (2026-05-20) or
+earlier. The two items above are the only remaining M4 closure-walk
+blockers.
 
 ---
 

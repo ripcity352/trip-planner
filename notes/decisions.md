@@ -5,6 +5,113 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-21 — M4 — Trip is shippable — milestone closed
+
+**Decision:** M4 closed. The MVP is shipped: five-tab IA, structured
+inputs with freeform fallback, themed persimmon design system, legal
+stubs, axe/Lighthouse a11y pass, and 15 wave PRs (#190–#204) plus this
+closure PR landed on `main`. The app is real-trip ready. Per
+`notes/roadmap.md`, **stop here** — use it for the actual bachelor
+party, then gate M5 on the retro.
+
+**What shipped (16 PRs):**
+
+- **#190** — W0a: plan doc + copy/data lock, M4 execution plan bootstrap.
+- **#191** — W0e: test infra — multi-persona fixtures (`seed-test-organizer`,
+  `seed-test-celebrant`), `STORAGE_STATE_ORGANIZER_PATH`,
+  `STORAGE_STATE_CELEBRANT_PATH`, `asOrganizer()` / `asCelebrant()` helpers.
+- **#192** — W0b: carry-back migration (Deltas 1–7): `getFlagsForItem`
+  data layer (#Delta 1), `trips.timezone` column (#Delta 2),
+  `setTripNotes revalidatePath` (#159 / Delta 4), `invites` UPDATE RLS
+  policy (#Delta 5), `trip_members` SELECT tightening (#Delta 6),
+  `idempotency_key` on `createInviteAction` (#158 / Delta 7).
+- **#193** — W0c: Google Places autocomplete server proxy (`/api/places/autocomplete`),
+  `SCOPE_BUDGETS` wired through `buildUpstashLimiter` (Deltas 8 + 9),
+  `MINT_INVITE` hardened to 10/hour, invite GET route drop.
+- **#194** — W0d: bottom tab bar (`home / plans / posts / crew / me`),
+  `/me` skeleton, deep-link middleware, `edit-item-form-sheet.tsx` pre-split
+  into per-field sub-components.
+- **#195** — W1a: dress-code preset chips (#163).
+- **#196** — W1b: activity-tag chip picker (#164).
+- **#197** — W1c: per-item member-flag chips + organizer view + member
+  self-read (#165).
+- **#199** — W2a: Places UI consumer + `address_place_id` persistence (#166).
+- **#200** — W2b: `datetime-local` widget + trip timezone support (#167, #108),
+  `trips.timezone` added to `TRIP_COLUMNS`.
+- **#198** — W2c: airline picker + IATA enforcement + `CARRIER_SANITIZE_REGEX`
+  corrected (#168).
+- **#201** — W3a: theming pass — persimmon design tokens, focus-ring,
+  hero image (#90, #121).
+- **#202** — W3b: RSVP color + icon (color never the only signal) (#45).
+- **#203** — W4a: legal stubs — `/legal/terms` + `/legal/privacy` (#81).
+- **#204** — W4b: prod-walk fixes + `@axe-core/playwright` a11y sweep (#82).
+- **W4c** (this PR): closure — retro authored, ADR recorded, roadmap updated,
+  `CLAUDE.md` updated, m4-golden-path e2e spec, deployment-readiness
+  closure status.
+
+**Load-bearing decisions made during execution:**
+
+1. **Wave 0 split into 5 sub-PRs (W0a–W0e)** after Lazy-Path Audit 1
+   flagged the fat-PR risk. A single "M4 carry-back" PR would have been
+   ~900 LOC across 20+ files — well above the per-PR ceiling and a
+   collision hazard for the parallel structured-inputs wave. Splitting
+   into W0a (plan), W0b (DB carry-back), W0c (proxy + rate-limit),
+   W0d (nav), W0e (test infra) allowed Wave 1 to start in parallel
+   against a stable base.
+
+2. **`edit-item-form-sheet.tsx` pre-split into per-field sub-components**
+   (W0d) to avoid a 4-way line-collision risk. Wave 1 agents (W1a dress
+   code, W1b activity tag, W1c member flag) would each have needed to
+   edit the same form component. The pre-split gave each wave its own
+   file surface.
+
+3. **`date-fns-tz` as a direct dependency (W2b).** `date-fns` alone
+   cannot convert a UTC timestamp into a named timezone slot (e.g.
+   `America/Los_Angeles`). The alternative — using the Intl API directly —
+   produces format strings inconsistent with the existing `date-fns`
+   usage across the codebase. `date-fns-tz` is the canonical companion
+   library; adding it as a direct dep (not a devDep) is correct because
+   it ships in the app bundle.
+
+4. **`@axe-core/playwright` as a dev dependency (W4b).** The axe sweep
+   runs in e2e specs only — never in the app bundle. `devDependencies`
+   is the right home. The alternative (using `axe-core` directly with a
+   custom runner) was rejected as unnecessary complexity given that
+   `@axe-core/playwright` is the first-party companion.
+
+5. **`SCOPE_BUDGETS` wiring fix (W0c).** W0c initially shipped
+   `SCOPE_BUDGETS` as a declarative config object only — the values were
+   defined but never passed through `buildUpstashLimiter`. Code-reviewer
+   flagged this HIGH: the rate-limit scopes were completely bypassed in
+   production. The consolidated fix-up wired all scopes through
+   `buildUpstashLimiter` in the same W0c PR before merge.
+
+6. **`trips.timezone` added to `TRIP_COLUMNS` (W2b).** The `datetime-local`
+   widget wrote `trips.timezone` to the DB, but the shared `TRIP_COLUMNS`
+   select constant — used in every `getTrip` call — did not include the
+   new column. Security-reviewer caught this as a silent data-loss bug:
+   the UI would render with an undefined timezone on every page that used
+   the shared query, silently falling back to UTC. The fix added
+   `timezone` to `TRIP_COLUMNS` in the same W2b PR.
+
+7. **Airline picker `CARRIER_SANITIZE_REGEX` swap from `/[ \r\n]/g` to
+   `/[\0\r\n]/g` (W2c).** The original regex stripped spaces from carrier
+   names, which would corrupt airline names like "Air Canada" to
+   "AirCanada." Code-reviewer and security-reviewer both flagged this
+   CRITICAL: the intent was to strip NUL, carriage return, and newline
+   (injection vectors), not spaces. The fix swapped space (`\x20`) for
+   NUL (`\0`) in the character class.
+
+**Verified DoD:** see `notes/m4-execution-plan.md` DoD checklist. All
+`[d]` ticks landed wave-by-wave at PR merge. `[v]` ticks will land after
+the production walk on travelston.com (orchestrator's responsibility
+post-merge).
+
+**MVP target reset:** M1–M4 are done. **Next: real-trip retrospective
+gates M5.** See `notes/retros/m4-retro.md` for the full retro.
+
+---
+
 ## 2026-05-20 (late PM) — Tab-based IA locked + 3-axis labeling scheme
 
 **Decision:** The trip surface ships as a **5-tab bottom navigation**:

@@ -18,10 +18,10 @@ Come back to M5 only after a real-trip retro.
 
 | Milestone | Status | Definition of done |
 |---|---|---|
-| **M1 — Foundation + Schema** | in progress | Next.js + Supabase deployed to Vercel preview, CI green, foundation migration applied (trip_kind / is_celebrant / visibility enum / accountless attendees w/ synthetic PK + FK retarget / trip_member_days / vibe_tags / currency / soft-delete / idempotency convention), PWA + Sentry + rate-limit seam in place, copy palettes written upfront |
-| **M2 — Trip is real** | not started | Magic-link auth, trip creation, logged-out invite preview, 3-state RSVP, co-organizer role (no spend cap), bachelor-specific celebrant-weighted date poll, Pulse Poll (aggregate-only default) |
-| **M3 — Trip is useful** | not started | Itinerary (kind / activity_tag / dress_code, per-item RSVP + dietary flag, lodging, travel legs, vCard + Copy-all-numbers), "what's happening now" home card, FAQ field, announcements + realtime |
-| **M4 — Trip is shippable** | not started | Custom domain, microcopy review enforced, axe + Lighthouse a11y pass, ToS/privacy stubs, send to attendees. **STOP HERE.** |
+| **M1 — Foundation + Schema** | **Closed (2026-05-19)** | Next.js + Supabase deployed to Vercel preview, CI green, foundation migration applied (trip_kind / is_celebrant / visibility enum / accountless attendees w/ synthetic PK + FK retarget / trip_member_days / vibe_tags / currency / soft-delete / idempotency convention), PWA + Sentry + rate-limit seam in place, copy palettes written upfront |
+| **M2 — Trip is real** | **Closed (2026-05-19)** | Magic-link auth, trip creation, logged-out invite preview, 3-state RSVP, co-organizer role (no spend cap), bachelor-specific celebrant-weighted date poll, Pulse Poll (aggregate-only default) |
+| **M3 — Trip is useful** | **Closed (2026-05-20)** | Itinerary (kind / activity_tag / dress_code, per-item RSVP + dietary flag, lodging, travel legs, vCard + Copy-all-numbers), "what's happening now" home card, FAQ field, announcements + realtime |
+| **M4 — Trip is shippable** | **Closed (2026-05-21)** | Custom domain, microcopy review enforced, axe + Lighthouse a11y pass, ToS/privacy stubs, structured inputs (chip pickers + datetime + airline picker + Places autocomplete), 5-tab IA, send to attendees. **STOP HERE.** |
 
 ### Post-MVP
 
