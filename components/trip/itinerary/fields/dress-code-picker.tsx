@@ -14,7 +14,7 @@
  *   - Value flows out via onChange(value: string | undefined).
  *
  * Mobile-first: chip tap targets min-h-[44px], chip wrap natural.
- * Persimmon focus-ring on :focus-visible via focus-visible:ring-[#FF6B35].
+ * Persimmon focus-ring on :focus-visible via focus-visible:ring-ring (CSS var --ring).
  */
 
 import * as React from "react";
@@ -81,10 +81,10 @@ export function DressCodePicker({
                 // Tap target: min-h-[44px] satisfies the ≥44px mobile requirement.
                 "inline-flex items-center justify-center rounded-full border px-4 min-h-[44px]",
                 "text-sm font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B35] focus-visible:ring-offset-2",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 isSelected
-                  ? "border-[#FF6B35] bg-[#FF6B35] text-white"
+                  ? "border-primary bg-primary text-primary-foreground"
                   : "border-border bg-background text-foreground hover:bg-muted"
               )}
             >
@@ -106,7 +106,7 @@ export function DressCodePicker({
         className={cn(
           "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
           "placeholder:text-muted-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B35] focus-visible:ring-offset-2",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50"
         )}
       />
