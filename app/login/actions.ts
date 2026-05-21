@@ -32,6 +32,7 @@ import {
   RateLimitError,
   rateLimitedAction,
 } from "@/lib/rate-limit";
+import { safeNext } from "@/lib/auth/safe-next";
 
 // ---------------------------------------------------------------------------
 // Zod schemas (M4 W1b — co-located with actions)
@@ -58,7 +59,9 @@ const verifyEmailCodeSchema = z.object({
 // signInWithOAuthSchema — only google for now; Apple deferred per ADR.
 const signInWithOAuthSchema = z.object({
   provider: z.enum(["google"]),
-  next: z.string().optional(),
+  // 2048 cap matches RFC 7230 practical URL length; safeNext sanitizes
+  // protocol-relative / off-origin / scheme-prefixed inputs further.
+  next: z.string().max(2048).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -426,25 +429,22 @@ export async function signInWithOAuthAction(input: {
     return { ok: false, errorKey: "network" };
   }
 
-  const { safeNext } = await import("@/lib/auth/safe-next");
   const nextPath = safeNext(parsed.data.next ?? null);
   const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
+  // No app-layer rate-limit — OAuth start is pre-auth (no user.id, no email
+  // yet), so the only sensible key would be IP. The middleware path-throttle
+  // on `/login` already provides per-IP rate-limiting at the edge (see
+  // GUARDED_PATH_PATTERNS in lib/rate-limit/index.ts). Stacking an action-
+  // level limiter with a constant key would create a global DoS bucket where
+  // any single client could exhaust the budget for all OAuth-start attempts.
+  // Reviewer HIGH on PR #231 fix-up `<sha>` for the original mistake.
   try {
     const supabase = await createClient();
-    const { data, error } = await rateLimitedAction(
-      RATE_LIMIT_SCOPES.AUTH_PASSWORD,
-      // Key by a stable constant — OAuth start is pre-auth (no user.id).
-      // Reusing the scope + fixed key means IP-level defense is at
-      // the edge (middleware); here we just protect against script-kiddie
-      // looping the endpoint.
-      "oauth-start",
-      () =>
-        supabase.auth.signInWithOAuth({
-          provider: parsed.data.provider,
-          options: { redirectTo },
-        }),
-    );
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: parsed.data.provider,
+      options: { redirectTo },
+    });
 
     if (error) {
       console.error("[auth] signInWithOAuth failed", {
@@ -463,6 +463,8 @@ export async function signInWithOAuthAction(input: {
     return { ok: true, url: data.url };
   } catch (err) {
     if (err instanceof RateLimitError) {
+      // Defensive — no inner rate-limit anymore, but if middleware-level
+      // throttle bubbles up via a rejected promise we still translate.
       console.error("[auth] app-layer rate-limit fired (oauth-start)", {
         scope: RATE_LIMIT_SCOPES.AUTH_PASSWORD,
       });

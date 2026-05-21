@@ -385,11 +385,8 @@ export async function setPasswordAction(input: {
             status: updateErr.status,
             code: (updateErr as { code?: string }).code,
           });
-          const mapped =
-            updateErr.status === 429
-              ? ("rate_limit" as const)
-              : ("network" as const);
-          return { ok: false, errorKey: mapped };
+          const mapped = mapAuthErrorToKey(updateErr);
+          return { ok: false, errorKey: mapped ?? "network" };
         }
 
         // NOTE: No signOut({scope:'others'}) — State B has no prior credential

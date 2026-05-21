@@ -503,87 +503,10 @@ describe("<LoginForm /> — Google OAuth button", () => {
 });
 
 // ---------------------------------------------------------------------------
-// OAuth-existing-user alert (PR5)
+// OAuth-existing-user alert (M5-followup) — UI scaffolding stripped from PR5
+// because the server-side detection that produces auth_email_taken_oauth was
+// never wired. Copy keys remain in lib/copy/auth.ts pinned by voice-lock
+// tests, ready for a follow-up PR that adds the detection (likely a new
+// public RPC; ADR-accepted enumeration leak per v3.2). When the wiring lands,
+// re-introduce the alert tests here.
 // ---------------------------------------------------------------------------
-
-describe("<LoginForm /> — OAuth-existing-user alert", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  async function triggerOAuthAlert() {
-    signInWithPasswordActionMock.mockResolvedValue({
-      ok: false,
-      errorKey: "auth_email_taken_oauth",
-    });
-    render(<LoginForm />);
-    await advanceToPasswordMode();
-    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
-      target: { value: "wrongpass" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: AUTH_COPY.signInButton }));
-    await waitFor(() => {
-      // The alert must be visible
-      expect(screen.getByRole("alert")).toBeInTheDocument();
-    });
-  }
-
-  it("shows the OAuth-existing-user alert when signInWithPassword returns auth_email_taken_oauth", async () => {
-    await triggerOAuthAlert();
-    expect(
-      screen.getByText(AUTH_COPY.oauth_account_prompt_text)
-    ).toBeInTheDocument();
-  });
-
-  it("renders 'Sign in with Google' button in the alert", async () => {
-    await triggerOAuthAlert();
-    expect(
-      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_google_button })
-    ).toBeInTheDocument();
-  });
-
-  it("renders 'Email me a code instead' button in the alert", async () => {
-    await triggerOAuthAlert();
-    expect(
-      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_code_button })
-    ).toBeInTheDocument();
-  });
-
-  it("'Sign in with Google' button in alert triggers signInWithOAuthAction", async () => {
-    const assignMock = vi.fn();
-    Object.defineProperty(window, "location", {
-      writable: true,
-      value: { assign: assignMock },
-    });
-    signInWithOAuthActionMock.mockResolvedValue({
-      ok: true,
-      url: "https://accounts.google.com/oauth",
-    });
-
-    await triggerOAuthAlert();
-    fireEvent.click(
-      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_google_button })
-    );
-
-    await waitFor(() => {
-      expect(signInWithOAuthActionMock).toHaveBeenCalledWith(
-        expect.objectContaining({ provider: "google" })
-      );
-    });
-  });
-
-  it("'Get a code emailed instead' in alert triggers requestEmailCode", async () => {
-    // Set up requestEmailCode BEFORE triggerOAuthAlert so the mock is ready.
-    requestEmailCodeMock.mockResolvedValue({ ok: true });
-
-    await triggerOAuthAlert();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_code_button })
-    );
-
-    await waitFor(() => {
-      expect(requestEmailCodeMock).toHaveBeenCalledWith("dave@example.com");
-    });
-  });
-});

@@ -79,31 +79,7 @@ test.describe("Google OAuth sign-in", () => {
   });
 });
 
-test.describe("Google OAuth — wrong-password Oracle prompt", () => {
-  test("shows OAuth-existing-user alert when password sign-in fails for an OAuth account", async ({
-    page,
-  }) => {
-    // This test requires a seeded test account that has ONLY a Google OAuth
-    // identity (no email/password). The seed is in e2e/_setup/ and is
-    // conditionally run in CI.
-    //
-    // For now: verify the error state UI renders correctly when the server
-    // returns auth_email_taken_oauth.
-    //
-    // Full integration requires a real OAuth-only account — tracked in #225.
-    await page.goto("/login");
-    await page.fill('input[type="email"]', "oauth-only-user@example.com");
-    await page.getByRole("button", { name: /continue/i }).click();
-
-    // Fill a wrong password — the server should return auth_email_taken_oauth
-    // for an account with only an OAuth identity.
-    await page.fill('input[type="password"]', "wrongpassword");
-    await page.getByRole("button", { name: /sign in/i }).click();
-
-    // The OAuth-existing-user alert should appear.
-    // In a real environment the server would return auth_email_taken_oauth.
-    // In this E2E setup we assert the alert structure is present once the
-    // mock returns the right error.
-    await expect(page.getByRole("alert")).toBeVisible({ timeout: 5_000 });
-  });
-});
+// OAuth-existing-user alert (M5-followup) — block removed. The UI scaffolding
+// was stripped from PR5 because the server-side detection that produces
+// auth_email_taken_oauth was never wired. Re-introduce this block alongside
+// the follow-up PR that adds the detection.

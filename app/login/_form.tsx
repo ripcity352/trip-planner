@@ -70,9 +70,6 @@ export function LoginForm({ next }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
-  // Shown when signInWithPassword returns auth_email_taken_oauth — the account
-  // only has a Google identity; prompt the user to sign in with Google instead.
-  const [showOAuthPrompt, setShowOAuthPrompt] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const emailForm = useForm<EmailOnlyValues>({
@@ -100,7 +97,6 @@ export function LoginForm({ next }: LoginFormProps) {
   // Starts a Google OAuth round-trip. The server returns a URL; we navigate there.
   const handleGoogleSignIn = () => {
     setServerError(null);
-    setShowOAuthPrompt(false);
     startTransition(async () => {
       const result = await signInWithOAuthAction({ provider: "google", next });
       if (result.ok) {
@@ -114,7 +110,6 @@ export function LoginForm({ next }: LoginFormProps) {
   const handleEmailContinue = emailForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
-    setShowOAuthPrompt(false);
     setEmail(values.email);
     passwordForm.setValue("email", values.email);
     codeForm.setValue("email", values.email);
@@ -124,7 +119,6 @@ export function LoginForm({ next }: LoginFormProps) {
   const handleSignIn = passwordForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
-    setShowOAuthPrompt(false);
     startTransition(async () => {
       const result = await signInWithPasswordAction({
         email: values.email,
@@ -138,18 +132,17 @@ export function LoginForm({ next }: LoginFormProps) {
       if (result.errorKey === "auth_wrong_password") {
         setShowCreateAccount(true);
       }
-      if (result.errorKey === "auth_email_taken_oauth") {
-        // This email belongs to a Google-OAuth-only account.
-        // Show the OAuth-existing-user prompt instead of a generic error.
-        setShowOAuthPrompt(true);
-      }
+      // TODO(M5-followup): when signInWithPassword can return
+      // auth_email_taken_oauth (currently the detection isn't wired —
+      // see follow-up issue), branch to show the OAuth-existing-user
+      // prompt here. The UI scaffolding was stripped from PR5 to avoid
+      // dead-code wiring; the copy keys remain in lib/copy/auth.ts.
     });
   });
 
   const handleEmailMeCode = () => {
     setServerError(null);
     setShowCreateAccount(false);
-    setShowOAuthPrompt(false);
     startTransition(async () => {
       const result = await requestEmailCode(email);
       if (result.ok) {
@@ -283,20 +276,7 @@ export function LoginForm({ next }: LoginFormProps) {
             </div>
             <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
           </div>
-          {/* When the OAuth prompt is showing, suppress the generic error note
-              to avoid two overlapping role="alert" elements. The OAuthExistingUserAlert
-              is itself a role="alert" that covers the same error state. */}
-          {!showOAuthPrompt ? (
-            <ErrorNote id="login-error" message={inlineError} />
-          ) : null}
-          {/* OAuth-existing-user alert: rendered when auth_email_taken_oauth fires */}
-          {showOAuthPrompt ? (
-            <OAuthExistingUserAlert
-              onGoogleSignIn={handleGoogleSignIn}
-              onEmailCode={handleEmailMeCode}
-              disabled={isPending}
-            />
-          ) : null}
+          <ErrorNote id="login-error" message={inlineError} />
           <Button type="submit" disabled={isPending} aria-busy={isPending}>
             {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
           </Button>
@@ -433,48 +413,7 @@ function GoogleButton({
   );
 }
 
-/**
- * OAuth-existing-user alert — shown when wrong-password fires on an account
- * that only has a Google OAuth identity. Surfaces two actions:
- *   1. Sign in with Google (primary)
- *   2. Email me a code instead (secondary)
- *
- * All copy from AUTH_COPY — no inline JSX literals (Phase 4 C5 / Voice C1).
- */
-function OAuthExistingUserAlert({
-  onGoogleSignIn,
-  onEmailCode,
-  disabled,
-}: {
-  onGoogleSignIn: () => void;
-  onEmailCode: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <div
-      role="alert"
-      className="rounded-xl border border-border bg-card p-4 text-sm text-foreground"
-    >
-      <p className="mb-3">{AUTH_COPY.oauth_account_prompt_text}</p>
-      <div className="flex flex-col gap-2">
-        <Button
-          type="button"
-          onClick={onGoogleSignIn}
-          disabled={disabled}
-          className="w-full"
-        >
-          {AUTH_COPY.oauth_account_prompt_google_button}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onEmailCode}
-          disabled={disabled}
-          className="w-full"
-        >
-          {AUTH_COPY.oauth_account_prompt_code_button}
-        </Button>
-      </div>
-    </div>
-  );
-}
+// (M5-followup) OAuth-existing-user alert removed from PR5 — the server-side
+// detection it depends on was never wired. The copy keys remain in
+// lib/copy/auth.ts so a follow-up PR can re-introduce the component once
+// `signInWithPasswordAction` learns to return `auth_email_taken_oauth`.

@@ -262,8 +262,24 @@ describe("signInWithOAuthAction", () => {
     expect(result).toEqual({ ok: false, errorKey: "oauth_redirect_failed" });
   });
 
-  it("returns rate_limit when the rate-limiter throws RateLimitError", async () => {
-    mockRateLimitedAction.mockRejectedValueOnce(
+  // M5/PR5 reviewer HIGH (rate-limit): the inner rateLimitedAction wrapper
+  // was removed from signInWithOAuthAction — the previous fixed-key bucket
+  // created a global DoS surface. IP-level throttling is provided by the
+  // middleware path matcher on /login (lib/rate-limit/index.ts
+  // GUARDED_PATH_PATTERNS). The action no longer needs an inner limiter.
+  it("does NOT wrap signInWithOAuth in rateLimitedAction (middleware handles per-IP)", async () => {
+    mockSignInWithOAuth.mockResolvedValue({
+      data: { url: "https://accounts.google.com/oauth" },
+      error: null,
+    });
+
+    await signInWithOAuthAction({ provider: "google" });
+
+    expect(mockRateLimitedAction).not.toHaveBeenCalled();
+  });
+
+  it("still translates a bubbled RateLimitError (e.g. from middleware) into rate_limit errorKey", async () => {
+    mockSignInWithOAuth.mockRejectedValueOnce(
       new RateLimitError("authPassword", { remaining: 0, reset: 0 })
     );
 
@@ -272,23 +288,7 @@ describe("signInWithOAuthAction", () => {
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
   });
 
-  it("uses AUTH_PASSWORD scope for rate-limiting", async () => {
-    mockSignInWithOAuth.mockResolvedValue({
-      data: { url: "https://accounts.google.com/oauth" },
-      error: null,
-    });
-
-    await signInWithOAuthAction({ provider: "google" });
-
-    expect(mockRateLimitedAction).toHaveBeenCalledWith(
-      "authPassword",
-      expect.any(String),
-      expect.any(Function)
-    );
-  });
-
   it("returns network when resolveOrigin throws (no env vars set)", async () => {
-    // To trigger this, we need the origin resolver to fail.
     // In test environment NODE_ENV !== 'production' so localhost fallback
     // applies — we can't easily trigger this without mocking process.env.
     // Instead test that the action never throws.
@@ -302,9 +302,7 @@ describe("signInWithOAuthAction", () => {
   });
 
   it("never throws — catches unexpected errors", async () => {
-    mockRateLimitedAction.mockImplementation(async () => {
-      throw new Error("Unexpected");
-    });
+    mockSignInWithOAuth.mockRejectedValueOnce(new Error("Unexpected"));
 
     const result = await signInWithOAuthAction({ provider: "google" });
 
