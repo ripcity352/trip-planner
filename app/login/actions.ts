@@ -356,7 +356,6 @@ export async function requestEmailCode(email: string): Promise<AuthResult> {
         status: error.status,
         code: (error as { code?: string }).code,
         name: error.name,
-        message: error.message,
       });
     }
     const mapped = mapAuthErrorToKey(error);

@@ -123,6 +123,7 @@ export function LoginForm({ next }: LoginFormProps) {
 
   const handleEmailMeCode = () => {
     setServerError(null);
+    setShowCreateAccount(false);
     startTransition(async () => {
       const result = await requestEmailCode(email);
       if (result.ok) {
