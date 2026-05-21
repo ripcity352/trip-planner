@@ -57,7 +57,25 @@ export type ErrorKey =
   // lib/copy/__tests__/m4-voice-locks.test.ts.
   | "address_lookup_failed"
   | "datetime_invalid"
-  | "places_proxy_failed";
+  | "places_proxy_failed"
+  // M5 auth error keys (PR2). Voice rule same as above — blame-free,
+  // specific, no corporate language. Exact strings pinned in
+  // lib/copy/__tests__/m5-auth-voice-locks.test.ts (Phase 4 audit H7).
+  | "auth_wrong_password"
+  | "auth_code_invalid"
+  | "auth_code_expired"
+  // Placeholder for PR5 (OAuth). Not yet wired to any action — kept
+  // here so the type union is complete and TypeScript enforces
+  // exhaustiveness in the ERRORS record below.
+  | "auth_email_taken_oauth"
+  // M5 PR4 — account sign-in & security page.
+  // auth_current_password_incorrect: Phase 4 audit H7 voice rewrite — exact
+  // string locked. Do NOT change without updating the voice-lock test.
+  // auth_unauthenticated: returned by server actions when auth.getUser() returns null.
+  | "auth_current_password_incorrect"
+  | "auth_unauthenticated"
+  // M5 PR5 — Google OAuth redirect failure (e.g. Supabase returns no URL).
+  | "oauth_redirect_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -100,4 +118,32 @@ export const ERRORS: Record<ErrorKey, string> = {
   datetime_invalid: "That doesn't look like a real time.",
   places_proxy_failed:
     "Place lookup's snoozing. Type the address instead.",
+  // M5 auth error strings (PR2). Voice-critical per Phase 4 audit H7 —
+  // exact wording rewritten from the original plan to pass the pre-trip
+  // dinner test. Pinned in lib/copy/__tests__/m5-auth-voice-locks.test.ts.
+  //
+  // auth_wrong_password: rewritten from "That email and password didn't
+  // match. Try again, or email me a code." → shorter, warmer, less
+  // clinical; "combo" is casual, "get a code emailed" mirrors the button.
+  auth_wrong_password:
+    "That combo didn't match. Try again — or get a code emailed instead.",
+  auth_code_invalid:
+    "That code didn't take. Double-check or get a fresh one.",
+  auth_code_expired: "Code's stale. Get a fresh one.",
+  // PR5 placeholder — not wired yet. Copy ready so the error is
+  // user-visible the moment OAuth lands without a follow-up copy sprint.
+  auth_email_taken_oauth:
+    "You signed up with Google before. Tap Continue with Google instead.",
+  // M5 PR4 — account sign-in & security page.
+  // auth_current_password_incorrect: H7-locked exact string — DO NOT change
+  // without updating lib/copy/__tests__/m5-auth-voice-locks.test.ts.
+  // Instructs the user to try once more OR recover via OTP code.
+  auth_current_password_incorrect:
+    "That's not the current password. Try once more — or use a code to reset.",
+  // auth_unauthenticated: shown when the server action resolves getUser() to null.
+  // Blame-free — the session just expired or was revoked on another device.
+  auth_unauthenticated: "Your session expired. Sign in again to continue.",
+  // M5 PR5 — returned when supabase.auth.signInWithOAuth() returns no redirect URL.
+  // Blame-free, actionable.
+  oauth_redirect_failed: "Couldn't start Google sign-in. Try again in a sec.",
 };

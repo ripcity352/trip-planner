@@ -35,6 +35,16 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "address_lookup_failed",
   "datetime_invalid",
   "places_proxy_failed",
+  // M5 auth keys (PR2)
+  "auth_wrong_password",
+  "auth_code_invalid",
+  "auth_code_expired",
+  "auth_email_taken_oauth",
+  // M5 PR4 account security keys
+  "auth_current_password_incorrect",
+  "auth_unauthenticated",
+  // M5 PR5 — Google OAuth error key
+  "oauth_redirect_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

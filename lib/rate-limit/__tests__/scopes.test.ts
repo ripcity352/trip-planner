@@ -4,7 +4,7 @@
  *
  * Three classes of assertions:
  *  A. Fail-CLOSED scopes: PLACES_AUTOCOMPLETE + MINT_INVITE → deny on shim
- *  B. Allow-with-warning scopes: AUTH_MAGIC_LINK + ACCEPT_INVITE → pass on shim
+ *  B. Allow-with-warning scopes: AUTH_OTP_VERIFY + ACCEPT_INVITE → pass on shim
  *  C. Budget pin: MINT_INVITE cap is 10/hour (via mocked Upstash)
  *
  * Strategy: we use `__forceShimForTest` (a new test-only export) that
@@ -109,7 +109,7 @@ describe("MINT_INVITE — shim fail-closed (W0c)", () => {
 // B. Allow-with-warning scopes still pass on shim (regression guard)
 // ---------------------------------------------------------------------------
 
-describe("AUTH_MAGIC_LINK — shim still allow-with-warning (regression guard)", () => {
+describe("AUTH_OTP_VERIFY — shim still allow-with-warning (regression guard)", () => {
   beforeEach(() => {
     delete process.env.KV_REST_API_URL;
     delete process.env.KV_REST_API_TOKEN;
@@ -118,8 +118,12 @@ describe("AUTH_MAGIC_LINK — shim still allow-with-warning (regression guard)",
     __setLimiterForTest(null);
   });
 
-  it("AUTH_MAGIC_LINK is NOT in the FAIL_CLOSED_ON_SHIM set", () => {
-    expect(FAIL_CLOSED_ON_SHIM.has(RATE_LIMIT_SCOPES.AUTH_MAGIC_LINK)).toBe(false);
+  it("AUTH_OTP_VERIFY scope value is 'authOtpVerify'", () => {
+    expect(RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY).toBe("authOtpVerify");
+  });
+
+  it("AUTH_OTP_VERIFY is NOT in the FAIL_CLOSED_ON_SHIM set", () => {
+    expect(FAIL_CLOSED_ON_SHIM.has(RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY)).toBe(false);
   });
 
   it("rateLimitedAction succeeds (allows) when shim is active", async () => {
@@ -130,7 +134,7 @@ describe("AUTH_MAGIC_LINK — shim still allow-with-warning (regression guard)",
       await import("@/lib/rate-limit");
 
     const fn = vi.fn().mockResolvedValue("ok");
-    const result = await fresh(SCOPES.AUTH_MAGIC_LINK, "user-1", fn);
+    const result = await fresh(SCOPES.AUTH_OTP_VERIFY, "user-1", fn);
     expect(result).toBe("ok");
     expect(fn).toHaveBeenCalledTimes(1);
     spy.mockRestore();

@@ -5,6 +5,480 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-21 — M5 — auth redesign — milestone closed
+
+**Decision:** M5 closed. The v3.2 auth redesign shipped across 5
+sequential PRs (#226 PR1 foundation → #227 PR2 password form → #228 PR3
+template flip → #229 PR4 /account/sign-in-and-security → #231 PR5
+Google OAuth + State B). Phase 6 closure walk on
+`https://travelston.com` verified the end-to-end chain
+(OTP sign-in → State C atomic recovery → password sign-in → /trips)
+on production at 375×812. M3/M4 overrides A–I held; Override J
+(deploy-ordering enforcement) earned its keep on PR3.
+
+See `notes/retros/m5-retro.md` for the full closure retrospective
+(reconciled from parallel code-reviewer + senior-engineer agent lenses
+plus the production walk findings).
+
+**What shipped (verified end-to-end on production):**
+
+- Email + password as primary auth path (`signInWithPasswordAction`)
+- 6-digit OTP code as fallback (`requestEmailCode` /
+  `verifyEmailCodeAction` — Supabase template flipped from
+  `{{ .ConfirmationURL }}` to `{{ .Token }}`)
+- `signUpAction` for explicit signup (no auto-provision on first
+  password attempt)
+- `signInWithOAuthAction` for Google OAuth — button renders, server
+  action wired; full round-trip walk deferred (Supabase Dashboard
+  provider step pending)
+- `/account/sign-in-and-security` route with State A/A+/B/C state
+  machine, `changePasswordAction` (re-auth + `signOut({scope:'others'})`),
+  and the atomic `setPasswordViaRecoveryAction({token, newPassword})`
+  for State C OTP-recovery (PR4 HIGH-1 fix-up — the canonical
+  atomic-action pattern)
+- Three new rate-limit scopes: `AUTH_OTP_VERIFY` (renamed),
+  `AUTH_PASSWORD`, `AUTH_CHANGE_PASSWORD`
+- Inline auth on `/invite/[token]` — anon viewer sees the form on the
+  preview card without bouncing through `/login?next=`
+- Voice-locked canonical strings in `lib/copy/auth.ts` (~50 keys)
+  pinned by `lib/copy/__tests__/m5-auth-voice-locks.test.ts`
+- Consolidated v3.2 ADR section above this entry (PR3 + PR5 addendum)
+- Runbook `notes/runbooks/auth-setup.md` (renamed from
+  `auth-template-flip.md`) covers the operator's Supabase Dashboard
+  click-path for both the OTP template flip and the Google OAuth
+  provider setup
+
+**Load-bearing decisions made during execution:**
+
+1. **Atomic-action pattern for recovery flows (PR4 HIGH-1 fix-up
+   `de83f8e`).** The original State C two-action sequence
+   (`verifyEmailCodeAction` → `setPasswordAfterRecoveryAction`) was
+   bypassable: any authed session satisfied `auth.getUser() != null`
+   without proving OTP possession. Collapsed to a single
+   `setPasswordViaRecoveryAction({token, newPassword})` where `verifyOtp`
+   short-circuits before `updateUser` inside one `rateLimitedAction`
+   closure. **Canonical pattern: any "verify-then-mutate" two-action
+   sequence in an auth/recovery flow collapses to one atomic action
+   where the credential is passed into the mutating action.**
+
+2. **Override J (deploy-ordering enforcement) for milestone-coupled
+   dashboard steps.** PR3 paired code with a Supabase Dashboard
+   template flip + 1-hour drain. Flip timestamp recorded in PR body,
+   `Monitor` watcher ran the drain, production walk caught a
+   Supabase OTP-length config drift (set to 8, code expected 6) that
+   no CI / typecheck / preview could have caught. Operator fixed in
+   dashboard mid-walk. Carry pattern forward to any milestone pairing
+   code with a dashboard/provider step.
+
+3. **Dead-code wiring stripped from PR5 (HIGH-1 fix-up `9cefeef`).**
+   The `OAuthExistingUserAlert` UI + tests + e2e + voice-locks all
+   referenced an `auth_email_taken_oauth` error key that no server
+   path returned. Detection requires server-side identity probing,
+   which can't be done from app code without service-role access (banned
+   per CLAUDE.md). UI scaffolding stripped; copy keys + voice-locks
+   retained for the M5-followup PR; **issue #232** tracks proper
+   detection via a new SECURITY DEFINER RPC or app-schema
+   `has_password` tracking.
+
+4. **OAuth-start has no inner rate-limit; middleware path-throttle
+   handles per-IP at the edge (PR5 HIGH-2 fix-up `9cefeef`).** The
+   original `signInWithOAuthAction` wrapped the call in
+   `rateLimitedAction(AUTH_PASSWORD, "oauth-start", ...)` — a fixed
+   key bucket that any single client could exhaust globally for 15
+   minutes. Removed the inner limiter; rely on the existing
+   `GUARDED_PATH_PATTERNS` for `/login` which keys by IP.
+
+5. **`app/page.tsx` kept as-is.** The marketing landing page's CTA
+   "Sign in to your trip" → `/login` is auth-method-agnostic — works
+   for password / OTP / OAuth equally. No update needed; Override G
+   acknowledged.
+
+**Verified `[v]` (Phase 6 production walk, 2026-05-21 ~20:55-21:33 UTC):**
+
+- `/login` email-only mode → password mode → "Email me a code instead"
+  → real-inbox 6-digit code → `verifyEmailCodeAction` → `/trips` ✓
+- H3 button order on password mode: Sign in → Email me a code →
+  Continue with Google ✓
+- `/account/sign-in-and-security` middleware redirect for anon → ✓
+  (PR4 preview smoke + Phase 6 confirmation)
+- State C OTP recovery: form C-verify → C-set → atomic
+  `setPasswordViaRecoveryAction({token, newPassword})` → success toast
+  *"Password updated. Other devices were signed out."* ✓
+- Invalid token bounces form back to C-verify with voice-correct error
+  *"That code didn't take. Double-check or get a fresh one."* ✓
+- Sign out → email + password sign-in → `/trips` with existing trip
+  data — confirms `signInWithPassword` works against the password that
+  was set by State C ✓
+
+**Deferred / carry-forward (`[v]` not yet ticked):**
+
+- Google OAuth round-trip + State B set-password — requires Supabase
+  Dashboard Google provider enabled + Vercel/Supabase env vars set.
+  Operator chose to defer; tracks in **#232**.
+- Cross-device `signOut({scope:'others'})` verification — covered by
+  `e2e/account-change-password.spec.ts`; not exercised on production.
+- Resend sender domain (`travelston.com`) verification — carried
+  forward from M4 in **#135**. Phase 6 walk used the default Supabase
+  sender; the carry remains open until Resend is verified.
+
+**Newly filed M5 carry-back follow-ups:**
+
+- **#230** — chronic flake in `components/trip/__tests__/rsvp-toggle.test.tsx:192`.
+  Flaked in M4, flaked again on PR4's first CI run, passed on re-run with no
+  code change. Two-deferral threshold hit. Gate M6 Wave 0 on the fix.
+- **#232** — OAuth-existing-user alert detection wiring. UI scaffolding
+  stripped from PR5 fix-up; copy keys + voice-locks retained for the
+  follow-up PR.
+- **#233** — `/account/sign-in-and-security` renders State A for OTP-only
+  users (identity check is provider-only, not password-set). Discovered
+  during Phase 6 walk. State C recovery path is unaffected; first-arrival
+  UX is wrong. Recommended fix: track `has_password` in app schema
+  (option 3 in the issue body — no service-role API required).
+
+**Process learnings carried to M6 (from the retro):**
+
+1. **Phantom-wiring audit** — pre-merge reviewer prompt: for each new
+   error key / copy key / state branch, `rg <symbol>` must show both a
+   producer AND a consumer. Only consumers → flag dead-code HIGH.
+2. **`(human-step)` annotations** at plan-lock time for items requiring
+   Dashboard, RPC creation, or third-party setup — the TDD chain
+   stubs-and-defers rather than fake-and-passes.
+3. **Pre-commit grep flagging tdd-guide softens-prod-for-tests
+   patterns** — same class as M4's tdd-guide-hallucination, caught
+   pre-review on PR2 (`0054bfd`).
+4. **Atomic-action pattern codified** above; reviewer prompt: any
+   multi-step auth action is one rate-limited closure.
+5. **Supabase dashboard config-drift checklist** — pre-walk eyeball
+   checks (OTP Length, Site URL, template body, Google OAuth state)
+   should land in `notes/runbooks/auth-setup.md`. Next walk a glance,
+   not a discovery.
+
+**Memory:**
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md`
+  — updated alongside this closure to reflect M5's new reality
+  (password + OTP + OAuth, magic-link demoted to recovery primitive).
+  The underlying principle (low-friction default, defense-in-depth
+  only where the actual threat model demands it) holds.
+
+**Bright line unchanged from M4:** *use the app for one real bachelor
+party.* M5 made the auth flow real; whether M1–M5 are sufficient is
+still the post-trip retrospective gate. **Don't start M6 just because
+the chain is green — gate on the actual trip.**
+
+---
+
+## 2026-05-21 — M5 auth redesign — password + OTP + OAuth (PR3 template flip)
+
+**Decision:** Replace Supabase magic-link-as-primary with email+password
+(primary) + 6-digit OTP code (fallback) + Google OAuth (alternative; PR5).
+Magic link demoted to verification/recovery primitive only. Add
+`/account/sign-in-and-security` for password rotation (PR4). Threat model
+is bachelor-party-insider per `feedback_friction_vs_security` memory
+note — friction < defense-in-depth, rate-limiting is the load-bearing
+brute-force control.
+
+**Supersedes:** the M3 W0c decision to use magic-link-via-`token_hash`
+URLs as the primary auth path. The `token_hash` branch is deleted from
+`lib/auth/callback-handler.ts` in this PR after the 1-hour link-drain.
+
+### Why 6-character minimum password with no complexity rules
+
+For a 12-person bachelor party, the realistic attack is an organizer
+guessing another organizer's password. The defense against that is rate
+limiting (`AUTH_PASSWORD`, 5 attempts / 15 min per email), not character
+classes. Forcing "must contain a number and symbol" produces SaaS-y
+friction that the user explicitly does not want and that the threat
+model does not require. 6 characters is the floor below which even a
+trivial brute-force becomes too cheap; above the floor, the rate limit
+does the work.
+
+**Alternatives considered:** 8+ characters with class rules; zxcvbn-style
+strength meter; HaveIBeenPwned breach check. All rejected — each adds
+user-perceptible friction without changing the threat-model math.
+
+### Why no HaveIBeenPwned breach check
+
+HIBP catches passwords reused from public breaches. At insider-only
+scale (12 people, all known to the organizer), a breached-password
+match is more likely to be a false-positive (Dave reuses his Spotify
+password) than a true positive. The fetch also adds latency to the
+sign-in path and a third-party dependency. Rejected.
+
+### Why no recent-reauth gate before password change
+
+A recent-reauth gate ("you must enter your current password again
+within the last 5 minutes to change it") defends against session-
+hijack scenarios where the attacker has cookie access but not the
+plaintext password. At this threat tier — insider-only, 12-person
+trip — single-device-pwn = game over is the accepted floor. If
+someone has Dave's unlocked phone, the trip is already over and a
+recent-reauth gate doesn't change that. Rejected.
+
+### Why no separate `/forgot-password` route
+
+The 6-digit OTP fallback already serves as the recovery primitive.
+A separate password-reset route would duplicate the email-code flow
+under a different name. Users who forget their password tap "Email
+me a code instead" on `/login`, get a 6-digit code, and (in PR4) can
+set a new password from `/account/sign-in-and-security` via the
+State C sub-flow. The single recovery primitive is cleaner.
+
+### Why no "remove password" affordance in account UI
+
+Footgun. If a user removes their password, they're left with OTP-as-
+sole-auth, which is fine until they delete the email or change
+addresses. Account-locked scenarios are recoverable for the owner
+but painful for the user; not worth the surface area.
+
+### Why we accept the OAuth-user-typing-password enumeration leak (PR5)
+
+When PR5 lands, an attacker who types a wrong password for an email
+that exists with a Google-only identity will see *"You signed up with
+Google. Sign in with Google, or get a code emailed instead?"* — a
+strong enumeration oracle. This is acceptable at this threat tier:
+
+- The leak requires a `wrong-password` event on a real account, gated
+  behind `AUTH_PASSWORD` rate-limit (5/15min per email).
+- The user-experience gain is large — a confused organizer who forgot
+  they signed up with Google sees an actionable prompt instead of a
+  generic error.
+
+Suppressing the leak would either require silent re-routing (poor UX)
+or a generic error message that fails to help the legitimate user.
+
+### Why State B (PR5) has no OTP gate before set-password
+
+State B is the set-password flow for users who signed in via OAuth or
+OTP and want to add a password. They are *already authenticated* via
+their existing identity. An additional OTP gate would force a fresh
+code email for a user who just clicked through one. The invite-flow
+auto-signin precedent (M2 — accept-invite auto-creates the session
+without an additional challenge) is the same reasoning. Asymmetric
+with the password-change flow (PR4), which DOES verify the current
+password — but that's because the current password is the existing
+credential to be rotated. State B has no existing credential to
+verify; the existing identity is the verification.
+
+### PR5 addendum — State B no-OTP-gate rationale (2026-05-21)
+
+This section expands the brief bullet above with the full threat-model
+reasoning, written as the spec was locked (v3.2) and confirmed during PR5
+implementation. It is NOT a re-litigation — this is the decision the operator
+already made. The purpose is to document the reasoning deeply enough that
+a future reviewer can reconstruct it without re-opening the spec conversation.
+
+**The attack scenario for State B:**
+
+A malicious actor has access to the victim's authenticated browser session
+(borrowed laptop, unattended phone, XSS-escalated session token). They
+navigate to `/account/sign-in-and-security`, see the State B form (because
+the victim is an OAuth-only user), and set a password of their choosing.
+
+**Why this is accepted:**
+
+1. **The victim is NOT locked out.** The victim's Google OAuth identity
+   remains intact. The attacker added a credential; they did NOT replace
+   or remove the existing one. The victim can still sign in via Google
+   and then (now that they have State A, not State B) change or remove
+   the attacker's password via the existing `changePasswordAction`.
+
+2. **The OTP gate would not meaningfully close the gap.** If an attacker
+   has session-level access, they can also trigger the OTP request email.
+   On a borrowed laptop, the victim's email inbox may also be open. The
+   OTP gate is effective when we are trying to prove identity before
+   crossing a privilege boundary (State C's rationale). In State B, we
+   are not crossing such a boundary — the user is already authenticated
+   at a session level.
+
+3. **The invite-flow auto-signin precedent.** M2's accept-invite flow
+   creates an authenticated session without a separate challenge after
+   the invite link is clicked. That invite link IS the proof of
+   identity. State B is structurally similar: the OAuth session IS the
+   proof of identity. Both flows accept the risk of borrowed-session
+   abuse as the price of frictionless UX for the real-trip use case.
+
+4. **The friction cost is real.** The target user (bachelor-party
+   attendee, likely on a phone, likely arriving via a group-chat link)
+   setting a password for the first time after Google sign-in should
+   not be interrupted by a second email code. The friction cost to
+   legitimate users is high; the security benefit (against an attacker
+   who already has session access) is low.
+
+**What we DID NOT do (and why):**
+
+- `signOut({scope:'others'})` after `setPasswordAction`: would log the
+  current session out of other devices, which is surprising when the
+  user just ADDED a credential rather than rotated one. No prior
+  credential exists to invalidate.
+
+- An OTP gate: see reasoning above (point 2). Explicitly rejected in
+  the v3.2 spec and confirmed in PR5 implementation.
+
+**The load-bearing memory file:**
+`~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md`
+encodes this trade-off at the project level. State B is a specific
+instance of the general principle: "default to simplest auth/security
+pattern that meets the actual (bachelor-party) threat model."
+
+### Rate-limit posture
+
+| Scope | Budget | Fail-closed on shim? |
+|---|---|---|
+| `AUTH_OTP_VERIFY` | 30/60s (default) | No (allow-with-warning during bootstrap) |
+| `AUTH_PASSWORD` | 5/15 min per email | No (same rationale) |
+| `AUTH_CHANGE_PASSWORD` (PR4) | 5/15 min per user | No |
+
+The `FAIL_CLOSED_ON_SHIM` posture matches the existing
+`AUTH_OTP_VERIFY` precedent — bootstrapping deploys without Upstash
+should still allow auth (the deployment is too small to have an
+abuse vector at that stage). The loud `console.error` in the shim
+catches a future regression where Upstash provisioning silently
+drops.
+
+### M5 ship sequence (umbrella #220)
+
+- **PR1 (#226):** widened `verifyOtp` to accept both `token_hash`
+  (legacy) and `token + email + type` (new). Scope rename
+  `AUTH_MAGIC_LINK` → `AUTH_OTP_VERIFY`. Merged 2026-05-21.
+- **PR2 (#227):** progressive-disclosure form, `signInWithPasswordAction`,
+  `signUpAction`, `verifyEmailCodeAction`, `requestEmailCode` (renamed),
+  `AUTH_PASSWORD` rate-limit, inline auth on `/invite/[token]`,
+  `lib/copy/auth.ts` palette. Merged 2026-05-21.
+- **PR3 (#228, this PR):** Supabase Dashboard email-template flip
+  ({{ .ConfirmationURL }} → {{ .Token }}), 1-hour link drain, deletion
+  of the legacy `token_hash` branch from the callback handler, this
+  ADR, `CLAUDE.md` auth-block update, runbook
+  `notes/runbooks/auth-template-flip.md`. Closes #206.
+- **PR4 (#224, next):** `/account/sign-in-and-security` page with State
+  A / A+ / C; `changePasswordAction` with server-side email pinning +
+  `signOut({scope:'others'})`; `AUTH_CHANGE_PASSWORD` rate-limit.
+- **PR5 (#225, last):** Google OAuth + State B (set-password for
+  identity-only users). Appends State-B-OTP-drop rationale to this
+  same ADR.
+
+**Alternatives considered for the sequencing:**
+
+- Bundling PR3's dashboard flip into PR2: rejected because the 1-hour
+  drain requires a holding pattern that breaks the per-PR workflow.
+- Doing PR4+PR5 first (before the template flip): rejected because
+  PR5's State B touches the same `_form.tsx` and `actions.ts` files
+  as PR2, and parallel waves on a 360-LOC client component are a
+  collision risk. The sequential plan is also simpler to reason
+  about for the operator performing the dashboard flips.
+
+**Memory:**
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md` is load-bearing for every "no" above. Re-read it before flagging any of these decisions in a future PR review.
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/project_m5_auth_redesign.md` tracks the milestone status.
+
+---
+
+## 2026-05-21 — M4 — Trip is shippable — milestone closed
+
+**Decision:** M4 closed. The MVP is shipped: five-tab IA, structured
+inputs with freeform fallback, themed persimmon design system, legal
+stubs, axe/Lighthouse a11y pass, and 15 wave PRs (#190–#204) plus this
+closure PR landed on `main`. The app is real-trip ready. Per
+`notes/roadmap.md`, **stop here** — use it for the actual bachelor
+party, then gate M5 on the retro.
+
+**What shipped (16 PRs):**
+
+- **#190** — W0a: plan doc + copy/data lock, M4 execution plan bootstrap.
+- **#191** — W0e: test infra — multi-persona fixtures (`seed-test-organizer`,
+  `seed-test-celebrant`), `STORAGE_STATE_ORGANIZER_PATH`,
+  `STORAGE_STATE_CELEBRANT_PATH`, `asOrganizer()` / `asCelebrant()` helpers.
+- **#192** — W0b: carry-back migration (Deltas 1–7): `getFlagsForItem`
+  data layer (#Delta 1), `trips.timezone` column (#Delta 2),
+  `setTripNotes revalidatePath` (#159 / Delta 4), `invites` UPDATE RLS
+  policy (#Delta 5), `trip_members` SELECT tightening (#Delta 6),
+  `idempotency_key` on `createInviteAction` (#158 / Delta 7).
+- **#193** — W0c: Google Places autocomplete server proxy (`/api/places/autocomplete`),
+  `SCOPE_BUDGETS` wired through `buildUpstashLimiter` (Deltas 8 + 9),
+  `MINT_INVITE` hardened to 10/hour, invite GET route drop.
+- **#194** — W0d: bottom tab bar (`home / plans / posts / crew / me`),
+  `/me` skeleton, deep-link middleware, `edit-item-form-sheet.tsx` pre-split
+  into per-field sub-components.
+- **#195** — W1a: dress-code preset chips (#163).
+- **#196** — W1b: activity-tag chip picker (#164).
+- **#197** — W1c: per-item member-flag chips + organizer view + member
+  self-read (#165).
+- **#199** — W2a: Places UI consumer + `address_place_id` persistence (#166).
+- **#200** — W2b: `datetime-local` widget + trip timezone support (#167, #108),
+  `trips.timezone` added to `TRIP_COLUMNS`.
+- **#198** — W2c: airline picker + IATA enforcement + `CARRIER_SANITIZE_REGEX`
+  corrected (#168).
+- **#201** — W3a: theming pass — persimmon design tokens, focus-ring,
+  hero image (#90, #121).
+- **#202** — W3b: RSVP color + icon (color never the only signal) (#45).
+- **#203** — W4a: legal stubs — `/legal/terms` + `/legal/privacy` (#81).
+- **#204** — W4b: prod-walk fixes + `@axe-core/playwright` a11y sweep (#82).
+- **W4c** (this PR): closure — retro authored, ADR recorded, roadmap updated,
+  `CLAUDE.md` updated, m4-golden-path e2e spec, deployment-readiness
+  closure status.
+
+**Load-bearing decisions made during execution:**
+
+1. **Wave 0 split into 5 sub-PRs (W0a–W0e)** after Lazy-Path Audit 1
+   flagged the fat-PR risk. A single "M4 carry-back" PR would have been
+   ~900 LOC across 20+ files — well above the per-PR ceiling and a
+   collision hazard for the parallel structured-inputs wave. Splitting
+   into W0a (plan), W0b (DB carry-back), W0c (proxy + rate-limit),
+   W0d (nav), W0e (test infra) allowed Wave 1 to start in parallel
+   against a stable base.
+
+2. **`edit-item-form-sheet.tsx` pre-split into per-field sub-components**
+   (W0d) to avoid a 4-way line-collision risk. Wave 1 agents (W1a dress
+   code, W1b activity tag, W1c member flag) would each have needed to
+   edit the same form component. The pre-split gave each wave its own
+   file surface.
+
+3. **`date-fns-tz` as a direct dependency (W2b).** `date-fns` alone
+   cannot convert a UTC timestamp into a named timezone slot (e.g.
+   `America/Los_Angeles`). The alternative — using the Intl API directly —
+   produces format strings inconsistent with the existing `date-fns`
+   usage across the codebase. `date-fns-tz` is the canonical companion
+   library; adding it as a direct dep (not a devDep) is correct because
+   it ships in the app bundle.
+
+4. **`@axe-core/playwright` as a dev dependency (W4b).** The axe sweep
+   runs in e2e specs only — never in the app bundle. `devDependencies`
+   is the right home. The alternative (using `axe-core` directly with a
+   custom runner) was rejected as unnecessary complexity given that
+   `@axe-core/playwright` is the first-party companion.
+
+5. **`SCOPE_BUDGETS` wiring fix (W0c).** W0c initially shipped
+   `SCOPE_BUDGETS` as a declarative config object only — the values were
+   defined but never passed through `buildUpstashLimiter`. Code-reviewer
+   flagged this HIGH: the rate-limit scopes were completely bypassed in
+   production. The consolidated fix-up wired all scopes through
+   `buildUpstashLimiter` in the same W0c PR before merge.
+
+6. **`trips.timezone` added to `TRIP_COLUMNS` (W2b).** The `datetime-local`
+   widget wrote `trips.timezone` to the DB, but the shared `TRIP_COLUMNS`
+   select constant — used in every `getTrip` call — did not include the
+   new column. Security-reviewer caught this as a silent data-loss bug:
+   the UI would render with an undefined timezone on every page that used
+   the shared query, silently falling back to UTC. The fix added
+   `timezone` to `TRIP_COLUMNS` in the same W2b PR.
+
+7. **Airline picker `CARRIER_SANITIZE_REGEX` swap from `/[ \r\n]/g` to
+   `/[\0\r\n]/g` (W2c).** The original regex stripped spaces from carrier
+   names, which would corrupt airline names like "Air Canada" to
+   "AirCanada." Code-reviewer and security-reviewer both flagged this
+   CRITICAL: the intent was to strip NUL, carriage return, and newline
+   (injection vectors), not spaces. The fix swapped space (`\x20`) for
+   NUL (`\0`) in the character class.
+
+**Verified DoD:** see `notes/m4-execution-plan.md` DoD checklist. All
+`[d]` ticks landed wave-by-wave at PR merge. `[v]` ticks will land after
+the production walk on travelston.com (orchestrator's responsibility
+post-merge).
+
+**MVP target reset:** M1–M4 are done. **Next: real-trip retrospective
+gates M5.** See `notes/retros/m4-retro.md` for the full retro.
+
+---
+
 ## 2026-05-20 (late PM) — Tab-based IA locked + 3-axis labeling scheme
 
 **Decision:** The trip surface ships as a **5-tab bottom navigation**:
