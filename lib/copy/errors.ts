@@ -67,7 +67,13 @@ export type ErrorKey =
   // Placeholder for PR5 (OAuth). Not yet wired to any action — kept
   // here so the type union is complete and TypeScript enforces
   // exhaustiveness in the ERRORS record below.
-  | "auth_email_taken_oauth";
+  | "auth_email_taken_oauth"
+  // M5 PR4 — account sign-in & security page.
+  // auth_current_password_incorrect: Phase 4 audit H7 voice rewrite — exact
+  // string locked. Do NOT change without updating the voice-lock test.
+  // auth_unauthenticated: returned by server actions when auth.getUser() returns null.
+  | "auth_current_password_incorrect"
+  | "auth_unauthenticated";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -126,4 +132,13 @@ export const ERRORS: Record<ErrorKey, string> = {
   // user-visible the moment OAuth lands without a follow-up copy sprint.
   auth_email_taken_oauth:
     "You signed up with Google before. Tap Continue with Google instead.",
+  // M5 PR4 — account sign-in & security page.
+  // auth_current_password_incorrect: H7-locked exact string — DO NOT change
+  // without updating lib/copy/__tests__/m5-auth-voice-locks.test.ts.
+  // Instructs the user to try once more OR recover via OTP code.
+  auth_current_password_incorrect:
+    "That's not the current password. Try once more — or use a code to reset.",
+  // auth_unauthenticated: shown when the server action resolves getUser() to null.
+  // Blame-free — the session just expired or was revoked on another device.
+  auth_unauthenticated: "Your session expired. Sign in again to continue.",
 };
