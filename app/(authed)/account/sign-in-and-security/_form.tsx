@@ -11,17 +11,16 @@
  *   success          → password updated toast
  *
  * IdentityState is passed as a prop from the server component:
- *   "A"          — password only → standard A form
- *   "A+"         — password + OAuth → same form, extra helper copy
+ *   "A"           — password only → standard A form
+ *   "A+"          — password + OAuth → same form, extra helper copy
  *   "no-password" → stub (PR5 builds State B)
  *
  * Strings: ALL from AUTH_COPY (lib/copy/auth.ts) or ERRORS (lib/copy/errors.ts).
- *   No inline JSX text literals.
  *
- * Email-pinning: the userEmail prop is sourced from auth.getUser() in the
- *   server component. The form never submits an email field — the server
- *   action pins email from the session, not from form payload. The hidden
- *   username field (iOS Keychain pairing) uses the server-provided email.
+ * Email-pinning: the userEmail prop comes from auth.getUser() in the server
+ *   component. The form never submits an email field — the server action pins
+ *   email from the session, not from form payload. The hidden username field
+ *   (iOS Keychain pairing) uses the server-provided email.
  *
  * Tests: tests/unit/account-sign-in-and-security.test.tsx (Override C).
  */
@@ -53,7 +52,7 @@ import {
 // Props
 // ---------------------------------------------------------------------------
 
-type SecurityFormProps = {
+export type SecurityFormProps = {
   identityState: IdentityState;
   /** Sourced from auth.getUser() in the server component — never from client state. */
   userEmail: string;
@@ -66,8 +65,6 @@ type SecurityFormProps = {
 export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   const [mode, setMode] = useState<FormMode>("change-password");
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const changePasswordForm = useForm<ChangePasswordValues>({
@@ -89,30 +86,13 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   });
 
   // -------------------------------------------------------------------------
-  // Stub: no-password users (PR5 builds State B)
-  // -------------------------------------------------------------------------
-
-  if (identityState === "no-password") {
-    return (
-      <section className="mx-auto w-full max-w-lg px-4 py-6">
-        <h1 className="mb-4 text-2xl font-semibold tracking-tight">
-          {AUTH_COPY.accountSecurity_title}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {AUTH_COPY.accountSecurity_noPasswordStub}
-        </p>
-      </section>
-    );
-  }
-
-  // -------------------------------------------------------------------------
   // Handlers
   // -------------------------------------------------------------------------
 
   const handleChangePassword = changePasswordForm.handleSubmit((values) => {
     setServerError(null);
     startTransition(async () => {
-      // NOTE: we do NOT pass email — the server action pins it from the session.
+      // NOTE: no email field — server action pins it from the session.
       const result = await changePasswordAction({
         currentPassword: values.currentPassword,
         newPassword: values.newPassword,
@@ -129,7 +109,6 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
     setServerError(null);
     setMode("C-requesting");
     startTransition(async () => {
-      // userEmail is server-sourced, safe to use here.
       const result = await requestEmailCode(userEmail);
       if (result.ok) {
         setMode("C-verify");
@@ -143,10 +122,7 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   const handleVerifyCode = otpForm.handleSubmit((values) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await verifyEmailCodeAction({
-        email: userEmail,
-        token: values.token,
-      });
+      const result = await verifyEmailCodeAction({ email: userEmail, token: values.token });
       if (result.ok) {
         setMode("C-set");
         return;
@@ -158,9 +134,7 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   const handleSetNewPassword = newPasswordForm.handleSubmit((values) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await setPasswordAfterRecoveryAction({
-        newPassword: values.newPassword,
-      });
+      const result = await setPasswordAfterRecoveryAction({ newPassword: values.newPassword });
       if (result.ok) {
         setMode("success");
         return;
@@ -177,59 +151,46 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   };
 
   // -------------------------------------------------------------------------
-  // Inline error derivation
+  // Inline error
   // -------------------------------------------------------------------------
 
-  function resolveInlineError(): string | null {
-    const serverMsg = serverError ? ERRORS[serverError] : null;
-    if (mode === "change-password") {
-      return (
-        changePasswordForm.formState.errors.currentPassword?.message ??
-        changePasswordForm.formState.errors.newPassword?.message ??
-        serverMsg
-      );
-    }
-    if (mode === "C-verify" || mode === "C-verifying") {
-      return otpForm.formState.errors.token?.message ?? serverMsg;
-    }
-    if (mode === "C-set") {
-      return newPasswordForm.formState.errors.newPassword?.message ?? serverMsg;
-    }
-    return serverMsg;
+  const serverMsg = serverError ? ERRORS[serverError] : null;
+  let inlineError: string | null = serverMsg;
+  if (mode === "change-password") {
+    inlineError =
+      changePasswordForm.formState.errors.currentPassword?.message ??
+      changePasswordForm.formState.errors.newPassword?.message ??
+      serverMsg;
+  } else if (mode === "C-verify" || mode === "C-verifying") {
+    inlineError = otpForm.formState.errors.token?.message ?? serverMsg;
+  } else if (mode === "C-set") {
+    inlineError = newPasswordForm.formState.errors.newPassword?.message ?? serverMsg;
   }
 
-  const inlineError = resolveInlineError();
-
-  // iOS Keychain hint — pairs the password with the email from the session.
+  // iOS Keychain hint — pairs the password with the session-sourced email.
   const hiddenUsernameField = (
-    <input
-      type="email"
-      name="username"
-      autoComplete="username"
-      hidden
-      value={userEmail}
-      readOnly
-    />
+    <input type="email" name="username" autoComplete="username" hidden value={userEmail} readOnly />
   );
 
   // -------------------------------------------------------------------------
-  // Page shell (shared)
+  // Stub: no-password users (PR5 builds State B)
   // -------------------------------------------------------------------------
 
-  const pageTitle = (
-    <h1 className="mb-6 text-2xl font-semibold tracking-tight">
-      {AUTH_COPY.accountSecurity_title}
-    </h1>
-  );
+  if (identityState === "no-password") {
+    return (
+      <PageShell>
+        <p className="text-sm text-muted-foreground">{AUTH_COPY.accountSecurity_noPasswordStub}</p>
+      </PageShell>
+    );
+  }
 
   // -------------------------------------------------------------------------
-  // Success state
+  // Success
   // -------------------------------------------------------------------------
 
   if (mode === "success") {
     return (
-      <section className="mx-auto w-full max-w-lg px-4 py-6">
-        {pageTitle}
+      <PageShell>
         <p
           role="status"
           data-testid="success-toast"
@@ -237,146 +198,86 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
         >
           {AUTH_COPY.accountSecurity_successToast}
         </p>
-      </section>
+      </PageShell>
     );
   }
 
   // -------------------------------------------------------------------------
-  // State C — step 1 requesting (loading)
+  // State C — step 1 requesting (loading indicator)
   // -------------------------------------------------------------------------
 
   if (mode === "C-requesting") {
     return (
-      <section className="mx-auto w-full max-w-lg px-4 py-6">
-        {pageTitle}
+      <PageShell>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
           <span>{AUTH_COPY.codeSentSuccess}</span>
         </div>
-      </section>
+      </PageShell>
     );
   }
 
   // -------------------------------------------------------------------------
-  // State C — step 2: OTP code entry
+  // State C — step 2: OTP entry
   // -------------------------------------------------------------------------
 
   if (mode === "C-verify" || mode === "C-verifying") {
     return (
-      <section className="mx-auto w-full max-w-lg px-4 py-6">
-        {pageTitle}
+      <PageShell>
         {hiddenUsernameField}
         <form onSubmit={handleVerifyCode} noValidate className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
             {AUTH_COPY.accountSecurity_codeRequestHelper(userEmail)}
           </p>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="security-otp-code">
-              {AUTH_COPY.accountSecurity_codeFieldLabel}
-            </Label>
-            <Input
-              id="security-otp-code"
-              data-testid="otp-code-input"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              aria-invalid={otpForm.formState.errors.token ? "true" : undefined}
-              aria-describedby={inlineError ? "security-error" : undefined}
-              disabled={isPending}
-              {...otpForm.register("token")}
-            />
-          </div>
+          <FieldGroup
+            id="security-otp-code"
+            testId="otp-code-input"
+            label={AUTH_COPY.accountSecurity_codeFieldLabel}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            invalid={!!otpForm.formState.errors.token}
+            disabled={isPending}
+            {...otpForm.register("token")}
+          />
           <ErrorNote id="security-error" message={inlineError} />
-          <Button
-            type="submit"
-            data-testid="verify-code-button"
-            disabled={isPending}
-            aria-busy={isPending}
-          >
-            {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.verifyCodeButton}</span>}
+          <Button type="submit" data-testid="verify-code-button" disabled={isPending} aria-busy={isPending}>
+            {isPending ? <Spinner /> : <span>{AUTH_COPY.verifyCodeButton}</span>}
           </Button>
-          <button
-            type="button"
-            data-testid="cancel-otp-recovery-link"
-            onClick={handleCancel}
-            disabled={isPending}
-            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
-            {AUTH_COPY.accountSecurity_cancelLink}
-          </button>
+          <CancelLink onClick={handleCancel} disabled={isPending} />
         </form>
-      </section>
+      </PageShell>
     );
   }
 
   // -------------------------------------------------------------------------
-  // State C — step 3: set new password after OTP verified
+  // State C — step 3: set new password (no current-pass field)
   // -------------------------------------------------------------------------
 
   if (mode === "C-set") {
     return (
-      <section className="mx-auto w-full max-w-lg px-4 py-6">
-        {pageTitle}
+      <PageShell>
         {hiddenUsernameField}
         <form onSubmit={handleSetNewPassword} noValidate className="flex flex-col gap-3">
-          <p className="text-sm text-muted-foreground">
-            {AUTH_COPY.accountSecurity_setNewPasswordTitle}
-          </p>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="security-new-password">
-              {AUTH_COPY.accountSecurity_newPasswordLabel}
-            </Label>
-            <div className="relative">
-              <Input
-                id="security-new-password"
-                data-testid="new-password-input"
-                type={showNewPassword ? "text" : "password"}
-                autoComplete="new-password"
-                aria-invalid={
-                  newPasswordForm.formState.errors.newPassword ? "true" : undefined
-                }
-                aria-describedby={inlineError ? "security-error" : undefined}
-                disabled={isPending}
-                {...newPasswordForm.register("newPassword")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowNewPassword((v) => !v)}
-                className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
-                aria-label={
-                  showNewPassword
-                    ? AUTH_COPY.togglePasswordHide
-                    : AUTH_COPY.togglePasswordShow
-                }
-              >
-                {showNewPassword
-                  ? AUTH_COPY.togglePasswordHide
-                  : AUTH_COPY.togglePasswordShow}
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">{AUTH_COPY.accountSecurity_helperA}</p>
-          </div>
+          <p className="text-sm text-muted-foreground">{AUTH_COPY.accountSecurity_setNewPasswordTitle}</p>
+          <PasswordFieldGroup
+            id="security-new-password"
+            testId="new-password-input"
+            label={AUTH_COPY.accountSecurity_newPasswordLabel}
+            autoComplete="new-password"
+            invalid={!!newPasswordForm.formState.errors.newPassword}
+            disabled={isPending}
+            helper={AUTH_COPY.accountSecurity_helperA}
+            {...newPasswordForm.register("newPassword")}
+          />
           <ErrorNote id="security-error" message={inlineError} />
-          <Button
-            type="submit"
-            data-testid="change-password-button"
-            disabled={isPending}
-            aria-busy={isPending}
-          >
-            {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.accountSecurity_changeButton}</span>}
+          <Button type="submit" data-testid="change-password-button" disabled={isPending} aria-busy={isPending}>
+            {isPending ? <Spinner /> : <span>{AUTH_COPY.accountSecurity_changeButton}</span>}
           </Button>
-          <button
-            type="button"
-            data-testid="cancel-otp-recovery-link"
-            onClick={handleCancel}
-            disabled={isPending}
-            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
-            {AUTH_COPY.accountSecurity_cancelLink}
-          </button>
+          <CancelLink onClick={handleCancel} disabled={isPending} />
         </form>
-      </section>
+      </PageShell>
     );
   }
 
@@ -385,101 +286,35 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   // -------------------------------------------------------------------------
 
   return (
-    <section className="mx-auto w-full max-w-lg px-4 py-6">
-      {pageTitle}
+    <PageShell>
       {hiddenUsernameField}
-
       {identityState === "A+" ? (
-        <p className="mb-4 text-sm text-muted-foreground">
-          {AUTH_COPY.accountSecurity_helperAPlus}
-        </p>
+        <p className="mb-4 text-sm text-muted-foreground">{AUTH_COPY.accountSecurity_helperAPlus}</p>
       ) : null}
-
       <form onSubmit={handleChangePassword} noValidate className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="security-current-password">
-            {AUTH_COPY.accountSecurity_currentPasswordLabel}
-          </Label>
-          <div className="relative">
-            <Input
-              id="security-current-password"
-              data-testid="current-password-input"
-              type={showCurrentPassword ? "text" : "password"}
-              autoComplete="current-password"
-              aria-invalid={
-                changePasswordForm.formState.errors.currentPassword ? "true" : undefined
-              }
-              aria-describedby={inlineError ? "security-error" : undefined}
-              disabled={isPending}
-              {...changePasswordForm.register("currentPassword")}
-            />
-            <button
-              type="button"
-              onClick={() => setShowCurrentPassword((v) => !v)}
-              className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
-              aria-label={
-                showCurrentPassword
-                  ? AUTH_COPY.togglePasswordHide
-                  : AUTH_COPY.togglePasswordShow
-              }
-            >
-              {showCurrentPassword
-                ? AUTH_COPY.togglePasswordHide
-                : AUTH_COPY.togglePasswordShow}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="security-new-password">
-            {AUTH_COPY.accountSecurity_newPasswordLabel}
-          </Label>
-          <div className="relative">
-            <Input
-              id="security-new-password"
-              data-testid="new-password-input"
-              type={showNewPassword ? "text" : "password"}
-              autoComplete="new-password"
-              aria-invalid={
-                changePasswordForm.formState.errors.newPassword ? "true" : undefined
-              }
-              aria-describedby={inlineError ? "security-error" : undefined}
-              disabled={isPending}
-              {...changePasswordForm.register("newPassword")}
-            />
-            <button
-              type="button"
-              onClick={() => setShowNewPassword((v) => !v)}
-              className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
-              aria-label={
-                showNewPassword
-                  ? AUTH_COPY.togglePasswordHide
-                  : AUTH_COPY.togglePasswordShow
-              }
-            >
-              {showNewPassword
-                ? AUTH_COPY.togglePasswordHide
-                : AUTH_COPY.togglePasswordShow}
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground">{AUTH_COPY.accountSecurity_helperA}</p>
-        </div>
-
-        <ErrorNote id="security-error" message={inlineError} />
-
-        <Button
-          type="submit"
-          data-testid="change-password-button"
+        <PasswordFieldGroup
+          id="security-current-password"
+          testId="current-password-input"
+          label={AUTH_COPY.accountSecurity_currentPasswordLabel}
+          autoComplete="current-password"
+          invalid={!!changePasswordForm.formState.errors.currentPassword}
           disabled={isPending}
-          aria-busy={isPending}
-        >
-          {isPending ? (
-            <PendingSpinner />
-          ) : (
-            <span>{AUTH_COPY.accountSecurity_changeButton}</span>
-          )}
+          {...changePasswordForm.register("currentPassword")}
+        />
+        <PasswordFieldGroup
+          id="security-new-password"
+          testId="new-password-input"
+          label={AUTH_COPY.accountSecurity_newPasswordLabel}
+          autoComplete="new-password"
+          invalid={!!changePasswordForm.formState.errors.newPassword}
+          disabled={isPending}
+          helper={AUTH_COPY.accountSecurity_helperA}
+          {...changePasswordForm.register("newPassword")}
+        />
+        <ErrorNote id="security-error" message={inlineError} />
+        <Button type="submit" data-testid="change-password-button" disabled={isPending} aria-busy={isPending}>
+          {isPending ? <Spinner /> : <span>{AUTH_COPY.accountSecurity_changeButton}</span>}
         </Button>
-
         <button
           type="button"
           data-testid="forgot-current-password-link"
@@ -490,35 +325,114 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
           {AUTH_COPY.accountSecurity_forgotCurrentLink}
         </button>
       </form>
-    </section>
+    </PageShell>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Shared sub-components (private to this module)
 // ---------------------------------------------------------------------------
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <section className="mx-auto w-full max-w-lg px-4 py-6">
+      <h1 className="mb-6 text-2xl font-semibold tracking-tight">
+        {AUTH_COPY.accountSecurity_title}
+      </h1>
+      {children}
+    </section>
+  );
+}
+
+type FieldGroupProps = {
+  id: string;
+  testId: string;
+  label: string;
+  type?: string;
+  inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
+  autoComplete?: string;
+  maxLength?: number;
+  invalid: boolean;
+  disabled: boolean;
+} & React.InputHTMLAttributes<HTMLInputElement>;
+
+/** Plain (non-password) input group with label. */
+function FieldGroup({ id, testId, label, invalid, ...inputProps }: FieldGroupProps) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        data-testid={testId}
+        aria-invalid={invalid ? "true" : undefined}
+        aria-describedby={invalid ? "security-error" : undefined}
+        {...inputProps}
+      />
+    </div>
+  );
+}
+
+type PasswordFieldGroupProps = Omit<FieldGroupProps, "type"> & {
+  helper?: string;
+};
+
+/** Password input group with show/hide toggle and optional helper text. */
+function PasswordFieldGroup({ id, testId, label, invalid, disabled, helper, ...inputProps }: PasswordFieldGroupProps) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative">
+        <Input
+          id={id}
+          data-testid={testId}
+          type={show ? "text" : "password"}
+          aria-invalid={invalid ? "true" : undefined}
+          aria-describedby={invalid ? "security-error" : undefined}
+          disabled={disabled}
+          {...inputProps}
+        />
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
+          aria-label={show ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
+        >
+          {show ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
+        </button>
+      </div>
+      {helper ? <p className="text-xs text-muted-foreground">{helper}</p> : null}
+    </div>
+  );
+}
 
 function ErrorNote({ id, message }: { id: string; message: string | null }) {
   if (!message) return null;
   return (
-    <p
-      id={id}
-      role="alert"
-      className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"
-    >
+    <p id={id} role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
       {message}
     </p>
   );
 }
 
-function PendingSpinner() {
+function CancelLink({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  return (
+    <button
+      type="button"
+      data-testid="cancel-otp-recovery-link"
+      onClick={onClick}
+      disabled={disabled}
+      className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+    >
+      {AUTH_COPY.accountSecurity_cancelLink}
+    </button>
+  );
+}
+
+function Spinner() {
   return (
     <>
-      <Loader2
-        data-slot="spinner"
-        className="size-4 animate-spin motion-reduce:animate-none"
-        aria-hidden
-      />
+      <Loader2 data-slot="spinner" className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
       <span>...</span>
     </>
   );
