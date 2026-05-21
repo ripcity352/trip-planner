@@ -28,7 +28,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { rateLimitRequest } from "@/lib/rate-limit";
 
 /** URL prefixes that require an authenticated session. */
-const AUTHED_PREFIXES = ["/trips"] as const;
+const AUTHED_PREFIXES = ["/trips", "/account"] as const;
 
 /** URL prefixes that must never be redirected (auth + public). */
 const PUBLIC_PREFIXES = ["/login", "/auth", "/_next", "/favicon"] as const;

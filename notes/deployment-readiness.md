@@ -44,7 +44,7 @@
 | `SENTRY_DSN` *(server)* + `NEXT_PUBLIC_SENTRY_DSN` *(client)* | No error reporting in production; the diagnostic `console.error` (#134) still surfaces in Vercel runtime logs but Sentry breadcrumbs go silent. | Sentry project | M1 | 2026-05-19 |
 | `SENTRY_AUTH_TOKEN` | Source maps don't upload; stack traces in Sentry are minified. | Sentry org → Auth Tokens | M1 | 2026-05-19 |
 | `RESEND_API_KEY` *(consumed by Supabase Auth, not the app)* | Outgoing magic-link emails route through the project-wide Supabase email cap (3/hr free tier) → real users hit `over_email_send_rate_limit` past 3 attempts. | Resend dashboard | M2 (PM session 2026-05-19) | 2026-05-19 |
-| `GOOGLE_PLACES_API_KEY` | `/api/places/autocomplete` 502s with `places_proxy_failed`; W2a address-autocomplete UI falls back to freeform. Without billing on the Google Cloud project, the upstream returns 403. | Google Cloud project (`ripcity352`) | M4 (#166, W0c) | **NOT YET VERIFIED — M4 blocker for W0c smoke** |
+| `GOOGLE_PLACES_API_KEY` | `/api/places/autocomplete` 502s with `places_proxy_failed`; W2a address-autocomplete UI falls back to freeform. Without billing on the Google Cloud project, the upstream returns 403. | Google Cloud project (`ripcity352`) | M4 (#166, W0c) | **Verified in W0c smoke (2026-05-20). Confirmed live in prod as of W4b walk.** |
 
 **Note on KV_* vs UPSTASH_* dual-name resolution:** `lib/rate-limit/index.ts`
 reads both prefixes via `__resolveUpstashCreds()`, preferring `KV_*`
@@ -60,6 +60,7 @@ stale local override. See ADR 2026-05-19 (late PM) in
 |---|---|---|---|
 | **Redirect URL allowlist** includes production domain | Authentication → URL Configuration → Redirect URLs | Magic-link callbacks fail; Supabase rejects the redirect after `verifyOtp` / `exchangeCodeForSession`. Must include `https://travelston.com/auth/callback` + Vercel preview wildcard `https://*.vercel.app/auth/callback`. | 2026-05-19 |
 | **Site URL** matches production | Authentication → URL Configuration → Site URL | Email-template `{{ .SiteURL }}` interpolates wrong → links 404 on click. Currently `https://travelston.com`. | 2026-05-19 |
+| **Google OAuth provider enabled** with Client ID + Secret | Authentication → Sign In / Providers → Google | `signInWithOAuthAction` returns `oauth_redirect_failed`; the "Continue with Google" button is broken. Credentials are pasted directly into Supabase (Supabase holds them server-side; the Next.js app does NOT read `GOOGLE_OAUTH_CLIENT_*` env vars — they belong in the Supabase Dashboard only). See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider". | **Not yet verified — Phase 6 closure step (M5 #225).** |
 | **Custom SMTP (Resend)** wired | Project Settings → Auth → SMTP Settings | Without it: Supabase's free-tier project-wide email cap (3/hr) bricks magic-link sign-ins past the third attempt. The 2026-05-19 retro caught this within minutes of going live. | 2026-05-19 |
 | **Email Templates → Magic Link** uses the cross-device-safe variant | Authentication → Email Templates → Magic Link | If template emits `{{ .ConfirmationURL }}` (PKCE-bound), cross-device clicks fail with `pkce_code_verifier_not_found` (#137). Template must emit a `token_hash` link consumable by `verifyOtp`. **Wave 0c (M3) flips this.** | 2026-05-20 (Wave 0c #137) |
 | **Realtime publication includes the right tables** | Database → Replication → Publications → `supabase_realtime` | Without `date_poll_votes` in the publication, PulsePoll renders but never updates live. M3 adds `announcements`. | 2026-05-19 (M2) / 2026-05-20 (M3 Wave 1 #79) |
@@ -80,8 +81,8 @@ stale local override. See ADR 2026-05-19 (late PM) in
 
 | Setting | Path | What breaks without it | Last verified |
 |---|---|---|---|
-| **Verified domain on Resend** | Resend → Domains | Without it: sender restricted to `onboarding@resend.dev` + addresses already in the Resend Audience. Real attendees outside the audience can't receive magic-link emails. Tracked: #135. | **NOT YET VERIFIED — blocker for M4 send-to-real-attendees**. M3 still uses the sandbox sender on the developer's own email. |
-| **Outbound DKIM + SPF on the verified domain's DNS** | Domain registrar → DNS | Without it: emails land in spam for many providers. | Tracked under #135. |
+| **Verified domain on Resend** | Resend → Domains | Without it: sender restricted to `onboarding@resend.dev` + addresses already in the Resend Audience. Real attendees outside the audience can't receive magic-link emails. Tracked: #135. | **NOT YET VERIFIED as of M4 closure (W4c, 2026-05-21).** This is a closure-walk blocker for the `[v]` axis on "send invite to real attendees." Override I applies: sandbox does NOT tick the `[v]` box. Resolution pending travelston.com domain verification on Resend. |
+| **Outbound DKIM + SPF on the verified domain's DNS** | Domain registrar → DNS | Without it: emails land in spam for many providers. | **NOT YET VERIFIED as of M4 closure.** Tracked under #135. Pending Resend domain verification. |
 
 ---
 
@@ -131,6 +132,49 @@ all six. Failures block the milestone flip.
 A row that fails for a *different* reason than what the column
 describes — e.g., the Vercel env-var is present but malformed —
 counts as a hard-stop trigger per `m3-execution-plan.md` Appendix B.
+
+---
+
+## M4 closure status (2026-05-21)
+
+**Blockers remaining before `[v]` ticks can land:**
+
+1. **Resend domain verification** — `travelston.com` not yet verified on
+   Resend. Outbound magic-link emails route through the sandbox sender
+   (`onboarding@resend.dev`), which is restricted to addresses already
+   in the Resend Audience. Real attendees outside the Audience cannot
+   receive invite magic-links until the domain is verified + DKIM/SPF
+   are set. This blocks the "send invite to real attendees" `[v]` tick.
+   Tracked: #135. Override I applies.
+
+2. **Production walk on travelston.com** — the full browser walk
+   (375px, real device) is the orchestrator's responsibility after the
+   W4c PR merges. Until completed, all `[v]` boxes in
+   `notes/m4-execution-plan.md` remain unchecked.
+
+Everything else in this file was verified at W4b smoke (2026-05-20) or
+earlier. The two items above are the only remaining M4 closure-walk
+blockers.
+
+---
+
+## M5 deployment notes (2026-05-21)
+
+### Google OAuth dashboard step (load-bearing — do BEFORE verifying above rows)
+
+1. **Supabase Dashboard** → Authentication → Providers → Google → Enable.
+2. Paste `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` from the
+   Google Cloud project (OAuth 2.0 → Web application credentials).
+3. Add `https://travelston.com/auth/callback` to the "Authorized redirect URIs"
+   in the Google Cloud console (OAuth consent screen → credentials).
+4. Copy the "Callback URL (for OAuth)" from Supabase Dashboard → Providers →
+   Google and paste it into the Google Cloud redirect URIs list.
+5. Flip `NEXT_PUBLIC_SUPABASE_ANON_KEY` if Supabase auto-rotates on provider
+   enablement (check Supabase API settings after the step above).
+6. Redeploy on Vercel after adding the env vars.
+
+See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider" for the
+full click-path with screenshots.
 
 ---
 

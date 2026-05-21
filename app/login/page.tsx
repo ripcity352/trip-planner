@@ -1,9 +1,12 @@
 /**
- * `/login` — magic-link entry point.
+ * `/login` — progressive-disclosure auth entry point (M5/PR2).
  *
  * Server Component. Renders a centered, mobile-first card containing
  * `<LoginForm />`. If the auth callback bounces back with `?error=auth`,
  * we render an inline note above the form using `ERRORS.auth_failed`.
+ *
+ * The `?next=` param is safeNext-validated and threaded into `<LoginForm />`
+ * so the form knows where to redirect after a successful sign-in.
  *
  * The form itself is the only `"use client"` boundary — extracted so
  * this page can stay a Server Component and avoid hydrating the whole
@@ -14,6 +17,7 @@ import type { Metadata } from "next";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ERRORS } from "@/lib/copy/errors";
+import { safeNext } from "@/lib/auth/safe-next";
 import { LoginForm } from "@/app/login/_form";
 
 export const metadata: Metadata = {
@@ -27,9 +31,15 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
+
   const errorParam = params.error;
   const hasAuthError =
     (Array.isArray(errorParam) ? errorParam[0] : errorParam) === "auth";
+
+  const rawNext = params.next;
+  const nextPath = safeNext(
+    Array.isArray(rawNext) ? rawNext[0] ?? null : rawNext ?? null,
+  );
 
   return (
     <main className="flex min-h-dvh items-center justify-center px-4 py-10">
@@ -49,7 +59,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 {ERRORS.auth_failed}
               </p>
             ) : null}
-            <LoginForm />
+            <LoginForm next={nextPath} />
           </CardContent>
         </Card>
       </div>

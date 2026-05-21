@@ -15,6 +15,7 @@
  * other routes under [tripId]).
  */
 
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -22,6 +23,7 @@ import { getTripBySlug } from "@/lib/db/trips";
 import { getViewerMember } from "@/lib/db/trips";
 import { signOut } from "@/lib/actions/auth";
 import { M4_UI_STRINGS } from "@/lib/copy/empty-states";
+import { AUTH_COPY } from "@/lib/copy/auth";
 
 type PageProps = {
   params: Promise<{ tripId: string }>;
@@ -82,6 +84,28 @@ export default async function MePage({ params }: PageProps) {
             ) : null}
           </dl>
         </div>
+
+        {/* Sign-in & security navigation link (M5/PR4) */}
+        <Link
+          href="/account/sign-in-and-security"
+          className="focus-visible:ring-ring flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+        >
+          <span>{AUTH_COPY.accountSecurity_meNavLink}</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </Link>
 
         <form action={signOut}>
           <button

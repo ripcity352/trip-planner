@@ -69,17 +69,19 @@ const ANON_CLIENT_ID = "anon";
  * unrecognized scopes are rejected at the type level so callers can't
  * silently typo a new bucket into existence.
  *
- * `AUTH_MAGIC_LINK` (#102 fix-up) covers the `/login` server action and
- * shares the default budget (30 / 60s). The default is generous for an
- * auth-issuance endpoint; before production we should ratchet this
- * down to ~5 / hour by introducing a per-scope budget map. Tracking as
- * a follow-up: the surgical fix here keeps the seam in place without
- * rebuilding the limiter config surface.
+ * `AUTH_OTP_VERIFY` (#102 fix-up, renamed M5/PR1) covers the `/login`
+ * server action and shares the default budget (30 / 60s). The default
+ * is generous for an auth-issuance endpoint; before production we
+ * should ratchet this down to ~5 / hour by introducing a per-scope
+ * budget map. Tracking as a follow-up: the surgical fix here keeps the
+ * seam in place without rebuilding the limiter config surface.
+ * AUTH_OTP_VERIFY covers both magic-link URLs and 6-digit codes — both
+ * call verifyOtp.
  */
 export const RATE_LIMIT_SCOPES = {
   CREATE_TRIP: "createTrip",
   ACCEPT_INVITE: "acceptInvite",
-  AUTH_MAGIC_LINK: "authMagicLink",
+  AUTH_OTP_VERIFY: "authOtpVerify",
   // `setRsvp` (#74) gets its own bucket so a user spamming RSVP taps
   // doesn't starve their `createTrip` / `acceptInvite` budget. Default
   // 30/60s is generous for the drunk-double-tap pattern.
@@ -108,6 +110,17 @@ export const RATE_LIMIT_SCOPES = {
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED
   // on shim so the proxy can't be abused if Upstash is unconfigured.
   PLACES_AUTOCOMPLETE: "placesAutocomplete",
+  // M5 PR2 — password sign-in and sign-up. Deliberately tighter than
+  // the default (5 / 15 min) because brute-forcing a password requires
+  // many rapid attempts. NOT in FAIL_CLOSED_ON_SHIM so bootstrapping
+  // deploys (no Upstash yet) can still use the password form — consistent
+  // with AUTH_OTP_VERIFY precedent.
+  AUTH_PASSWORD: "authPassword",
+  // M5 PR4 — /account/sign-in-and-security password rotation. Same
+  // tighter budget as AUTH_PASSWORD (5 / 15 min) to blunt any attempt
+  // to cycle through passwords. NOT in FAIL_CLOSED_ON_SHIM — matches
+  // AUTH_PASSWORD precedent so a bootstrapping deploy isn't bricked.
+  AUTH_CHANGE_PASSWORD: "authChangePassword",
 } as const;
 
 export type RateLimitScope =
@@ -126,6 +139,14 @@ export const SCOPE_BUDGETS: Readonly<
 > = {
   [RATE_LIMIT_SCOPES.MINT_INVITE]: { limit: 10, window: "1 h" },
   [RATE_LIMIT_SCOPES.PLACES_AUTOCOMPLETE]: { limit: 30, window: "60 s" },
+  // Password auth: 5 attempts per 15 minutes per email. Tight enough
+  // to blunt online brute-force; loose enough that a real user with
+  // fat fingers never hits it (5 bad attempts in 15 min is unusual).
+  [RATE_LIMIT_SCOPES.AUTH_PASSWORD]: { limit: 5, window: "15 m" },
+  // Password rotation: 5 attempts / 15 min per user-id. Same rationale
+  // as AUTH_PASSWORD — brute-forcing an authenticated rotation requires
+  // the same tight window.
+  [RATE_LIMIT_SCOPES.AUTH_CHANGE_PASSWORD]: { limit: 5, window: "15 m" },
 } as const;
 
 /**
@@ -133,7 +154,7 @@ export const SCOPE_BUDGETS: Readonly<
  *
  * Rationale: `MINT_INVITE` and `PLACES_AUTOCOMPLETE` are sensitive enough
  * that an unconfigured deployment (shim active) should fail-closed rather
- * than silently allow. Contrast with `AUTH_MAGIC_LINK` and `ACCEPT_INVITE`
+ * than silently allow. Contrast with `AUTH_OTP_VERIFY` and `ACCEPT_INVITE`
  * which keep the allow-with-warning posture so a bootstrapping deployment
  * doesn't brick login or invite acceptance.
  *
@@ -157,6 +178,15 @@ const GUARDED_PATH_PATTERNS: ReadonlyArray<RegExp> = [
   // `/invite/<token>/accept` is a public POST endpoint — unauthenticated
   // abuse needs the HTTP-edge throttle before it reaches the action.
   /^\/invite\//,
+  // M5 PR2 — password sign-in / sign-up POST and auth callback are now
+  // mutation-class paths that need the HTTP-edge throttle. The action-
+  // level AUTH_PASSWORD scope is the primary defence; the path pattern
+  // here is a belt-and-suspenders guard at the edge.
+  /^\/login(\/|$)/,
+  /^\/auth\//,
+  // M5 PR4 — /account/* is an authed mutation surface (password rotation).
+  // HTTP-edge throttle mirrors the pattern for /trips/*.
+  /^\/account\//,
 ];
 
 // --- error -------------------------------------------------------------

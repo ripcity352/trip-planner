@@ -41,10 +41,19 @@ in a group chat. Desktop should work but is not the priority.
 3. **Mutations use Server Actions**, not API routes, unless there's a reason
    to expose an HTTP endpoint (e.g. webhooks).
 
-4. **Auth via Supabase magic links.** No passwords. The login flow is:
-   user enters email → receives link → clicks link → lands on
-   `/auth/callback` → redirected into the app. There is no "sign up" — first
-   login creates the account.
+4. **Auth via email + password (primary), 6-digit OTP code (fallback),
+   and Google OAuth (alternative — PR5).** Progressive-disclosure form
+   at `/login` and inline on `/invite/[token]`. Sign-up is explicit
+   (`signUpAction`); first password-sign-in does NOT auto-provision an
+   account. Magic-link URLs were demoted to a verification primitive
+   in M5 PR3 — the email template now issues `{{ .Token }}` (6-digit
+   code) and the user submits it via `verifyEmailCodeAction`. The
+   callback handler at `/auth/callback` still verifies via
+   `verifyOtp({email, token, type})` and PKCE `code` (for OAuth in
+   PR5). See `notes/decisions.md` "M5 auth redesign" ADR for the
+   threat-model rationale behind every non-default choice
+   (6-char password minimum, no breach check, no recent-reauth gate,
+   no separate `/forgot-password` route).
 
 5. **Row-Level Security is the source of truth for access control.** Do not
    gate access in application code as the only check. Every table with
@@ -257,15 +266,21 @@ CLI prints them at startup. See `notes/database-workflow.md`.
 
 ## Current phase
 
-See `/notes/roadmap.md` for the milestone plan (M1–M5). We are currently
-on **M3 — Trip is useful**. M1 closed 2026-05-19 (foundation + schema).
-M2 closed 2026-05-19 (auth, trip creation, invites, RSVP, celebrant-
-weighted date poll, PulsePoll). See `notes/decisions.md` for the M1 +
-M2 closure entries and the load-bearing decisions made during execution;
-`notes/killed-and-deferred.md` for what was cut and why.
+M5 — auth redesign — **Closed (2026-05-21).** Password + 6-digit OTP +
+Google OAuth shipped across 5 sequential PRs (#226–#231). Phase 6
+production walk verified the OTP/State-C-recovery/password-signin chain
+end-to-end on `travelston.com`. OAuth round-trip + State B walks
+deferred to follow-up (#232 + Supabase Dashboard provider step).
+See `notes/retros/m5-retro.md` for the M5 closure and `notes/decisions.md`
+"M5 auth redesign — milestone closed" ADR for the load-bearing
+decisions made during execution.
 
-**MVP target:** ship M1 → M4 for one real bachelor party. Stop at M4.
-M5 is gated on a real-trip retrospective.
+**Next:** real-trip retrospective gates M6 — same bright line as M4.
+M1–M5 shipped the MVP + auth substrate; use the app for the real
+bachelor party before scoping M6. M5 carry-backs:
+- **#230** — chronic flake in `rsvp-toggle.test.tsx:192` (gate on M6 Wave 0)
+- **#232** — OAuth-existing-user alert detection wiring
+- **#233** — `/account/sign-in-and-security` State B identity check
 
 When you complete a milestone, update `/notes/roadmap.md` to mark it done
 and add any deviations or follow-ups to `/notes/decisions.md`.

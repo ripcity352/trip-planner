@@ -27,6 +27,10 @@ Closes #
 - [ ] RLS policies in the same migration
 - [ ] `pnpm dlx supabase db diff` shows expected changes
 
+## Microcopy review (UI-touching PRs)
+
+- [ ] **Microcopy review**: any new UI string sourced from `lib/copy/*` or `lib/data/*` (no inline JSX literals). Voice passes "would you say this at a pre-trip dinner?" test.
+
 ## Design system review (UI-touching PRs only)
 
 - [ ] **Microcopy:** every UI string passes the voice test (*"would you say this at a pre-trip dinner?"*) — see `notes/research/ux-design-principles.md`

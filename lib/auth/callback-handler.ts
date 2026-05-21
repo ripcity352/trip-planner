@@ -7,29 +7,36 @@
  *
  * ## Auth flow decision
  *
- * We support two token formats for backward compatibility during the
- * Supabase Dashboard email-template flip window:
+ * After the M5 template flip (PR3), Supabase Dashboard's email template
+ * issues 6-digit codes ({{ .Token }}) instead of magic-link URLs. The
+ * legacy `token_hash` branch (M3 W0c) was removed once the in-flight
+ * link drain expired (~1 h after the dashboard flip). Two formats now
+ * survive:
  *
- * 1. **token-hash** (`token_hash` + `type` params) — the new default.
- *    Self-contained: no `code_verifier` cookie required, works across
- *    devices and cookie jars. See #137.
+ * 1. **6-digit OTP code** (`token` + `email` + `type` params) — the
+ *    primary verify path. The user enters the 6-digit code from the
+ *    email on a form; the server action POSTs to `/auth/callback`.
+ *    Uses `verifyOtp({email, token, type})`.
  *
- * 2. **PKCE code** (`code` param) — the @supabase/ssr legacy default.
- *    Requires the `code_verifier` cookie from the requesting browser.
- *    Kept as backward-compat path for links in-flight during the
- *    template switch.
+ * 2. **PKCE code** (`code` param) — the @supabase/ssr default for
+ *    OAuth callbacks (PR5). Requires the `code_verifier` cookie from
+ *    the requesting browser. Stays load-bearing for Google sign-in.
  *
- * When both are present, token-hash wins (prefer the self-contained path).
+ * Precedence: `token + email + type` → `code`. Both branches lazy-
+ * instantiate the Supabase client so a malformed callback (no params
+ * at all) doesn't waste a client allocation.
  */
 
 import { createClient } from "@/lib/supabase/server";
 
 export interface CallbackParams {
-  /** token_hash from the new magic-link template (verifyOtp path) */
-  token_hash: string | null;
-  /** OTP type — always "email" for magic links */
+  /** OTP type — "email" for the 6-digit code flow */
   type: string | null;
-  /** PKCE code from the legacy ConfirmationURL template */
+  /** 6-digit OTP token entered on a form (verifyOtp with email+token+type) */
+  token: string | null;
+  /** Email address paired with token for the 6-digit OTP form path */
+  email: string | null;
+  /** PKCE code from OAuth callbacks (PR5 Google sign-in) */
   code: string | null;
   /** Safe-next redirect path, already normalized by safeNext() */
   next: string;
@@ -62,24 +69,24 @@ function isAllowedOtpType(value: string): value is AllowedOtpType {
  * Resolves an auth callback to either a success (with redirect target)
  * or a failure.
  *
- * Precedence: token_hash + type → PKCE code → error. Each branch
- * instantiates the Supabase client only when it actually needs it so
- * a malformed callback (no params at all) doesn't waste a client
- * allocation just to bounce to `/login?error=auth`.
+ * Precedence: token + email + type → PKCE code → error. Each branch
+ * lazy-instantiates the Supabase client so a malformed callback (no
+ * params at all) doesn't waste a client allocation just to bounce to
+ * `/login?error=auth`.
  */
 export async function resolveCallbackResult(
   params: CallbackParams,
 ): Promise<CallbackResult> {
-  const { token_hash, type, code, next } = params;
+  const { type, token, email, code, next } = params;
 
-  // ── token-hash path (preferred, cross-device) ──────────────────────────
-  if (token_hash && type) {
+  // ── 6-digit OTP token path (primary verify) ────────────────────────────
+  if (token && email && type) {
     if (!isAllowedOtpType(type)) {
       console.error("[auth] callback got unknown OTP type", { type });
       return { ok: false };
     }
     const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({ token_hash, type });
+    const { error } = await supabase.auth.verifyOtp({ email, token, type });
     if (!error) {
       return { ok: true, next };
     }
@@ -91,7 +98,7 @@ export async function resolveCallbackResult(
     return { ok: false };
   }
 
-  // ── PKCE code path (backward compat) ───────────────────────────────────
+  // ── PKCE code path (OAuth callbacks) ───────────────────────────────────
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -109,8 +116,9 @@ export async function resolveCallbackResult(
 
   // ── nothing usable in the URL ───────────────────────────────────────────
   console.error("[auth] callback missing required params", {
-    has_token_hash: Boolean(token_hash),
     has_type: Boolean(type),
+    has_token: Boolean(token),
+    has_email: Boolean(email),
     has_code: Boolean(code),
   });
   return { ok: false };
