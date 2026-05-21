@@ -13,6 +13,9 @@
  *     per the strictly-user-tables ADR.
  *   - READ is trip-wide (all members see the arrivals manifest) —
  *     handled in lib/db/travel-legs.ts.
+ *
+ * M4 W2c: adds `airlineIata` (^[A-Z0-9]{2}$) and `flightNumber`
+ * (^[A-Z0-9]{1,8}$) to the upsert schema. Both are optional.
  */
 
 import { z } from "zod";
@@ -37,6 +40,17 @@ const upsertLegSchema = z.object({
   notes: z.string().trim().max(1000).nullable().optional(),
   // Optional: if provided, used to update an existing leg row.
   legId: z.string().uuid().nullable().optional(),
+  // M4 W2c: airline IATA code and flight number
+  airlineIata: z
+    .string()
+    .regex(/^[A-Z0-9]{2}$/)
+    .nullable()
+    .optional(),
+  flightNumber: z
+    .string()
+    .regex(/^[A-Z0-9]{1,8}$/)
+    .nullable()
+    .optional(),
 });
 
 const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
@@ -51,6 +65,10 @@ export interface UpsertTravelLegInput {
   notes?: string | null;
   /** Provide to update an existing leg; omit to insert a new one. */
   legId?: string | null;
+  /** M4 W2c: IATA airline code (^[A-Z0-9]{2}$). */
+  airlineIata?: string | null;
+  /** M4 W2c: flight number (^[A-Z0-9]{1,8}$). */
+  flightNumber?: string | null;
 }
 
 export type UpsertTravelLegResult =
@@ -62,7 +80,7 @@ export type DeleteTravelLegResult =
   | { ok: false; errorKey: ErrorKey };
 
 const TRAVEL_LEG_COLUMNS =
-  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at";
+  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at, airline_iata, flight_number";
 
 /**
  * Insert a new travel leg or update an existing one (when legId is provided).
@@ -89,8 +107,18 @@ export async function upsertTravelLeg(
   }
   const userId = authData.user.id;
 
-  const { tripId, kind, departAt, arriveAt, carrier, confirmationCode, notes, legId } =
-    parsed.data;
+  const {
+    tripId,
+    kind,
+    departAt,
+    arriveAt,
+    carrier,
+    confirmationCode,
+    notes,
+    legId,
+    airlineIata,
+    flightNumber,
+  } = parsed.data;
 
   // Resolve the caller's trip_member_id
   let tripMemberId: string;
@@ -128,6 +156,8 @@ export async function upsertTravelLeg(
               confirmation_code: confirmationCode ?? null,
               notes: notes ?? null,
               idempotency_key: idempotencyKey,
+              airline_iata: airlineIata ?? null,
+              flight_number: flightNumber ?? null,
             })
             .eq("id", legId)
             .eq("trip_member_id", tripMemberId)
@@ -156,6 +186,8 @@ export async function upsertTravelLeg(
             confirmation_code: confirmationCode ?? null,
             notes: notes ?? null,
             idempotency_key: idempotencyKey,
+            airline_iata: airlineIata ?? null,
+            flight_number: flightNumber ?? null,
           })
           .select(TRAVEL_LEG_COLUMNS)
           .single();
