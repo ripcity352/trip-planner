@@ -33,6 +33,18 @@ export default async function Home() {
       >
         Sign in to your trip
       </Link>
+
+      <footer className="mt-auto flex gap-4 text-sm text-zinc-500 dark:text-zinc-500">
+        <Link href="/legal/terms" className="underline-offset-2 hover:underline">
+          Terms
+        </Link>
+        <Link
+          href="/legal/privacy"
+          className="underline-offset-2 hover:underline"
+        >
+          Privacy
+        </Link>
+      </footer>
     </main>
   );
 }
