@@ -27,6 +27,7 @@ const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 /** Deterministic test trip name — used for idempotent lookup. */
 export const M4_TEST_TRIP_NAME = "M4 test trip — organizer";
+export const M4_TEST_TRIP_SLUG = "m4-test-trip-organizer";
 
 // ---------------------------------------------------------------------------
 // Admin client
@@ -167,11 +168,14 @@ export async function ensureM4TestTrip(
     return existing.id as string;
   }
 
-  // Create the trip
+  // Create the trip. `slug` is NOT NULL with no default in 0001_init.sql —
+  // must be supplied. Deterministic per test-trip name keeps the seed
+  // idempotent and human-debuggable.
   const { data: created, error: createError } = await admin
     .from("trips")
     .insert({
       name: M4_TEST_TRIP_NAME,
+      slug: M4_TEST_TRIP_SLUG,
       created_by: organizerUserId,
       kind: "bachelor",
     })
