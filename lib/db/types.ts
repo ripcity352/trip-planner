@@ -8,6 +8,7 @@
  *   * 20260519202859_m2_rsvp_idempotency_scope.sql
  *   * 20260519204313_m2_date_poll.sql
  *   * 20260520052357_m3_itinerary_announcements.sql
+ *   * 20260521012212_m4_carry_back.sql
  *
  * To regenerate from the linked Supabase project (requires a PAT in
  * SUPABASE_ACCESS_TOKEN), run:
@@ -110,6 +111,8 @@ export interface Invite {
   expires_at: string | null;
   uses_left: number | null;
   created_at: string;
+  // M4 addition (Delta 2)
+  idempotency_key?: string | null;
 }
 
 export interface Availability {
@@ -269,6 +272,9 @@ export interface ItineraryItem {
   activity_tag: string[];
   dress_code: string | null;
   idempotency_key: string | null;
+  // M4 additions (Delta 6)
+  address_place_id?: string | null;
+  address_provider?: string | null;
 }
 
 /**
@@ -292,6 +298,8 @@ export interface Trip {
   vibe_tags: string[];
   // M3 addition
   notes: string | null;
+  // M4 addition (Delta 5)
+  timezone: string;
 }
 
 /**
@@ -339,6 +347,9 @@ export interface TravelLeg {
   notes: string | null;
   idempotency_key: string | null;
   created_at: string;
+  // M4 additions (Delta 7)
+  airline_iata?: string | null;
+  flight_number?: string | null;
 }
 
 /**
