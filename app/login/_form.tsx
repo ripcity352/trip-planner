@@ -3,7 +3,7 @@
 /**
  * `<LoginForm />` — progressive-disclosure auth form (M5/PR2).
  *
- * 4-mode state machine:
+ * 4-mode state machine (types + schemas extracted to `_form-state.ts`):
  *   email-only  → user enters email, clicks Continue
  *   password    → user enters password (+ show/hide toggle) or clicks
  *                 "Email me a code instead"
@@ -16,12 +16,10 @@
  *     wrong-password.
  *   - "Create account instead" surfaces only after a wrong-password error —
  *     no separate sign-up tab, no extra flow.
- *   - Hidden `username` field for iOS keychain pairing (pairs password with
- *     the email in Keychain).
+ *   - Hidden `username` field for iOS keychain pairing.
  *
  * Strings: all from AUTH_COPY (lib/copy/auth.ts) and ERRORS
- * (lib/copy/errors.ts). No inline JSX literals beyond pure scaffolding
- * (e.g. aria-label on the show/hide toggle — those are inline by convention).
+ * (lib/copy/errors.ts). No inline JSX text literals.
  *
  * Tests: tests/unit/login-form.test.tsx (Override C — never under app/).
  */
@@ -29,7 +27,6 @@
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,42 +40,19 @@ import {
   verifyEmailCodeAction,
   requestEmailCode,
 } from "@/app/login/actions";
-
-// ---------------------------------------------------------------------------
-// Local schemas (client-side validation, mirrors server-side)
-// ---------------------------------------------------------------------------
-
-const emailOnlySchema = z.object({
-  email: z
-    .string()
-    .min(1, { message: ERRORS.validation_failed })
-    .email({ message: ERRORS.validation_failed }),
-});
-
-const passwordSchema = z.object({
-  email: z.string().email(),
-  password: z
-    .string()
-    .min(6, { message: ERRORS.validation_failed }),
-});
-
-const codeSchema = z.object({
-  email: z.string().email(),
-  token: z
-    .string()
-    .length(6, { message: ERRORS.validation_failed })
-    .regex(/^\d{6}$/, { message: ERRORS.validation_failed }),
-});
+import {
+  type Mode,
+  type EmailOnlyValues,
+  type PasswordValues,
+  type CodeValues,
+  emailOnlySchema,
+  passwordSchema,
+  codeSchema,
+} from "@/app/login/_form-state";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type Mode = "email-only" | "password" | "code-verify";
-
-type EmailOnlyValues = z.infer<typeof emailOnlySchema>;
-type PasswordValues = z.infer<typeof passwordSchema>;
-type CodeValues = z.infer<typeof codeSchema>;
 
 type LoginFormProps = {
   /** Redirect target after successful sign-in. Defaults to /trips. */
@@ -97,8 +71,6 @@ export function LoginForm({ next }: LoginFormProps) {
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // Each mode gets its own react-hook-form instance. They're independent so
-  // switching modes doesn't carry over stale validation state.
   const emailForm = useForm<EmailOnlyValues>({
     resolver: zodResolver(emailOnlySchema),
     defaultValues: { email: "" },
@@ -139,7 +111,6 @@ export function LoginForm({ next }: LoginFormProps) {
         password: values.password,
       });
       if (result.ok) {
-        // Redirect to next or default
         window.location.href = next ?? "/trips";
         return;
       }
@@ -193,37 +164,17 @@ export function LoginForm({ next }: LoginFormProps) {
   };
 
   // -------------------------------------------------------------------------
-  // Inline error message — one at a time, validation wins over server error
+  // Inline error — one at a time, validation wins over server error
   // -------------------------------------------------------------------------
 
-  const inlineError = (() => {
-    if (mode === "email-only") {
-      return (
-        emailForm.formState.errors.email?.message ??
-        (serverError ? ERRORS[serverError] : null)
-      );
-    }
-    if (mode === "password") {
-      return (
-        passwordForm.formState.errors.password?.message ??
-        (serverError ? ERRORS[serverError] : null)
-      );
-    }
-    if (mode === "code-verify") {
-      return (
-        codeForm.formState.errors.token?.message ??
-        (serverError ? ERRORS[serverError] : null)
-      );
-    }
-    return null;
-  })();
+  const inlineError = deriveInlineError(mode, {
+    emailError: emailForm.formState.errors.email?.message,
+    passwordError: passwordForm.formState.errors.password?.message,
+    tokenError: codeForm.formState.errors.token?.message,
+    serverError,
+  });
 
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-
-  // Hidden username field for iOS Keychain — pairs the password with the
-  // email address so Keychain offers to save/fill it correctly.
+  // iOS Keychain hint — pairs the password with the email in Keychain
   const hiddenUsernameField = email ? (
     <input
       type="email"
@@ -235,13 +186,13 @@ export function LoginForm({ next }: LoginFormProps) {
     />
   ) : null;
 
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
+
   if (mode === "email-only") {
     return (
-      <form
-        onSubmit={handleEmailContinue}
-        noValidate
-        className="flex flex-col gap-3"
-      >
+      <form onSubmit={handleEmailContinue} noValidate className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="login-email">{AUTH_COPY.emailFieldLabel}</Label>
           <Input
@@ -252,17 +203,13 @@ export function LoginForm({ next }: LoginFormProps) {
             autoCapitalize="off"
             autoCorrect="off"
             spellCheck={false}
-            aria-invalid={
-              emailForm.formState.errors.email ? "true" : undefined
-            }
+            aria-invalid={emailForm.formState.errors.email ? "true" : undefined}
             aria-describedby={inlineError ? "login-error" : undefined}
             disabled={isPending}
             {...emailForm.register("email")}
           />
         </div>
-
         <ErrorNote id="login-error" message={inlineError} />
-
         <Button type="submit" disabled={isPending} aria-busy={isPending}>
           {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.continueButton}</span>}
         </Button>
@@ -272,16 +219,9 @@ export function LoginForm({ next }: LoginFormProps) {
 
   if (mode === "password") {
     return (
-      <form
-        onSubmit={handleSignIn}
-        noValidate
-        className="flex flex-col gap-3"
-      >
+      <form onSubmit={handleSignIn} noValidate className="flex flex-col gap-3">
         {hiddenUsernameField}
-
-        {/* Email is locked — shown as read-only context */}
         <p className="text-muted-foreground text-sm">{email}</p>
-
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="login-password">{AUTH_COPY.passwordFieldLabel}</Label>
           <div className="relative">
@@ -300,22 +240,21 @@ export function LoginForm({ next }: LoginFormProps) {
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
-              aria-label={showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
+              aria-label={
+                showPassword
+                  ? AUTH_COPY.togglePasswordHide
+                  : AUTH_COPY.togglePasswordShow
+              }
             >
               {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
             </button>
           </div>
-          <p className="text-muted-foreground text-xs">
-            {AUTH_COPY.passwordHelper}
-          </p>
+          <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
         </div>
-
         <ErrorNote id="login-error" message={inlineError} />
-
         <Button type="submit" disabled={isPending} aria-busy={isPending}>
           {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
         </Button>
-
         {showCreateAccount ? (
           <Button
             type="button"
@@ -326,7 +265,6 @@ export function LoginForm({ next }: LoginFormProps) {
             {AUTH_COPY.createAccountLink}
           </Button>
         ) : null}
-
         <button
           type="button"
           onClick={handleEmailMeCode}
@@ -341,17 +279,9 @@ export function LoginForm({ next }: LoginFormProps) {
 
   // code-verify mode
   return (
-    <form
-      onSubmit={handleVerifyCode}
-      noValidate
-      className="flex flex-col gap-3"
-    >
+    <form onSubmit={handleVerifyCode} noValidate className="flex flex-col gap-3">
       {hiddenUsernameField}
-
-      <p className="text-muted-foreground text-sm">
-        {AUTH_COPY.codeSentHelper(email)}
-      </p>
-
+      <p className="text-muted-foreground text-sm">{AUTH_COPY.codeSentHelper(email)}</p>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="login-code">{AUTH_COPY.codeFieldLabel}</Label>
         <Input
@@ -360,17 +290,13 @@ export function LoginForm({ next }: LoginFormProps) {
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={6}
-          aria-invalid={
-            codeForm.formState.errors.token ? "true" : undefined
-          }
+          aria-invalid={codeForm.formState.errors.token ? "true" : undefined}
           aria-describedby={inlineError ? "login-error" : undefined}
           disabled={isPending}
           {...codeForm.register("token")}
         />
       </div>
-
       <ErrorNote id="login-error" message={inlineError} />
-
       <Button type="submit" disabled={isPending} aria-busy={isPending}>
         {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.verifyCodeButton}</span>}
       </Button>
@@ -379,16 +305,35 @@ export function LoginForm({ next }: LoginFormProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Pure helpers
+// ---------------------------------------------------------------------------
+
+function deriveInlineError(
+  mode: Mode,
+  {
+    emailError,
+    passwordError,
+    tokenError,
+    serverError,
+  }: {
+    emailError: string | undefined;
+    passwordError: string | undefined;
+    tokenError: string | undefined;
+    serverError: ErrorKey | null;
+  },
+): string | null {
+  const serverMsg = serverError ? ERRORS[serverError] : null;
+  if (mode === "email-only") return emailError ?? serverMsg;
+  if (mode === "password") return passwordError ?? serverMsg;
+  if (mode === "code-verify") return tokenError ?? serverMsg;
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function ErrorNote({
-  id,
-  message,
-}: {
-  id: string;
-  message: string | null;
-}) {
+function ErrorNote({ id, message }: { id: string; message: string | null }) {
   if (!message) return null;
   return (
     <p
