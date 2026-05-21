@@ -7,9 +7,11 @@
  * action wired to a client component. Anonymous visitors who landed on
  * the preview without JS can still complete the flow.
  *
- * GET is treated identically to POST so the `/login?next=...` bounce
- * path (which lands as a GET after Supabase code-exchange) works the
- * same way.
+ * Only POST is exported. The GET handler was removed in W0c (M4, #106):
+ * the `/login?next=...` bounce path issues a redirect back to the accept
+ * URL after sign-in, and that redirect is now a POST (the preview page
+ * submits a real `<form method="post">`). Keeping GET open is a CSRF
+ * surface — a crafted link could trigger acceptance without user intent.
  *
  * Idempotency: we derive the idempotency key DETERMINISTICALLY from
  * `(userId, token)` — both fixed strings the server can read at call
@@ -90,9 +92,5 @@ export async function POST(
   return handle(request, ctx);
 }
 
-export async function GET(
-  request: NextRequest,
-  ctx: { params: Promise<{ token: string }> }
-): Promise<NextResponse> {
-  return handle(request, ctx);
-}
+// GET intentionally removed — W0c (M4, #106).
+// See module-level comment for rationale.

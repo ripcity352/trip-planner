@@ -103,10 +103,46 @@ export const RATE_LIMIT_SCOPES = {
   // starve a member's accept attempt (or vice versa). Both paths default
   // to the standard 30 req / 60s sliding window.
   MINT_INVITE: "mintInvite",
+  // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
+  // Isolated bucket so a burst of typeahead requests doesn't starve
+  // other action budgets. 30 req / 60s matches the default; fail-CLOSED
+  // on shim so the proxy can't be abused if Upstash is unconfigured.
+  PLACES_AUTOCOMPLETE: "placesAutocomplete",
 } as const;
 
 export type RateLimitScope =
   (typeof RATE_LIMIT_SCOPES)[keyof typeof RATE_LIMIT_SCOPES];
+
+/**
+ * Per-scope budget overrides. Scopes not listed here inherit the module-level
+ * defaults (`DEFAULT_LIMIT` / `DEFAULT_WINDOW`). Kept as a plain record so
+ * tests can assert on it without importing Upstash types.
+ *
+ * Exported so the deployment-readiness tooling and tests can verify budgets
+ * without instantiating a real Ratelimit instance.
+ */
+export const SCOPE_BUDGETS: Readonly<
+  Partial<Record<RateLimitScope, { limit: number; window: string }>>
+> = {
+  [RATE_LIMIT_SCOPES.MINT_INVITE]: { limit: 10, window: "1 h" },
+  [RATE_LIMIT_SCOPES.PLACES_AUTOCOMPLETE]: { limit: 30, window: "60 s" },
+} as const;
+
+/**
+ * Scopes that must DENY when the in-memory shim is active (no Upstash creds).
+ *
+ * Rationale: `MINT_INVITE` and `PLACES_AUTOCOMPLETE` are sensitive enough
+ * that an unconfigured deployment (shim active) should fail-closed rather
+ * than silently allow. Contrast with `AUTH_MAGIC_LINK` and `ACCEPT_INVITE`
+ * which keep the allow-with-warning posture so a bootstrapping deployment
+ * doesn't brick login or invite acceptance.
+ *
+ * Exported so tests can assert membership without white-boxing the shim.
+ */
+export const FAIL_CLOSED_ON_SHIM: ReadonlySet<RateLimitScope> = new Set<RateLimitScope>([
+  RATE_LIMIT_SCOPES.MINT_INVITE,
+  RATE_LIMIT_SCOPES.PLACES_AUTOCOMPLETE,
+]);
 
 /** Mutation-like HTTP methods we guard at the edge. */
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -154,17 +190,22 @@ export class RateLimitError extends Error {
 let cachedLimiter: Ratelimit | InMemoryLimiter | null = null;
 
 /**
- * Minimal in-memory shim that always allows. Used when Upstash env vars
- * are absent (local dev, CI, tests). We deliberately do NOT implement a
- * real in-memory counter here because:
+ * Minimal in-memory shim that always allows (or denies for fail-closed
+ * scopes). Used when Upstash env vars are absent (local dev, CI, tests).
+ * We deliberately do NOT implement a real in-memory counter here because:
  *   - Next.js middleware can be hot-reloaded, blowing away counters
  *   - Multi-instance prod deployments need shared state anyway (that's
  *     what Upstash is for)
  * In tests that want to assert "limit was hit", `rateLimitedAction` is
  * exercised against an injected mock instead.
+ *
+ * The `isShim` marker lets call sites detect that they're running against
+ * the shim so they can apply fail-closed logic for sensitive scopes.
  */
 interface InMemoryLimiter {
   readonly limit: (identifier: string) => Promise<RateLimitResult>;
+  /** Marker: true only on the in-memory shim, never on a real Ratelimit. */
+  readonly isShim: true;
 }
 
 function buildInMemoryLimiter(): InMemoryLimiter {
@@ -190,6 +231,7 @@ function buildInMemoryLimiter(): InMemoryLimiter {
   const isProd = process.env.NODE_ENV === "production";
   let warned = false;
   return {
+    isShim: true as const,
     limit: async (): Promise<RateLimitResult> => {
       if (isProd && !warned) {
         warned = true;
@@ -227,6 +269,13 @@ function buildUpstashLimiter(url: string, token: string): Ratelimit {
     // check `isTimeoutAllow` and promote to a deny so we fail closed.
     timeout: 1500,
   });
+}
+
+/** Type-guard: returns true only when the limiter is the in-memory shim. */
+function isInMemoryShim(
+  limiter: Ratelimit | InMemoryLimiter,
+): limiter is InMemoryLimiter {
+  return (limiter as InMemoryLimiter).isShim === true;
 }
 
 function getLimiter(): Ratelimit | InMemoryLimiter {
@@ -317,6 +366,19 @@ export async function rateLimitedAction<T>(
   const limiter = getLimiter();
   const identifier = `${scope}:${key}`;
   const result = await limiter.limit(identifier);
+
+  // Fail-closed: scopes in FAIL_CLOSED_ON_SHIM are denied when the shim
+  // is active (Upstash is unconfigured). The shim would otherwise allow,
+  // which is the correct bootstrap posture for auth and invite acceptance
+  // but NOT for MINT_INVITE or PLACES_AUTOCOMPLETE where an unconfigured
+  // deployment must not silently open an abuse surface.
+  if (isInMemoryShim(limiter) && FAIL_CLOSED_ON_SHIM.has(scope)) {
+    throw new RateLimitError(scope, {
+      remaining: 0,
+      reset: Date.now() + 60_000,
+    });
+  }
+
   if (!result.success || isTimeoutAllow(result)) {
     throw new RateLimitError(scope, result);
   }
