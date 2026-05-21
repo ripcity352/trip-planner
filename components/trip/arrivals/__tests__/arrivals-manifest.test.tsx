@@ -169,9 +169,16 @@ describe("ArrivalsManifest", () => {
     expect(screen.getByText("Dave")).toBeInTheDocument();
   });
 
-  it("falls back to 'Someone' when member display_name is null", () => {
+  // #162 — display_name is null: fall back to email, not "Someone"
+  it("falls back to email when member display_name is null but email is set", () => {
     const legs = [makeLeg({ id: "leg-1", trip_member_id: "member-1" })];
-    const members = [makeMember({ id: "member-1", display_name: null })];
+    const members = [
+      makeMember({
+        id: "member-1",
+        display_name: null,
+        email: "dave@example.com",
+      }),
+    ];
 
     render(
       <ArrivalsManifest
@@ -182,10 +189,32 @@ describe("ArrivalsManifest", () => {
       />
     );
 
-    expect(screen.getByText("Someone")).toBeInTheDocument();
+    // Must show email, not "Someone"
+    expect(screen.getByText("dave@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("Someone")).not.toBeInTheDocument();
   });
 
-  it("falls back to 'Someone' when leg owner is not in tripMembers", () => {
+  // #162 — both display_name and email are null: fall back to member id, not "Someone"
+  it("falls back to member id when display_name and email are both null", () => {
+    const legs = [makeLeg({ id: "leg-1", trip_member_id: "member-1" })];
+    const members = [
+      makeMember({ id: "member-1", display_name: null, email: null }),
+    ];
+
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={legs}
+        myTripMemberId="member-1"
+        tripMembers={members}
+      />
+    );
+
+    expect(screen.getByText("member-1")).toBeInTheDocument();
+    expect(screen.queryByText("Someone")).not.toBeInTheDocument();
+  });
+
+  it("falls back to trip_member_id when leg owner is not in tripMembers", () => {
     const legs = [makeLeg({ id: "leg-1", trip_member_id: "member-unknown" })];
     const members = [makeMember({ id: "member-1", display_name: "Dave" })];
 
@@ -198,8 +227,8 @@ describe("ArrivalsManifest", () => {
       />
     );
 
-    // The card should still render with fallback name
-    expect(screen.getByTestId("travel-leg-card")).toBeInTheDocument();
+    // The card renders with the raw id as final fallback
+    expect(screen.getByText("member-unknown")).toBeInTheDocument();
   });
 
   it("does not render empty state when legs exist", () => {

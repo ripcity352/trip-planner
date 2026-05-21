@@ -123,4 +123,63 @@ describe("LodgingRoster", () => {
     // No assignment rows for Dave — the name isn't in the list
     expect(screen.queryAllByText("Dave")).toHaveLength(0);
   });
+
+  // #160 — dropdown must NOT show UUID when display_name is null
+  it("shows email-localpart in dropdown when member has no display_name but has email", async () => {
+    const members = [
+      // member-1 is already assigned (in defaultProps.assignments)
+      makeMember({ id: "member-1", display_name: "Dave" }),
+      // member-2 has no display_name — dropdown must show localpart, not UUID
+      makeMember({
+        id: "member-2",
+        display_name: null,
+        email: "pete@example.com",
+        user_id: "user-2",
+      }),
+    ];
+
+    render(
+      <LodgingRoster
+        itemId="item-1"
+        assignments={[makeAssignment({ trip_member_id: "member-1" })]}
+        tripMembers={members}
+        isOrganizer={true}
+      />
+    );
+
+    // Open the assign form
+    fireEvent.click(screen.getByRole("button", { name: /assign a room/i }));
+
+    // The select must show the email address, not the UUID "member-2"
+    const option = screen.getByRole("option", { name: "pete@example.com" });
+    expect(option).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "member-2" })).not.toBeInTheDocument();
+  });
+
+  it("shows member id in dropdown only when both display_name and email are null", async () => {
+    const members = [
+      makeMember({ id: "member-1", display_name: "Dave" }),
+      makeMember({
+        id: "member-2",
+        display_name: null,
+        email: null,
+        user_id: "user-2",
+      }),
+    ];
+
+    render(
+      <LodgingRoster
+        itemId="item-1"
+        assignments={[makeAssignment({ trip_member_id: "member-1" })]}
+        tripMembers={members}
+        isOrganizer={true}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /assign a room/i }));
+
+    // Last resort: show the id (still better than nothing, but never preferred)
+    const option = screen.getByRole("option", { name: "member-2" });
+    expect(option).toBeInTheDocument();
+  });
 });
