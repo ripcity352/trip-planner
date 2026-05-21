@@ -51,7 +51,8 @@ const formSchema = z.object({
   address: z.string().trim().max(500).optional(),
   dressCode: z.string().trim().max(200).optional(),
   visibility: z.enum(VISIBILITY_OPTIONS),
-  activityTags: z.string().trim().optional(),
+  // W1b: chip picker emits string[]; server action takes string[] (#164).
+  activityTags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -103,20 +104,13 @@ export function EditItemForm({
       dressCode: item.dress_code ?? "",
       visibility:
         (item.visibility as (typeof VISIBILITY_OPTIONS)[number]) ?? "everyone",
-      activityTags: item.activity_tag.join(", "),
+      activityTags: item.activity_tag,
     },
   });
 
   const onSubmit = async (values: FormValues) => {
     setServerErrorKey(null);
     const idempotencyKey = crypto.randomUUID();
-
-    const activityTag = values.activityTags
-      ? values.activityTags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
 
     const result = await updateItineraryItem(
       {
@@ -127,7 +121,7 @@ export function EditItemForm({
         address: values.address || null,
         dressCode: values.dressCode || null,
         visibility: values.visibility,
-        activityTag,
+        activityTag: values.activityTags ?? [],
       },
       idempotencyKey
     );
@@ -228,10 +222,10 @@ export function EditItemForm({
         disabled={isBusy}
       />
 
-      {/* Tags — pre-split into ActivityTagField (W1b will add chip picker) */}
+      {/* W1b: activity-tag chip picker (multi-select + freeform append) */}
       <ActivityTagField
-        value={watch("activityTags") ?? ""}
-        onChange={(v) => setValue("activityTags", v)}
+        value={watch("activityTags") ?? []}
+        onChange={(v) => setValue("activityTags", v, { shouldValidate: true })}
         disabled={isBusy}
       />
 
