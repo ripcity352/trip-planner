@@ -52,35 +52,35 @@ Each line has two axes per Override E. `[v]` ticks land after the
 production walk at closure.
 
 **Bootstrap + carry-back (Wave 0)**
-- [d] [ ] Bootstrap plan + locked copy/data (W0a #190)
-- [d] [ ] Carry-back migration (W0b #192 — Deltas 1, 2, 4, 5, 6, 7)
-- [d] [ ] Places autocomplete proxy + invite GET drop (W0c #193)
-- [d] [ ] Bottom tab bar + /me skeleton + deep-link middleware (W0d #194)
-- [d] [ ] Test infra fixtures (W0e #191)
-- [d] [ ] MINT_INVITE 10/hour + fail-CLOSED shim pin (W0c Deltas 8 + 9)
-- [d] [ ] setTripNotes revalidatePath (#159 — landed in W0b)
+- [d] [v] Bootstrap plan + locked copy/data (W0a #190)
+- [d] [v] Carry-back migration (W0b #192 — Deltas 1, 2, 4, 5, 6, 7)
+- [d] [v] Places autocomplete proxy + invite GET drop (W0c #193)
+- [d] [v] Bottom tab bar + /me skeleton + deep-link middleware (W0d #194)
+- [d] [v] Test infra fixtures (W0e #191)
+- [d] [v] MINT_INVITE 10/hour + fail-CLOSED shim pin (W0c Deltas 8 + 9)
+- [d] [v] setTripNotes revalidatePath (#159 — landed in W0b)
 
 **Structured inputs (Waves 1–2)**
-- [d] [ ] Dress-code chips (W1a #195 — closes #163)
-- [d] [ ] Activity-tag chips (W1b #196 — closes #164)
-- [d] [ ] Member-flag chips + organizer view + self-read (W1c #197 — closes #165)
-- [d] [ ] Places UI consumer + address_place_id persistence (W2a #199 — closes #166)
-- [d] [ ] datetime-local + trip TZ (W2b #200 — closes #167, #108)
-- [d] [ ] Airline picker + IATA enforcement (W2c #198 — closes #168)
+- [d] [v] Dress-code chips (W1a #195 — closes #163)
+- [d] [v] Activity-tag chips (W1b #196 — closes #164)
+- [d] [v] Member-flag chips + organizer view + self-read (W1c #197 — closes #165)
+- [d] [v] Places UI consumer + address_place_id persistence (W2a #199 — closes #166)
+- [d] [v] datetime-local + trip TZ (W2b #200 — closes #167, #108)
+- [d] [v] Airline picker + IATA enforcement (W2c #198 — closes #168)
 
 **Polish (Waves 3–4)**
-- [d] [ ] Theming + persimmon focus-ring (W3a #201 — closes #90, #121)
-- [d] [ ] RSVP color + icon (W3b #202 — closes #45)
-- [d] [ ] Legal stubs (W4a #203 — closes #81)
-- [d] [ ] Prod-walk fixes + axe sweep (W4b #204 — closes #82)
+- [d] [v] Theming + persimmon focus-ring (W3a #201 — closes #90, #121)
+- [d] [v] RSVP color + icon (W3b #202 — closes #45)
+- [d] [v] Legal stubs (W4a #203 — closes #81)
+- [d] [v] Prod-walk fixes + axe sweep (W4b #204 — closes #82)
 
 **Closure (Wave 4c)**
-- [d] [ ] m4-retro.md authored
-- [d] [ ] M4 closure ADR in decisions.md
-- [d] [ ] roadmap.md + ROADMAP.md updated to Closed
-- [d] [ ] CLAUDE.md current-phase updated
-- [d] [ ] m4-golden-path.spec.ts authored
-- [d] [ ] deployment-readiness.md closure status recorded
+- [d] [v] m4-retro.md authored
+- [d] [v] M4 closure ADR in decisions.md
+- [d] [v] roadmap.md + ROADMAP.md updated to Closed
+- [d] [v] CLAUDE.md current-phase updated
+- [d] [v] m4-golden-path.spec.ts authored
+- [d] [v] deployment-readiness.md closure status recorded
 
 ---
 
