@@ -1,12 +1,14 @@
 /**
- * Unit tests for the auth callback logic — covers both the legacy PKCE
- * `code` path and the new token-hash `verifyOtp` path, and the new
- * 6-digit OTP token path.
+ * Unit tests for the auth callback logic — covers the 6-digit OTP token
+ * `verifyOtp` path and the PKCE `code` path (used by OAuth in PR5).
  *
  * The callback route itself is a Next.js route handler and can't be
  * unit-tested directly without the full request lifecycle. Instead, the
  * branching logic is extracted into `lib/auth/callback-handler.ts` and
  * tested here in isolation.
+ *
+ * The legacy `token_hash` branch (M3 W0c, magic-link URLs) was removed
+ * in M5 PR3 after the in-flight link drain expired.
  *
  * Override C compliance: tests live in lib/, not app/.
  */
@@ -50,17 +52,16 @@ describe("resolveCallbackResult()", () => {
     vi.clearAllMocks();
   });
 
-  // ── token-hash path (new default) ────────────────────────────────────────
+  // ── 6-digit OTP token path (primary verify) ──────────────────────────────
 
-  describe("token-hash path (verifyOtp)", () => {
-    it("calls verifyOtp with token_hash and type when both are present", async () => {
+  describe("6-digit OTP token path (verifyOtp with email + token + type)", () => {
+    it("calls verifyOtp with email, token, and type when present", async () => {
       verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
 
       const params: CallbackParams = {
-        token_hash: "abc123",
         type: "email",
-        token: null,
-        email: null,
+        token: "123456",
+        email: "user@example.com",
         code: null,
         next: "/trips",
       };
@@ -68,7 +69,8 @@ describe("resolveCallbackResult()", () => {
       const result = await resolveCallbackResult(params);
 
       expect(verifyOtpSpy).toHaveBeenCalledWith({
-        token_hash: "abc123",
+        email: "user@example.com",
+        token: "123456",
         type: "email",
       });
       expect(exchangeCodeForSessionSpy).not.toHaveBeenCalled();
@@ -82,112 +84,10 @@ describe("resolveCallbackResult()", () => {
 
       verifyOtpSpy.mockResolvedValue({
         data: {},
-        error: { status: 400, name: "AuthApiError", message: "Invalid OTP" },
-      });
-
-      const params: CallbackParams = {
-        token_hash: "bad-hash",
-        type: "email",
-        token: null,
-        email: null,
-        code: null,
-        next: "/trips",
-      };
-
-      const result = await resolveCallbackResult(params);
-
-      expect(result).toEqual({ ok: false });
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "[auth] verifyOtp failed",
-        expect.objectContaining({ message: "Invalid OTP" }),
-      );
-
-      consoleErrorSpy.mockRestore();
-    });
-
-    it("requires type to be present alongside token_hash — falls through to error if type is missing", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
-      const params: CallbackParams = {
-        token_hash: "abc123",
-        type: null,
-        token: null,
-        email: null,
-        code: null,
-        next: "/trips",
-      };
-
-      const result = await resolveCallbackResult(params);
-
-      expect(verifyOtpSpy).not.toHaveBeenCalled();
-      expect(exchangeCodeForSessionSpy).not.toHaveBeenCalled();
-      expect(result).toEqual({ ok: false });
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "[auth] callback missing required params",
-        expect.any(Object),
-      );
-
-      consoleErrorSpy.mockRestore();
-    });
-
-    it("preserves the next param through the success result", async () => {
-      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
-
-      const params: CallbackParams = {
-        token_hash: "abc123",
-        type: "email",
-        token: null,
-        email: null,
-        code: null,
-        next: "/trips/xyz-trip-id",
-      };
-
-      const result = await resolveCallbackResult(params);
-
-      expect(result).toEqual({ ok: true, next: "/trips/xyz-trip-id" });
-    });
-  });
-
-  // ── 6-digit OTP token path (new, form-entered code) ──────────────────────
-
-  describe("6-digit OTP token path (verifyOtp with email + token + type)", () => {
-    it("calls verifyOtp with email, token, and type when present and token_hash is absent", async () => {
-      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
-
-      const params: CallbackParams = {
-        token_hash: null,
-        type: "email",
-        token: "123456",
-        email: "user@example.com",
-        code: null,
-        next: "/trips",
-      };
-
-      const result = await resolveCallbackResult(params);
-
-      expect(verifyOtpSpy).toHaveBeenCalledWith({
-        email: "user@example.com",
-        token: "123456",
-        type: "email",
-      });
-      expect(exchangeCodeForSessionSpy).not.toHaveBeenCalled();
-      expect(result).toEqual({ ok: true, next: "/trips" });
-    });
-
-    it("returns ok:false and logs when verifyOtp returns an error on token path", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
-      verifyOtpSpy.mockResolvedValue({
-        data: {},
         error: { status: 400, name: "AuthApiError", message: "Token has expired or is invalid" },
       });
 
       const params: CallbackParams = {
-        token_hash: null,
         type: "email",
         token: "000000",
         email: "user@example.com",
@@ -212,7 +112,6 @@ describe("resolveCallbackResult()", () => {
         .mockImplementation(() => {});
 
       const params: CallbackParams = {
-        token_hash: null,
         type: "email",
         token: "123456",
         email: null,
@@ -233,13 +132,37 @@ describe("resolveCallbackResult()", () => {
       consoleErrorSpy.mockRestore();
     });
 
+    it("falls through to error when email is present but token is absent", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      const params: CallbackParams = {
+        type: "email",
+        token: null,
+        email: "user@example.com",
+        code: null,
+        next: "/trips",
+      };
+
+      const result = await resolveCallbackResult(params);
+
+      expect(verifyOtpSpy).not.toHaveBeenCalled();
+      expect(result).toEqual({ ok: false });
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[auth] callback missing required params",
+        expect.any(Object),
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+
     it("enforces type allowlist on the token path — rejects 'not-a-real-type'", async () => {
       const consoleErrorSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
 
       const params: CallbackParams = {
-        token_hash: null,
         type: "not-a-real-type",
         token: "123456",
         email: "user@example.com",
@@ -260,11 +183,10 @@ describe("resolveCallbackResult()", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it("does not call Supabase client when token is present but email is absent", async () => {
+    it("does not allocate the Supabase client when token is present but email is absent", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
 
       const params: CallbackParams = {
-        token_hash: null,
         type: "email",
         token: "123456",
         email: null,
@@ -278,16 +200,52 @@ describe("resolveCallbackResult()", () => {
 
       vi.restoreAllMocks();
     });
+
+    it("preserves the next param through the success result", async () => {
+      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
+
+      const params: CallbackParams = {
+        type: "email",
+        token: "123456",
+        email: "user@example.com",
+        code: null,
+        next: "/trips/xyz-trip-id",
+      };
+
+      const result = await resolveCallbackResult(params);
+
+      expect(result).toEqual({ ok: true, next: "/trips/xyz-trip-id" });
+    });
+
+    it("accepts all six documented OTP types via the token path", async () => {
+      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
+      for (const type of [
+        "email",
+        "magiclink",
+        "recovery",
+        "invite",
+        "email_change",
+        "signup",
+      ] as const) {
+        const result = await resolveCallbackResult({
+          type,
+          token: "123456",
+          email: "user@example.com",
+          code: null,
+          next: "/trips",
+        });
+        expect(result).toEqual({ ok: true, next: "/trips" });
+      }
+    });
   });
 
-  // ── PKCE code path (backward compat) ─────────────────────────────────────
+  // ── PKCE code path (OAuth — PR5 wires Google sign-in) ────────────────────
 
-  describe("PKCE code path (exchangeCodeForSession — backward compat)", () => {
-    it("calls exchangeCodeForSession when code is present and token_hash is absent", async () => {
+  describe("PKCE code path (exchangeCodeForSession — OAuth)", () => {
+    it("calls exchangeCodeForSession when code is present and OTP params are absent", async () => {
       exchangeCodeForSessionSpy.mockResolvedValue({ data: {}, error: null });
 
       const params: CallbackParams = {
-        token_hash: null,
         type: null,
         token: null,
         email: null,
@@ -318,7 +276,6 @@ describe("resolveCallbackResult()", () => {
       });
 
       const params: CallbackParams = {
-        token_hash: null,
         type: null,
         token: null,
         email: null,
@@ -338,67 +295,17 @@ describe("resolveCallbackResult()", () => {
     });
   });
 
-  // ── precedence: token_hash wins over all ─────────────────────────────────
-
-  describe("precedence: token_hash wins over token and code", () => {
-    it("uses verifyOtp(token_hash) when both token_hash and token are present", async () => {
-      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
-
-      const params: CallbackParams = {
-        token_hash: "new-style-hash",
-        type: "email",
-        token: "123456",
-        email: "user@example.com",
-        code: null,
-        next: "/trips",
-      };
-
-      const result = await resolveCallbackResult(params);
-
-      expect(verifyOtpSpy).toHaveBeenCalledWith({
-        token_hash: "new-style-hash",
-        type: "email",
-      });
-      expect(exchangeCodeForSessionSpy).not.toHaveBeenCalled();
-      expect(result).toEqual({ ok: true, next: "/trips" });
-    });
-
-    it("uses verifyOtp (not exchangeCodeForSession) when both token_hash and code are present", async () => {
-      // This can happen during the template-flip transition window.
-      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
-
-      const params: CallbackParams = {
-        token_hash: "new-style-hash",
-        type: "email",
-        token: null,
-        email: null,
-        code: "legacy-pkce-code",
-        next: "/trips",
-      };
-
-      const result = await resolveCallbackResult(params);
-
-      expect(verifyOtpSpy).toHaveBeenCalledWith({
-        token_hash: "new-style-hash",
-        type: "email",
-      });
-      expect(exchangeCodeForSessionSpy).not.toHaveBeenCalled();
-      expect(result).toEqual({ ok: true, next: "/trips" });
-    });
-  });
-
   // ── precedence: token wins over code ─────────────────────────────────────
 
   describe("precedence: token wins over code", () => {
-    it("uses verifyOtp(token) when both token and code are present and token_hash is absent", async () => {
+    it("uses verifyOtp(token) when both token+email+type and code are present", async () => {
       verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
 
       const params: CallbackParams = {
-        token_hash: null,
         type: "email",
         token: "123456",
         email: "user@example.com",
-        code: "legacy-pkce-code",
+        code: "stale-pkce-code",
         next: "/trips",
       };
 
@@ -417,13 +324,12 @@ describe("resolveCallbackResult()", () => {
   // ── no params ─────────────────────────────────────────────────────────────
 
   describe("missing params", () => {
-    it("returns ok:false when neither code nor token_hash nor token is present", async () => {
+    it("returns ok:false when neither token nor code is present", async () => {
       const consoleErrorSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
 
       const params: CallbackParams = {
-        token_hash: null,
         type: null,
         token: null,
         email: null,
@@ -445,60 +351,6 @@ describe("resolveCallbackResult()", () => {
       );
 
       consoleErrorSpy.mockRestore();
-    });
-  });
-
-  // ── unknown OTP type ──────────────────────────────────────────────────────
-
-  describe("type allowlist", () => {
-    it("rejects an unknown OTP type before calling Supabase (token_hash path)", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-
-      const params: CallbackParams = {
-        token_hash: "abc123",
-        // Intentionally not in the ALLOWED_OTP_TYPES allowlist.
-        type: "not-a-real-otp-type",
-        token: null,
-        email: null,
-        code: null,
-        next: "/trips",
-      };
-
-      const result = await resolveCallbackResult(params);
-
-      expect(result).toEqual({ ok: false });
-      expect(verifyOtpSpy).not.toHaveBeenCalled();
-      expect(createClientMock).not.toHaveBeenCalled();
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "[auth] callback got unknown OTP type",
-        { type: "not-a-real-otp-type" },
-      );
-
-      consoleErrorSpy.mockRestore();
-    });
-
-    it("accepts all six documented OTP types", async () => {
-      verifyOtpSpy.mockResolvedValue({ data: {}, error: null });
-      for (const type of [
-        "email",
-        "magiclink",
-        "recovery",
-        "invite",
-        "email_change",
-        "signup",
-      ] as const) {
-        const result = await resolveCallbackResult({
-          token_hash: "h",
-          type,
-          token: null,
-          email: null,
-          code: null,
-          next: "/trips",
-        });
-        expect(result).toEqual({ ok: true, next: "/trips" });
-      }
     });
   });
 });

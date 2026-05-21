@@ -5,6 +5,150 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-21 — M5 auth redesign — password + OTP + OAuth (PR3 template flip)
+
+**Decision:** Replace Supabase magic-link-as-primary with email+password
+(primary) + 6-digit OTP code (fallback) + Google OAuth (alternative; PR5).
+Magic link demoted to verification/recovery primitive only. Add
+`/account/sign-in-and-security` for password rotation (PR4). Threat model
+is bachelor-party-insider per `feedback_friction_vs_security` memory
+note — friction < defense-in-depth, rate-limiting is the load-bearing
+brute-force control.
+
+**Supersedes:** the M3 W0c decision to use magic-link-via-`token_hash`
+URLs as the primary auth path. The `token_hash` branch is deleted from
+`lib/auth/callback-handler.ts` in this PR after the 1-hour link-drain.
+
+### Why 6-character minimum password with no complexity rules
+
+For a 12-person bachelor party, the realistic attack is an organizer
+guessing another organizer's password. The defense against that is rate
+limiting (`AUTH_PASSWORD`, 5 attempts / 15 min per email), not character
+classes. Forcing "must contain a number and symbol" produces SaaS-y
+friction that the user explicitly does not want and that the threat
+model does not require. 6 characters is the floor below which even a
+trivial brute-force becomes too cheap; above the floor, the rate limit
+does the work.
+
+**Alternatives considered:** 8+ characters with class rules; zxcvbn-style
+strength meter; HaveIBeenPwned breach check. All rejected — each adds
+user-perceptible friction without changing the threat-model math.
+
+### Why no HaveIBeenPwned breach check
+
+HIBP catches passwords reused from public breaches. At insider-only
+scale (12 people, all known to the organizer), a breached-password
+match is more likely to be a false-positive (Dave reuses his Spotify
+password) than a true positive. The fetch also adds latency to the
+sign-in path and a third-party dependency. Rejected.
+
+### Why no recent-reauth gate before password change
+
+A recent-reauth gate ("you must enter your current password again
+within the last 5 minutes to change it") defends against session-
+hijack scenarios where the attacker has cookie access but not the
+plaintext password. At this threat tier — insider-only, 12-person
+trip — single-device-pwn = game over is the accepted floor. If
+someone has Dave's unlocked phone, the trip is already over and a
+recent-reauth gate doesn't change that. Rejected.
+
+### Why no separate `/forgot-password` route
+
+The 6-digit OTP fallback already serves as the recovery primitive.
+A separate password-reset route would duplicate the email-code flow
+under a different name. Users who forget their password tap "Email
+me a code instead" on `/login`, get a 6-digit code, and (in PR4) can
+set a new password from `/account/sign-in-and-security` via the
+State C sub-flow. The single recovery primitive is cleaner.
+
+### Why no "remove password" affordance in account UI
+
+Footgun. If a user removes their password, they're left with OTP-as-
+sole-auth, which is fine until they delete the email or change
+addresses. Account-locked scenarios are recoverable for the owner
+but painful for the user; not worth the surface area.
+
+### Why we accept the OAuth-user-typing-password enumeration leak (PR5)
+
+When PR5 lands, an attacker who types a wrong password for an email
+that exists with a Google-only identity will see *"You signed up with
+Google. Sign in with Google, or get a code emailed instead?"* — a
+strong enumeration oracle. This is acceptable at this threat tier:
+
+- The leak requires a `wrong-password` event on a real account, gated
+  behind `AUTH_PASSWORD` rate-limit (5/15min per email).
+- The user-experience gain is large — a confused organizer who forgot
+  they signed up with Google sees an actionable prompt instead of a
+  generic error.
+
+Suppressing the leak would either require silent re-routing (poor UX)
+or a generic error message that fails to help the legitimate user.
+
+### Why State B (PR5) has no OTP gate before set-password
+
+State B is the set-password flow for users who signed in via OAuth or
+OTP and want to add a password. They are *already authenticated* via
+their existing identity. An additional OTP gate would force a fresh
+code email for a user who just clicked through one. The invite-flow
+auto-signin precedent (M2 — accept-invite auto-creates the session
+without an additional challenge) is the same reasoning. Asymmetric
+with the password-change flow (PR4), which DOES verify the current
+password — but that's because the current password is the existing
+credential to be rotated. State B has no existing credential to
+verify; the existing identity is the verification.
+
+### Rate-limit posture
+
+| Scope | Budget | Fail-closed on shim? |
+|---|---|---|
+| `AUTH_OTP_VERIFY` | 30/60s (default) | No (allow-with-warning during bootstrap) |
+| `AUTH_PASSWORD` | 5/15 min per email | No (same rationale) |
+| `AUTH_CHANGE_PASSWORD` (PR4) | 5/15 min per user | No |
+
+The `FAIL_CLOSED_ON_SHIM` posture matches the existing
+`AUTH_OTP_VERIFY` precedent — bootstrapping deploys without Upstash
+should still allow auth (the deployment is too small to have an
+abuse vector at that stage). The loud `console.error` in the shim
+catches a future regression where Upstash provisioning silently
+drops.
+
+### M5 ship sequence (umbrella #220)
+
+- **PR1 (#226):** widened `verifyOtp` to accept both `token_hash`
+  (legacy) and `token + email + type` (new). Scope rename
+  `AUTH_MAGIC_LINK` → `AUTH_OTP_VERIFY`. Merged 2026-05-21.
+- **PR2 (#227):** progressive-disclosure form, `signInWithPasswordAction`,
+  `signUpAction`, `verifyEmailCodeAction`, `requestEmailCode` (renamed),
+  `AUTH_PASSWORD` rate-limit, inline auth on `/invite/[token]`,
+  `lib/copy/auth.ts` palette. Merged 2026-05-21.
+- **PR3 (#228, this PR):** Supabase Dashboard email-template flip
+  ({{ .ConfirmationURL }} → {{ .Token }}), 1-hour link drain, deletion
+  of the legacy `token_hash` branch from the callback handler, this
+  ADR, `CLAUDE.md` auth-block update, runbook
+  `notes/runbooks/auth-template-flip.md`. Closes #206.
+- **PR4 (#224, next):** `/account/sign-in-and-security` page with State
+  A / A+ / C; `changePasswordAction` with server-side email pinning +
+  `signOut({scope:'others'})`; `AUTH_CHANGE_PASSWORD` rate-limit.
+- **PR5 (#225, last):** Google OAuth + State B (set-password for
+  identity-only users). Appends State-B-OTP-drop rationale to this
+  same ADR.
+
+**Alternatives considered for the sequencing:**
+
+- Bundling PR3's dashboard flip into PR2: rejected because the 1-hour
+  drain requires a holding pattern that breaks the per-PR workflow.
+- Doing PR4+PR5 first (before the template flip): rejected because
+  PR5's State B touches the same `_form.tsx` and `actions.ts` files
+  as PR2, and parallel waves on a 360-LOC client component are a
+  collision risk. The sequential plan is also simpler to reason
+  about for the operator performing the dashboard flips.
+
+**Memory:**
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/feedback_friction_vs_security.md` is load-bearing for every "no" above. Re-read it before flagging any of these decisions in a future PR review.
+- `~/.claude/projects/-Users-carlchang-Projects-Party-Trip/memory/project_m5_auth_redesign.md` tracks the milestone status.
+
+---
+
 ## 2026-05-21 — M4 — Trip is shippable — milestone closed
 
 **Decision:** M4 closed. The MVP is shipped: five-tab IA, structured
