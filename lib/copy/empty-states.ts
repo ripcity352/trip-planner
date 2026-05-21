@@ -348,6 +348,12 @@ export const M4_UI_STRINGS = {
   // Travel leg — airline typeahead
   // Voice lock: matches arrivals_leg_form_carrier_label palette tone.
   travelLeg_airline_placeholder: "Type your airline",
+  // /me page — W0d skeleton (no completion UI per Voice CRITICAL C1)
+  me_page_heading: "You",
+  me_label_name: "Name",
+  me_label_email: "Email",
+  me_sign_out_cta: "Sign out",
+  me_display_name_fallback: "Crew member",
 } as const;
 
 export type M4UIStringKey = keyof typeof M4_UI_STRINGS;

@@ -19,6 +19,10 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { updateItineraryItem, deleteItineraryItem } from "@/lib/actions/itinerary";
 import type { ItineraryItem } from "@/lib/db/types";
+import { DressCodeField } from "./fields/dress-code-field";
+import { ActivityTagField } from "./fields/activity-tag-field";
+import { AddressField } from "./fields/address-field";
+import { DatetimeField } from "./fields/datetime-field";
 
 const ITEM_KINDS = [
   "event",
@@ -86,6 +90,8 @@ export function EditItemForm({
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -200,65 +206,34 @@ export function EditItemForm({
         </select>
       </div>
 
-      {/* Day */}
-      <div>
-        <label htmlFor="edit-day" className={labelClass}>
-          {M3_UI_STRINGS.itineraryForm_starts_label}
-        </label>
-        <input
-          id="edit-day"
-          type="date"
-          {...register("day")}
-          disabled={isBusy}
-          className={inputClass}
-        />
-        {errors.day ? (
-          <p className="text-destructive mt-1 text-xs">{errors.day.message}</p>
-        ) : null}
-      </div>
+      {/* Day — pre-split into DatetimeField (W2b will swap to richer picker) */}
+      <DatetimeField
+        value={watch("day")}
+        onChange={(v) => setValue("day", v, { shouldValidate: true })}
+        disabled={isBusy}
+        error={errors.day?.message}
+      />
 
-      {/* Address */}
-      <div>
-        <label htmlFor="edit-address" className={labelClass}>
-          {M3_UI_STRINGS.itineraryForm_address_label}
-        </label>
-        <input
-          id="edit-address"
-          type="text"
-          {...register("address")}
-          placeholder={M3_UI_STRINGS.itineraryForm_address_placeholder}
-          disabled={isBusy}
-          className={inputClass}
-        />
-      </div>
+      {/* Address — pre-split into AddressField (W2a will add places-API widget) */}
+      <AddressField
+        value={watch("address") ?? ""}
+        onChange={(v) => setValue("address", v)}
+        disabled={isBusy}
+      />
 
-      {/* Dress code */}
-      <div>
-        <label htmlFor="edit-dress" className={labelClass}>
-          {M3_UI_STRINGS.itineraryForm_dress_label}
-        </label>
-        <input
-          id="edit-dress"
-          type="text"
-          {...register("dressCode")}
-          disabled={isBusy}
-          className={inputClass}
-        />
-      </div>
+      {/* Dress code — pre-split into DressCodeField (W1a will add chip picker) */}
+      <DressCodeField
+        value={watch("dressCode") ?? ""}
+        onChange={(v) => setValue("dressCode", v)}
+        disabled={isBusy}
+      />
 
-      {/* Tags */}
-      <div>
-        <label htmlFor="edit-tags" className={labelClass}>
-          {M3_UI_STRINGS.itineraryForm_tags_label}
-        </label>
-        <input
-          id="edit-tags"
-          type="text"
-          {...register("activityTags")}
-          disabled={isBusy}
-          className={inputClass}
-        />
-      </div>
+      {/* Tags — pre-split into ActivityTagField (W1b will add chip picker) */}
+      <ActivityTagField
+        value={watch("activityTags") ?? ""}
+        onChange={(v) => setValue("activityTags", v)}
+        disabled={isBusy}
+      />
 
       {/* Visibility */}
       <div>
