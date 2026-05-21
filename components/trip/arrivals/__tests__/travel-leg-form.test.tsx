@@ -32,6 +32,8 @@ const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   notes: "Window seat please",
   idempotency_key: null,
   created_at: "2026-05-20T00:00:00Z",
+  airline_iata: null,
+  flight_number: null,
   ...overrides,
 });
 
@@ -290,6 +292,49 @@ describe("TravelLegForm — edit mode", () => {
     await waitFor(() => {
       expect(mockUpsert).toHaveBeenCalledWith(
         expect.objectContaining({ legId: "leg-42", tripId: "trip-1" }),
+        expect.any(String)
+      );
+    });
+  });
+
+  it("pre-populates airlineIata and flightNumber from existing leg", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({ airline_iata: "AA", flight_number: "1234" })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    // The AirlinePicker displays the selected airline name in the combobox
+    const airlineInput = screen.getByRole("combobox", { name: /airline/i }) as HTMLInputElement;
+    expect(airlineInput.value).toContain("American Airlines");
+
+    const flightInput = screen.getByRole("textbox", { name: /flight number/i }) as HTMLInputElement;
+    expect(flightInput.value).toBe("1234");
+  });
+
+  it("passes airlineIata and flightNumber to upsertTravelLeg on submit", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({ id: "leg-55", airline_iata: "DL", flight_number: "200" })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          airlineIata: "DL",
+          flightNumber: "200",
+        }),
         expect.any(String)
       );
     });

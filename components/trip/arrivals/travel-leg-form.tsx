@@ -12,10 +12,12 @@
  *
  * Idempotency: `crypto.randomUUID()` on every submit per the strictly-user
  * table ADR (scope: trip_id + trip_member_id + idempotency_key).
+ *
+ * M4 W2c: integrates AirlinePicker for airline_iata + flight_number.
  */
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
@@ -23,6 +25,7 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { upsertTravelLeg, deleteTravelLeg } from "@/lib/actions/travel-legs";
 import type { TravelLeg } from "@/lib/db/types";
+import { AirlinePicker } from "./airline-picker";
 
 const LEG_KINDS = ["flight", "train", "drive", "other"] as const;
 
@@ -33,6 +36,15 @@ const formSchema = z.object({
   carrier: z.string().trim().max(100).optional(),
   confirmationCode: z.string().trim().max(100).optional(),
   notes: z.string().trim().max(1000).optional(),
+  // M4 W2c additions — airline picker
+  airlineIata: z
+    .string()
+    .regex(/^[A-Z0-9]{2}$/)
+    .optional(),
+  flightNumber: z
+    .string()
+    .regex(/^[A-Z0-9]{1,8}$/)
+    .optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -92,6 +104,7 @@ export function TravelLegForm({
   const {
     register,
     handleSubmit,
+    control,
     formState: { isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -102,6 +115,9 @@ export function TravelLegForm({
       carrier: leg?.carrier ?? "",
       confirmationCode: leg?.confirmation_code ?? "",
       notes: leg?.notes ?? "",
+      // M4 W2c: pre-populate from leg if editing
+      airlineIata: leg?.airline_iata ?? undefined,
+      flightNumber: leg?.flight_number ?? undefined,
     },
   });
 
@@ -119,6 +135,9 @@ export function TravelLegForm({
         confirmationCode: values.confirmationCode || null,
         notes: values.notes || null,
         legId: isEditMode ? leg.id : undefined,
+        // M4 W2c additions
+        airlineIata: values.airlineIata || null,
+        flightNumber: values.flightNumber || null,
       },
       idempotencyKey
     );
@@ -207,7 +226,7 @@ export function TravelLegForm({
         />
       </div>
 
-      {/* Carrier */}
+      {/* Carrier — kept for freeform + non-flight legs */}
       <div>
         <label htmlFor="leg-carrier" className={labelClass}>
           {M3_UI_STRINGS.arrivals_leg_form_carrier_label}
@@ -220,6 +239,42 @@ export function TravelLegForm({
           className={inputClass}
         />
       </div>
+
+      {/* Airline picker — M4 W2c: IATA typeahead + flight number */}
+      <Controller
+        name="airlineIata"
+        control={control}
+        render={({ field: airlineField }) => (
+          <Controller
+            name="flightNumber"
+            control={control}
+            render={({ field: flightField }) => (
+              <Controller
+                name="carrier"
+                control={control}
+                render={({ field: carrierField }) => (
+                  <AirlinePicker
+                    value={{
+                      airlineIata: airlineField.value,
+                      flightNumber: flightField.value,
+                      carrier: carrierField.value,
+                    }}
+                    onChange={(next) => {
+                      airlineField.onChange(next.airlineIata);
+                      flightField.onChange(next.flightNumber);
+                      // Freeform carrier flows back into the carrier field
+                      if (next.carrier !== undefined) {
+                        carrierField.onChange(next.carrier);
+                      }
+                    }}
+                    disabled={isBusy}
+                  />
+                )}
+              />
+            )}
+          />
+        )}
+      />
 
       {/* Confirmation code */}
       <div>
