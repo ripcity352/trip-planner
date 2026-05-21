@@ -100,9 +100,19 @@ Deeper local/staging/prod context:
 pnpm dev
 ```
 
-Open <http://localhost:3000>. Login is via magic link — locally the
-email lands in Inbucket at <http://127.0.0.1:54324>, not your real
-inbox.
+Open <http://localhost:3000>. Sign in flow (post-M5):
+- **Primary:** email + password. Sign-up is explicit — entering a new
+  email and password creates the account immediately.
+- **Fallback:** click "Email me a code instead" to receive a 6-digit
+  OTP code (the email body contains the code itself, not a link).
+- **Alternative:** Google OAuth, once enabled in the Supabase dashboard.
+  See `notes/runbooks/auth-setup.md` for the provider setup.
+
+Locally, all email goes to Inbucket at <http://127.0.0.1:54324>, not
+your real inbox — paste the 6-digit code from there. See
+`notes/decisions.md` "M5 auth redesign" ADR for the threat-model
+rationale behind the chosen surface (6-char password minimum, no
+breach check, etc.).
 
 ## Step 6 — Verify the toolchain
 
