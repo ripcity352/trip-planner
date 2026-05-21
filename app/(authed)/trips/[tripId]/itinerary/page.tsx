@@ -111,6 +111,7 @@ export default async function ItineraryPage({ params }: PageProps) {
               celebrantName={celebrantName}
               lodgingAssignmentsMap={lodgingAssignmentsMap}
               tripMembers={tripMembers}
+              tripTimezone={trip.timezone}
             />
           ))}
         </div>

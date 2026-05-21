@@ -3,11 +3,8 @@
 /**
  * EditItemForm — organizer-only form to update or delete an itinerary item.
  *
- * Same field shape as AddItemForm. Adds a Delete button with a
- * two-tap confirmation pattern (first tap shows the confirm text;
- * second tap executes the delete).
- *
- * No new dependencies.
+ * W2b: added startTime / endTime fields (UTC ISO-8601) rendered via the
+ * trip's timezone. tripTimezone is a new required prop.
  */
 
 import * as React from "react";
@@ -23,6 +20,7 @@ import { DressCodeField } from "./fields/dress-code-field";
 import { ActivityTagField } from "./fields/activity-tag-field";
 import { AddressField } from "./fields/address-field";
 import { DatetimeField } from "./fields/datetime-field";
+import { DateTimeLocalFieldImpl } from "./fields/datetime-local-field-impl";
 
 const ITEM_KINDS = [
   "event",
@@ -48,6 +46,9 @@ const formSchema = z.object({
   day: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, M3_UI_STRINGS.itineraryForm_validation_day_format),
+  // W2b: datetime fields — UTC ISO-8601 strings from the datetime-local widget.
+  startTime: z.string().datetime({ offset: true }).nullable().optional(),
+  endTime: z.string().datetime({ offset: true }).nullable().optional(),
   address: z.string().trim().max(500).optional(),
   // W2a: Places autocomplete columns (#166).
   addressPlaceId: z.string().trim().max(255).optional(),
@@ -76,6 +77,8 @@ const VISIBILITY_LABELS: Record<(typeof VISIBILITY_OPTIONS)[number], string> = {
 
 export interface EditItemFormProps {
   item: ItineraryItem;
+  /** IANA timezone from `trips.timezone` — passed from the page level. */
+  tripTimezone: string;
   onSuccess: (item: ItineraryItem) => void;
   onCancel: () => void;
   onDeleted: () => void;
@@ -83,6 +86,7 @@ export interface EditItemFormProps {
 
 export function EditItemForm({
   item,
+  tripTimezone,
   onSuccess,
   onCancel,
   onDeleted,
@@ -103,6 +107,8 @@ export function EditItemForm({
       title: item.title,
       kind: item.kind,
       day: item.day,
+      startTime: item.start_time ?? null,
+      endTime: item.end_time ?? null,
       address: item.address ?? "",
       addressPlaceId: item.address_place_id ?? undefined,
       addressProvider: (item.address_provider as "google" | undefined) ?? undefined,
@@ -123,6 +129,8 @@ export function EditItemForm({
         title: values.title,
         kind: values.kind,
         day: values.day,
+        startTime: values.startTime ?? null,
+        endTime: values.endTime ?? null,
         address: values.address || null,
         addressPlaceId: values.addressPlaceId || null,
         addressProvider: values.addressProvider || null,
@@ -207,13 +215,29 @@ export function EditItemForm({
         </select>
       </div>
 
-      {/* Day — pre-split into DatetimeField (W2b will swap to richer picker) */}
+      {/* Start time — datetime-local widget, rendered in trip TZ */}
       <DatetimeField
-        value={watch("day")}
-        onChange={(v) => setValue("day", v, { shouldValidate: true })}
+        value={watch("startTime") ?? null}
+        onChange={(v) => setValue("startTime", v, { shouldValidate: true })}
         disabled={isBusy}
-        error={errors.day?.message}
+        tripTimezone={tripTimezone}
+        error={errors.startTime?.message}
       />
+
+      {/* End time — datetime-local widget, rendered in trip TZ (W2b) */}
+      <div>
+        <label htmlFor="edit-endtime" className={labelClass}>
+          {M3_UI_STRINGS.itineraryForm_ends_label}
+        </label>
+        <DateTimeLocalFieldImpl
+          id="edit-endtime"
+          value={watch("endTime") ?? null}
+          onChange={(v) => setValue("endTime", v, { shouldValidate: true })}
+          disabled={isBusy}
+          tripTimezone={tripTimezone}
+          error={errors.endTime?.message}
+        />
+      </div>
 
       {/* Address — W2a: places-API autocomplete widget (#166) */}
       <AddressField
@@ -322,3 +346,4 @@ export function EditItemForm({
     </form>
   );
 }
+

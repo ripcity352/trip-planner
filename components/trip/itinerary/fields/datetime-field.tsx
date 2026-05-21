@@ -1,52 +1,51 @@
 "use client";
 
 /**
- * DatetimeField — extracted from edit-item-form.tsx (pre-split).
+ * DatetimeField — shim that wraps DateTimeLocalFieldImpl.
  *
- * W2b (datetime) will replace this simple date input with a richer datetime
- * picker. Pre-split here to eliminate the four-way line conflict risk across
- * W1a/W1b/W2a/W2b. Net behavior: identical to the inline field in EditItemForm.
+ * W2b: swapped from a plain `<input type="date">` to the full datetime-local
+ * widget rendered in the trip's timezone.  The shim's public props are a
+ * superset of the old ones so callers (EditItemForm) can pass tripTimezone
+ * without changing the import.
  */
 
-import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { DateTimeLocalFieldImpl } from "./datetime-local-field-impl";
 
 export interface DatetimeFieldProps {
-  value: string;
-  onChange: (value: string) => void;
+  /** UTC ISO-8601 string, or empty string / null when no time is set. */
+  value: string | null | undefined;
+  /** Called with UTC ISO-8601 string, or null when cleared. */
+  onChange: (value: string | null) => void;
   disabled: boolean;
+  /** IANA timezone from `trips.timezone`. Required by W2b. */
+  tripTimezone: string;
   /** Validation error message, if any. */
-  error: string | undefined;
+  error?: string;
 }
-
-const inputClass = cn(
-  "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
-  "placeholder:text-muted-foreground",
-  "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
-  "disabled:cursor-not-allowed disabled:opacity-60"
-);
 
 const labelClass = "block text-sm font-medium text-foreground mb-1";
 
-export function DatetimeField({ value, onChange, disabled, error }: DatetimeFieldProps) {
+export function DatetimeField({
+  value,
+  onChange,
+  disabled,
+  tripTimezone,
+  error,
+}: DatetimeFieldProps) {
   return (
     <div>
-      <label htmlFor="edit-day" className={labelClass}>
+      <label htmlFor="edit-datetime" className={labelClass}>
         {M3_UI_STRINGS.itineraryForm_starts_label}
       </label>
-      <input
-        id="edit-day"
-        type="date"
+      <DateTimeLocalFieldImpl
+        id="edit-datetime"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
         disabled={disabled}
-        className={inputClass}
+        tripTimezone={tripTimezone}
+        error={error}
       />
-      {error ? (
-        <p role="alert" className="text-destructive mt-1 text-xs">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }

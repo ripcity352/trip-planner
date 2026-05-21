@@ -26,6 +26,8 @@ export interface DaySectionProps {
   lodgingAssignmentsMap: Map<string, LodgingAssignment[]>;
   /** All trip members — used by LodgingRoster to display names. */
   tripMembers: TripMember[];
+  /** IANA timezone from `trips.timezone` — forwarded to ItemCard → EditItemFormSheet. */
+  tripTimezone: string;
 }
 
 export function DaySection({
@@ -37,6 +39,7 @@ export function DaySection({
   celebrantName,
   lodgingAssignmentsMap,
   tripMembers,
+  tripTimezone,
 }: DaySectionProps) {
   // parseISO treats the string as local midnight — keeps the weekday
   // consistent with what you'd expect for the trip date.
@@ -61,6 +64,7 @@ export function DaySection({
               celebrantName={celebrantName}
               lodgingAssignments={lodgingAssignmentsMap.get(item.id) ?? []}
               tripMembers={tripMembers}
+              tripTimezone={tripTimezone}
             />
           </li>
         ))}
