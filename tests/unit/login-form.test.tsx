@@ -572,9 +572,12 @@ describe("<LoginForm /> — OAuth-existing-user alert", () => {
     });
   });
 
-  it("'Email me a code instead' in alert triggers requestEmailCode and transitions to code-verify", async () => {
+  it("'Get a code emailed instead' in alert triggers requestEmailCode", async () => {
+    // Set up requestEmailCode BEFORE triggerOAuthAlert so the mock is ready.
     requestEmailCodeMock.mockResolvedValue({ ok: true });
+
     await triggerOAuthAlert();
+
     fireEvent.click(
       screen.getByRole("button", { name: AUTH_COPY.oauth_account_prompt_code_button })
     );

@@ -114,7 +114,7 @@ export const AUTH_COPY = {
   /** First action button in the OAuth-existing-user alert */
   oauth_account_prompt_google_button: "Sign in with Google",
   /** Second action button in the OAuth-existing-user alert */
-  oauth_account_prompt_code_button: "Email me a code instead",
+  oauth_account_prompt_code_button: "Get a code emailed instead",
 
   // ---------------------------------------------------------------------------
   // State B — set password for OAuth-only or OTP-only users (M5/PR5)

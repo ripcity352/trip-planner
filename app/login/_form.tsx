@@ -39,6 +39,7 @@ import {
   signUpAction,
   verifyEmailCodeAction,
   requestEmailCode,
+  signInWithOAuthAction,
 } from "@/app/login/actions";
 import {
   type Mode,
@@ -69,6 +70,9 @@ export function LoginForm({ next }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
+  // Shown when signInWithPassword returns auth_email_taken_oauth — the account
+  // only has a Google identity; prompt the user to sign in with Google instead.
+  const [showOAuthPrompt, setShowOAuthPrompt] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const emailForm = useForm<EmailOnlyValues>({
@@ -93,9 +97,24 @@ export function LoginForm({ next }: LoginFormProps) {
   // Handlers
   // -------------------------------------------------------------------------
 
+  // Starts a Google OAuth round-trip. The server returns a URL; we navigate there.
+  const handleGoogleSignIn = () => {
+    setServerError(null);
+    setShowOAuthPrompt(false);
+    startTransition(async () => {
+      const result = await signInWithOAuthAction({ provider: "google", next });
+      if (result.ok) {
+        window.location.assign(result.url);
+        return;
+      }
+      setServerError(result.errorKey);
+    });
+  };
+
   const handleEmailContinue = emailForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
+    setShowOAuthPrompt(false);
     setEmail(values.email);
     passwordForm.setValue("email", values.email);
     codeForm.setValue("email", values.email);
@@ -105,6 +124,7 @@ export function LoginForm({ next }: LoginFormProps) {
   const handleSignIn = passwordForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
+    setShowOAuthPrompt(false);
     startTransition(async () => {
       const result = await signInWithPasswordAction({
         email: values.email,
@@ -118,12 +138,18 @@ export function LoginForm({ next }: LoginFormProps) {
       if (result.errorKey === "auth_wrong_password") {
         setShowCreateAccount(true);
       }
+      if (result.errorKey === "auth_email_taken_oauth") {
+        // This email belongs to a Google-OAuth-only account.
+        // Show the OAuth-existing-user prompt instead of a generic error.
+        setShowOAuthPrompt(true);
+      }
     });
   });
 
   const handleEmailMeCode = () => {
     setServerError(null);
     setShowCreateAccount(false);
+    setShowOAuthPrompt(false);
     startTransition(async () => {
       const result = await requestEmailCode(email);
       if (result.ok) {
@@ -193,88 +219,110 @@ export function LoginForm({ next }: LoginFormProps) {
 
   if (mode === "email-only") {
     return (
-      <form onSubmit={handleEmailContinue} noValidate className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-email">{AUTH_COPY.emailFieldLabel}</Label>
-          <Input
-            id="login-email"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            aria-invalid={emailForm.formState.errors.email ? "true" : undefined}
-            aria-describedby={inlineError ? "login-error" : undefined}
-            disabled={isPending}
-            {...emailForm.register("email")}
-          />
-        </div>
-        <ErrorNote id="login-error" message={inlineError} />
-        <Button type="submit" disabled={isPending} aria-busy={isPending}>
-          {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.continueButton}</span>}
-        </Button>
-      </form>
+      <div className="flex flex-col gap-3">
+        <form onSubmit={handleEmailContinue} noValidate className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="login-email">{AUTH_COPY.emailFieldLabel}</Label>
+            <Input
+              id="login-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-invalid={emailForm.formState.errors.email ? "true" : undefined}
+              aria-describedby={inlineError ? "login-error" : undefined}
+              disabled={isPending}
+              {...emailForm.register("email")}
+            />
+          </div>
+          <ErrorNote id="login-error" message={inlineError} />
+          <Button type="submit" disabled={isPending} aria-busy={isPending}>
+            {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.continueButton}</span>}
+          </Button>
+        </form>
+        {/* H3 ordering: Google button is BELOW the primary CTA — OTP-as-floor first */}
+        <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+      </div>
     );
   }
 
   if (mode === "password") {
     return (
-      <form onSubmit={handleSignIn} noValidate className="flex flex-col gap-3">
-        {hiddenUsernameField}
-        <p className="text-muted-foreground text-sm">{email}</p>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-password">{AUTH_COPY.passwordFieldLabel}</Label>
-          <div className="relative">
-            <Input
-              id="login-password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              aria-invalid={
-                passwordForm.formState.errors.password ? "true" : undefined
-              }
-              aria-describedby={inlineError ? "login-error" : undefined}
-              disabled={isPending}
-              {...passwordForm.register("password")}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
-              aria-label={
-                showPassword
-                  ? AUTH_COPY.togglePasswordHide
-                  : AUTH_COPY.togglePasswordShow
-              }
-            >
-              {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
-            </button>
+      <div className="flex flex-col gap-3">
+        <form onSubmit={handleSignIn} noValidate className="flex flex-col gap-3">
+          {hiddenUsernameField}
+          <p className="text-muted-foreground text-sm">{email}</p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="login-password">{AUTH_COPY.passwordFieldLabel}</Label>
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                aria-invalid={
+                  passwordForm.formState.errors.password ? "true" : undefined
+                }
+                aria-describedby={inlineError ? "login-error" : undefined}
+                disabled={isPending}
+                {...passwordForm.register("password")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-2 flex items-center px-1 text-xs text-muted-foreground"
+                aria-label={
+                  showPassword
+                    ? AUTH_COPY.togglePasswordHide
+                    : AUTH_COPY.togglePasswordShow
+                }
+              >
+                {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
+              </button>
+            </div>
+            <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
           </div>
-          <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
-        </div>
-        <ErrorNote id="login-error" message={inlineError} />
-        <Button type="submit" disabled={isPending} aria-busy={isPending}>
-          {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
-        </Button>
-        {showCreateAccount ? (
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={isPending}
-            onClick={handleCreateAccount}
-          >
-            {AUTH_COPY.createAccountLink}
+          {/* When the OAuth prompt is showing, suppress the generic error note
+              to avoid two overlapping role="alert" elements. The OAuthExistingUserAlert
+              is itself a role="alert" that covers the same error state. */}
+          {!showOAuthPrompt ? (
+            <ErrorNote id="login-error" message={inlineError} />
+          ) : null}
+          {/* OAuth-existing-user alert: rendered when auth_email_taken_oauth fires */}
+          {showOAuthPrompt ? (
+            <OAuthExistingUserAlert
+              onGoogleSignIn={handleGoogleSignIn}
+              onEmailCode={handleEmailMeCode}
+              disabled={isPending}
+            />
+          ) : null}
+          <Button type="submit" disabled={isPending} aria-busy={isPending}>
+            {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
           </Button>
-        ) : null}
-        <button
-          type="button"
-          onClick={handleEmailMeCode}
-          disabled={isPending}
-          className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        >
-          {AUTH_COPY.emailMeCodeLink}
-        </button>
-      </form>
+          {showCreateAccount ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isPending}
+              onClick={handleCreateAccount}
+            >
+              {AUTH_COPY.createAccountLink}
+            </Button>
+          ) : null}
+          {/* H3 ordering: OTP link is floor (universal); Google button is above OTP */}
+          <button
+            type="button"
+            onClick={handleEmailMeCode}
+            disabled={isPending}
+            className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            {AUTH_COPY.emailMeCodeLink}
+          </button>
+        </form>
+        {/* H3 ordering: Google button BELOW the "Email me a code" link */}
+        <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+      </div>
     );
   }
 
@@ -357,5 +405,76 @@ function PendingSpinner() {
       />
       <span>...</span>
     </>
+  );
+}
+
+/**
+ * "Continue with Google" — muted outline button (H3: OTP-as-floor first,
+ * Google-as-affordance second; visually distinct from the primary CTA).
+ * Copy sourced from AUTH_COPY — no inline JSX literals (Phase 4 C5).
+ */
+function GoogleButton({
+  onClick,
+  disabled,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full text-muted-foreground"
+    >
+      {AUTH_COPY.continueWithGoogleButton}
+    </Button>
+  );
+}
+
+/**
+ * OAuth-existing-user alert — shown when wrong-password fires on an account
+ * that only has a Google OAuth identity. Surfaces two actions:
+ *   1. Sign in with Google (primary)
+ *   2. Email me a code instead (secondary)
+ *
+ * All copy from AUTH_COPY — no inline JSX literals (Phase 4 C5 / Voice C1).
+ */
+function OAuthExistingUserAlert({
+  onGoogleSignIn,
+  onEmailCode,
+  disabled,
+}: {
+  onGoogleSignIn: () => void;
+  onEmailCode: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div
+      role="alert"
+      className="rounded-xl border border-border bg-card p-4 text-sm text-foreground"
+    >
+      <p className="mb-3">{AUTH_COPY.oauth_account_prompt_text}</p>
+      <div className="flex flex-col gap-2">
+        <Button
+          type="button"
+          onClick={onGoogleSignIn}
+          disabled={disabled}
+          className="w-full"
+        >
+          {AUTH_COPY.oauth_account_prompt_google_button}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onEmailCode}
+          disabled={disabled}
+          className="w-full"
+        >
+          {AUTH_COPY.oauth_account_prompt_code_button}
+        </Button>
+      </div>
+    </div>
   );
 }

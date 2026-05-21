@@ -39,7 +39,21 @@ export default async function SignInAndSecurityPage() {
   const identityState = deriveIdentityState(user);
   const userEmail = user.email ?? "";
 
+  // For State B helper copy: distinguish OAuth-only from OTP-only.
+  // OAuth-only: has a non-email provider identity. OTP-only: no identities.
+  const identities = user.identities ?? [];
+  const identitySubtype: "oauth" | "otp" | undefined =
+    identityState === "no-password"
+      ? identities.some((id) => id.provider !== "email")
+        ? "oauth"
+        : "otp"
+      : undefined;
+
   return (
-    <SecurityForm identityState={identityState} userEmail={userEmail} />
+    <SecurityForm
+      identityState={identityState}
+      userEmail={userEmail}
+      identitySubtype={identitySubtype}
+    />
   );
 }

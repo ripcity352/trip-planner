@@ -51,6 +51,7 @@ export type FormMode =
   | "C-verify"        // State C step 2: OTP code entry
   | "C-verifying"     // State C step 2: submitting OTP
   | "C-set"           // State C step 3: new-password entry (no current-pass)
+  | "B-set"           // State B: first-ever password (no current-pass, no OTP gate)
   | "success";        // Password updated
 
 // ---------------------------------------------------------------------------

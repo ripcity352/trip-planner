@@ -35,7 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AUTH_COPY } from "@/lib/copy/auth";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
-import { changePasswordAction, setPasswordViaRecoveryAction } from "./actions";
+import { changePasswordAction, setPasswordViaRecoveryAction, setPasswordAction } from "./actions";
 import { requestEmailCode } from "@/app/login/actions";
 import {
   type IdentityState,
@@ -43,9 +43,11 @@ import {
   type ChangePasswordValues,
   type OtpCodeValues,
   type NewPasswordValues,
+  type SetPasswordValues,
   changePasswordClientSchema,
   otpCodeClientSchema,
   newPasswordClientSchema,
+  setPasswordClientSchema,
 } from "./_form-state";
 
 // ---------------------------------------------------------------------------
@@ -56,14 +58,23 @@ export type SecurityFormProps = {
   identityState: IdentityState;
   /** Sourced from auth.getUser() in the server component — never from client state. */
   userEmail: string;
+  /**
+   * Distinguishes OAuth-only from OTP-only within the 'no-password' state.
+   * Passed from the server component; drives helper copy in State B.
+   * Undefined for States A and A+.
+   */
+  identitySubtype?: "oauth" | "otp";
 };
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
-  const [mode, setMode] = useState<FormMode>("change-password");
+export function SecurityForm({ identityState, userEmail, identitySubtype }: SecurityFormProps) {
+  // State B users start in B-set; State A/A+ start in change-password.
+  const [mode, setMode] = useState<FormMode>(
+    identityState === "no-password" ? "B-set" : "change-password"
+  );
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
   const [isPending, startTransition] = useTransition();
   // Holds the 6-digit OTP between C-verify (client-side step) and C-set
@@ -84,6 +95,13 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
 
   const newPasswordForm = useForm<NewPasswordValues>({
     resolver: zodResolver(newPasswordClientSchema),
+    defaultValues: { newPassword: "" },
+    mode: "onSubmit",
+  });
+
+  // State B: first-ever password set form.
+  const setPasswordForm = useForm<SetPasswordValues>({
+    resolver: zodResolver(setPasswordClientSchema),
     defaultValues: { newPassword: "" },
     mode: "onSubmit",
   });
@@ -164,6 +182,19 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
     newPasswordForm.reset();
   };
 
+  // State B handler: set password for the first time (no current-pass, no OTP).
+  const handleSetPassword = setPasswordForm.handleSubmit((values) => {
+    setServerError(null);
+    startTransition(async () => {
+      const result = await setPasswordAction({ newPassword: values.newPassword });
+      if (result.ok) {
+        setMode("success");
+        return;
+      }
+      setServerError(result.errorKey);
+    });
+  });
+
   // -------------------------------------------------------------------------
   // Inline error
   // -------------------------------------------------------------------------
@@ -179,6 +210,8 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
     inlineError = otpForm.formState.errors.token?.message ?? serverMsg;
   } else if (mode === "C-set") {
     inlineError = newPasswordForm.formState.errors.newPassword?.message ?? serverMsg;
+  } else if (mode === "B-set") {
+    inlineError = setPasswordForm.formState.errors.newPassword?.message ?? serverMsg;
   }
 
   // iOS Keychain hint — pairs the password with the session-sourced email.
@@ -187,13 +220,40 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
   );
 
   // -------------------------------------------------------------------------
-  // Stub: no-password users (PR5 builds State B)
+  // State B: first-ever password for OAuth-only or OTP-only users (PR5)
   // -------------------------------------------------------------------------
 
-  if (identityState === "no-password") {
+  if (identityState === "no-password" && mode === "B-set") {
+    const helperCopy =
+      identitySubtype === "oauth"
+        ? AUTH_COPY.accountSecurity_stateB_helperOauthOnly
+        : AUTH_COPY.accountSecurity_stateB_helperOtpOnly;
+
     return (
-      <PageShell>
-        <p className="text-sm text-muted-foreground">{AUTH_COPY.accountSecurity_noPasswordStub}</p>
+      <PageShell title={AUTH_COPY.accountSecurity_stateB_title}>
+        {hiddenUsernameField}
+        <form onSubmit={handleSetPassword} noValidate className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">{helperCopy}</p>
+          <PasswordFieldGroup
+            id="security-new-password"
+            testId="new-password-input"
+            label={AUTH_COPY.accountSecurity_newPasswordLabel}
+            autoComplete="new-password"
+            invalid={!!setPasswordForm.formState.errors.newPassword}
+            disabled={isPending}
+            helper={AUTH_COPY.accountSecurity_helperA}
+            {...setPasswordForm.register("newPassword")}
+          />
+          <ErrorNote id="security-error" message={inlineError} />
+          <Button
+            type="submit"
+            data-testid="set-password-button"
+            disabled={isPending}
+            aria-busy={isPending}
+          >
+            {isPending ? <Spinner /> : <span>{AUTH_COPY.accountSecurity_stateB_setButton}</span>}
+          </Button>
+        </form>
       </PageShell>
     );
   }
@@ -347,11 +407,17 @@ export function SecurityForm({ identityState, userEmail }: SecurityFormProps) {
 // Shared sub-components (private to this module)
 // ---------------------------------------------------------------------------
 
-function PageShell({ children }: { children: React.ReactNode }) {
+function PageShell({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title?: string;
+}) {
   return (
     <section className="mx-auto w-full max-w-lg px-4 py-6">
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">
-        {AUTH_COPY.accountSecurity_title}
+        {title ?? AUTH_COPY.accountSecurity_title}
       </h1>
       {children}
     </section>
