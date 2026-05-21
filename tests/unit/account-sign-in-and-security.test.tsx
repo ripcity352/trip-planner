@@ -245,6 +245,9 @@ describe("SecurityForm", () => {
   // -------------------------------------------------------------------------
 
   it("transitions to State C-request when 'forgot' link is clicked", async () => {
+    // Mock returns a pending-then-ok so the component transitions away from C-requesting
+    mockRequestEmailCode.mockResolvedValue({ ok: true });
+
     render(<SecurityForm {...baseProps} />);
 
     fireEvent.click(screen.getByText(/forgot.*password/i));

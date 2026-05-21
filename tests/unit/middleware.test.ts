@@ -176,15 +176,15 @@ describe("middleware — authed route guard (C3 regression guard)", () => {
 // ---------------------------------------------------------------------------
 
 describe("middleware — AUTHED_PREFIXES includes both /trips and /account", () => {
-  it("middleware file exports a config matcher that covers both prefixes", async () => {
+  it("middleware file source contains both /trips and /account in AUTHED_PREFIXES", async () => {
     // Read the middleware source directly to assert on AUTHED_PREFIXES.
     // This avoids white-boxing the implementation while still catching a
     // regression where /trips or /account gets removed from the list.
+    // Use process.cwd() which Vitest sets to the project root.
     const { readFileSync } = await import("fs");
-    const source = readFileSync(
-      new URL("../../middleware.ts", import.meta.url).pathname,
-      "utf8"
-    );
+    const { join } = await import("path");
+    const middlewarePath = join(process.cwd(), "middleware.ts");
+    const source = readFileSync(middlewarePath, "utf8");
     expect(source).toContain('"/trips"');
     expect(source).toContain('"/account"');
   });
