@@ -88,4 +88,19 @@ describe("Header", () => {
       await screen.findByRole("menuitem", { name: /sign out/i })
     ).toBeInTheDocument();
   });
+
+  // W2a: brand link tests (#238)
+  it("brand renders as a link to /trips", () => {
+    render(<Header user={baseUser} />);
+    const brandLink = screen.getByRole("link", { name: /party trip/i });
+    expect(brandLink).toBeInTheDocument();
+    expect(brandLink).toHaveAttribute("href", "/trips");
+  });
+
+  it("brand link aria-label comes from M3_UI_STRINGS.nav_brand_label", () => {
+    render(<Header user={baseUser} />);
+    // The aria-label on the <Link> matches the copy key value "Party Trip"
+    const brandLink = screen.getByRole("link", { name: "Party Trip" });
+    expect(brandLink).toBeInTheDocument();
+  });
 });
