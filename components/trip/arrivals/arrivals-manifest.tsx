@@ -17,6 +17,7 @@
 
 import { useRouter } from "next/navigation";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { resolveMemberName } from "@/lib/utils/member-display";
 import { TravelLegCard } from "./travel-leg-card";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import type { TravelLeg, TripMember } from "@/lib/db/types";
@@ -40,13 +41,9 @@ export function ArrivalsManifest({
     router.refresh();
   };
 
-  // Build a lookup: trip_member_id → display name.
-  // Fallback chain mirrors lodging-roster.tsx: display_name → email → id.
-  // "Someone" was the M3 placeholder; real trips need something grounded (#162).
-  const memberNameMap = new Map<string, string>();
-  for (const m of tripMembers) {
-    memberNameMap.set(m.id, m.display_name ?? m.email ?? m.id);
-  }
+  // Build a lookup: trip_member_id → TripMember. resolveMemberName reads
+  // display_name and falls back to "Guest" — email/id never surface in the UI.
+  const memberNameMap = new Map(tripMembers.map((m) => [m.id, m]));
 
   return (
     <div className="flex flex-col gap-4">
@@ -62,7 +59,7 @@ export function ArrivalsManifest({
               key={leg.id}
               leg={leg}
               myTripMemberId={myTripMemberId}
-              ownerName={memberNameMap.get(leg.trip_member_id) ?? leg.trip_member_id}
+              ownerName={resolveMemberName(memberNameMap, leg.trip_member_id)}
             />
           ))}
         </div>

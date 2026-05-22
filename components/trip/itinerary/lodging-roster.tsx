@@ -19,6 +19,7 @@ import {
   assignMemberToLodging,
   removeLodgingAssignment,
 } from "@/lib/actions/lodging-assignments";
+import { resolveMemberName } from "@/lib/utils/member-display";
 import type { LodgingAssignment, TripMember } from "@/lib/db/types";
 
 export interface LodgingRosterProps {
@@ -42,11 +43,10 @@ export function LodgingRoster({
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
 
+  // Map keyed by trip_member_id → TripMember. resolveMemberName reads
+  // display_name and falls back to "Guest" — email/id never surface in the UI.
   const memberMap = React.useMemo(
-    () =>
-      new Map(
-        tripMembers.map((m) => [m.id, m.display_name ?? m.email ?? m.id])
-      ),
+    () => new Map(tripMembers.map((m) => [m.id, m])),
     [tripMembers]
   );
 
@@ -112,7 +112,7 @@ export function LodgingRoster({
               className="flex items-center justify-between gap-2 text-sm"
             >
               <span>
-                {memberMap.get(a.trip_member_id) ?? a.trip_member_id}
+                {resolveMemberName(memberMap, a.trip_member_id)}
                 {a.room_label ? (
                   <span className="text-muted-foreground"> · {a.room_label}</span>
                 ) : null}
@@ -151,7 +151,10 @@ export function LodgingRoster({
               <option value="">{M3_UI_STRINGS.lodging_assign_pick_person}</option>
               {unassignedMembers.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.display_name ?? m.email ?? m.id}
+                  {/* Organizer-only dropdown: keep email fallback so two unnamed
+                   * members don't both render as identical "Guest" options.
+                   * Display sites use resolveMemberName (no email exposure). */}
+                  {m.display_name ?? m.email ?? M3_UI_STRINGS.roster_member_fallback_name}
                 </option>
               ))}
             </select>
