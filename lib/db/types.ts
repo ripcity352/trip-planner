@@ -305,6 +305,11 @@ export interface Trip {
 /**
  * Extended `announcements` row. Adds `created_by` column from M3 Wave 1.
  * The original `author_id` column is preserved for backward compatibility.
+ *
+ * `authorDisplayName` is NOT a DB column — it is resolved at the data-layer
+ * boundary via a PostgREST join (getAnnouncements) or via the memberUserMap
+ * passed to subscribeToAnnouncements. null means the member could not be
+ * resolved; the UI should fall back to M3_UI_STRINGS.announcements_author_fallback.
  */
 export interface Announcement {
   id: string;
@@ -317,6 +322,8 @@ export interface Announcement {
   visibility: TripVisibility;
   // M3 addition
   created_by: string | null;
+  // W1c addition — resolved at the data-layer boundary, not a DB column
+  authorDisplayName?: string | null;
 }
 
 /**

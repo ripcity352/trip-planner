@@ -11,8 +11,13 @@ import type { Announcement } from "@/lib/db/types";
 
 interface AnnouncementCardProps {
   announcement: Announcement;
-  /** Resolved display name of the author (joined at the page layer). */
-  authorDisplayName?: string;
+  /**
+   * Resolved display name of the author (enriched at the data layer or page layer).
+   * When absent or null, falls back to M3_UI_STRINGS.announcements_author_fallback
+   * ("Someone") — NOT roster_member_fallback_name ("Guest"), which is the wrong
+   * context for an anonymous announcement author.
+   */
+  authorDisplayName?: string | null;
 }
 
 /** Visibility labels for non-default values — sourced from `M3_UI_STRINGS`. */
@@ -61,12 +66,10 @@ export function AnnouncementCard({
 
       {/* Footer: author + relative time */}
       <footer className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {authorDisplayName && (
-          <>
-            <span>{authorDisplayName}</span>
-            <span aria-hidden>·</span>
-          </>
-        )}
+        <span>
+          {authorDisplayName ?? M3_UI_STRINGS.announcements_author_fallback}
+        </span>
+        <span aria-hidden>·</span>
         <time dateTime={announcement.created_at}>{relativeTime}</time>
       </footer>
     </article>

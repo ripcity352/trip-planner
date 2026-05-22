@@ -13,7 +13,7 @@
 
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getTripBySlug } from "@/lib/db/trips";
+import { getTripBySlug, getTripMembers } from "@/lib/db/trips";
 import { getAnnouncements } from "@/lib/db/announcements";
 import { AnnouncementList } from "@/components/trip/announcements/announcement-list";
 import { AnnouncementComposer } from "@/components/trip/announcements/announcement-composer";
@@ -41,13 +41,34 @@ export default async function AnnouncementsPage({ params }: PageProps) {
     notFound();
   }
 
-  // Fan out: announcements + organizer check in parallel
-  const [announcements, organizerCheck] = await Promise.all([
-    getAnnouncements(supabase, trip.id),
+  // Fan out: announcements + members + organizer check in parallel.
+  // Members are needed to build the memberUserMap for author attribution (#239).
+  const [announcements, members, organizerCheck] = await Promise.all([
+    // memberUserMap is built below and passed into getAnnouncements
+    // in a second call — or we fetch members first and pass the map.
+    // Simpler: fetch members here, build map, then enrich announcements.
+    getAnnouncements(supabase, trip.id), // enriched below after members resolve
+    getTripMembers(supabase, trip.id),
     supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
   ]);
 
   const isOrganizer = organizerCheck.data === true;
+
+  // Build user_id → display_name map for author attribution.
+  // Keyed by user_id (not trip_member.id) because created_by references auth.users.
+  const memberUserMap = new Map<string, string | null>(
+    members
+      .filter((m) => m.user_id !== null)
+      .map((m) => [m.user_id as string, m.display_name])
+  );
+
+  // Enrich the fetched announcements with authorDisplayName now that we have the map.
+  const enrichedAnnouncements = announcements.map((a) => ({
+    ...a,
+    authorDisplayName: a.created_by
+      ? (memberUserMap.get(a.created_by) ?? null)
+      : null,
+  }));
 
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
@@ -65,7 +86,8 @@ export default async function AnnouncementsPage({ params }: PageProps) {
 
       <AnnouncementList
         tripId={trip.id}
-        initialAnnouncements={announcements}
+        initialAnnouncements={enrichedAnnouncements}
+        memberUserMap={memberUserMap}
       />
     </section>
   );

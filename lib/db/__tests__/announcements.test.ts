@@ -139,7 +139,10 @@ describe("subscribeToAnnouncements", () => {
     expect(subscribeMock).toHaveBeenCalled();
   });
 
-  it("calls onInsert with the new row when a change fires", () => {
+  it("calls onInsert with the enriched row when a change fires", () => {
+    // W1c: subscribeToAnnouncements now enriches the payload with
+    // authorDisplayName before invoking onInsert. When no memberUserMap is
+    // passed (or the map is empty), the fallback "Someone" is used.
     const onInsert = vi.fn();
     let capturedCallback: ((payload: { new: unknown }) => void) | null = null;
 
@@ -158,6 +161,13 @@ describe("subscribeToAnnouncements", () => {
 
     expect(capturedCallback).not.toBeNull();
     capturedCallback!({ new: mockAnnouncement });
-    expect(onInsert).toHaveBeenCalledWith(mockAnnouncement);
+    // The payload is enriched — authorDisplayName added with fallback "Someone"
+    // because no memberUserMap was provided (empty map default).
+    expect(onInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...mockAnnouncement,
+        authorDisplayName: "Someone",
+      })
+    );
   });
 });

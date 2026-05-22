@@ -19,11 +19,12 @@ vi.mock("@/lib/supabase/browser", () => ({
   })),
 }));
 
-// Mock subscribeToAnnouncements so we can control the callback
+// Mock subscribeToAnnouncements so we can control the callback.
+// W1c: signature now includes memberUserMap as 4th arg.
 let capturedOnInsert: ((a: Announcement) => void) | null = null;
 
 vi.mock("@/lib/db/announcements", () => ({
-  subscribeToAnnouncements: vi.fn((_supabase, _tripId, onInsert) => {
+  subscribeToAnnouncements: vi.fn((_supabase, _tripId, onInsert, _memberUserMap) => {
     capturedOnInsert = onInsert;
     return mockChannel;
   }),
@@ -31,6 +32,9 @@ vi.mock("@/lib/db/announcements", () => ({
 
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import { createClient } from "@/lib/supabase/browser";
+
+/** Empty map satisfies the required memberUserMap prop in most tests. */
+const EMPTY_MAP = new Map<string, string | null>();
 
 const makeAnnouncement = (
   overrides: Partial<Announcement> = {}
@@ -54,7 +58,7 @@ describe("AnnouncementList", () => {
   });
 
   it("renders the empty-state when no announcements", () => {
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} />);
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
     // EMPTY_STATES.announcements = "All quiet. No news is probably good news."
     expect(screen.getByText(/all quiet/i)).toBeInTheDocument();
   });
@@ -64,7 +68,7 @@ describe("AnnouncementList", () => {
       makeAnnouncement({ id: "ann-1", body: "First update." }),
       makeAnnouncement({ id: "ann-2", body: "Second update." }),
     ];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} />);
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
     expect(screen.getByText("First update.")).toBeInTheDocument();
     expect(screen.getByText("Second update.")).toBeInTheDocument();
   });
@@ -74,7 +78,7 @@ describe("AnnouncementList", () => {
       makeAnnouncement({ id: "ann-1", body: "Regular update.", pinned: false }),
       makeAnnouncement({ id: "ann-2", body: "Pinned update.", pinned: true }),
     ];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} />);
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
 
     const cards = screen.getAllByText(/update\./);
     // Pinned should come first in the DOM
@@ -83,16 +87,18 @@ describe("AnnouncementList", () => {
   });
 
   it("calls subscribeToAnnouncements on mount with the correct tripId", () => {
-    render(<AnnouncementList tripId="trip-42" initialAnnouncements={[]} />);
+    render(<AnnouncementList tripId="trip-42" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    // W1c: subscribeToAnnouncements now takes 4 args (supabase, tripId, onInsert, memberUserMap)
     expect(subscribeToAnnouncements).toHaveBeenCalledWith(
       expect.anything(),
       "trip-42",
-      expect.any(Function)
+      expect.any(Function),
+      EMPTY_MAP
     );
   });
 
   it("adds a new announcement to the list when the realtime callback fires", () => {
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} />);
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
 
     const newItem = makeAnnouncement({ id: "ann-realtime", body: "Live update!" });
     act(() => {
@@ -105,7 +111,7 @@ describe("AnnouncementList", () => {
   it("prepends new realtime announcements before existing ones", () => {
     const existing = makeAnnouncement({ id: "ann-existing", body: "Existing." });
     render(
-      <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} />
+      <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
     );
 
     const incoming = makeAnnouncement({ id: "ann-new", body: "New one!" });
@@ -125,7 +131,7 @@ describe("AnnouncementList", () => {
 
   it("calls removeChannel on unmount to clean up the subscription", () => {
     const { unmount } = render(
-      <AnnouncementList tripId="trip-1" initialAnnouncements={[]} />
+      <AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />
     );
     unmount();
     const supabase = vi.mocked(createClient)();
@@ -134,7 +140,7 @@ describe("AnnouncementList", () => {
 
   it("does not render the empty state when there are announcements", () => {
     const items = [makeAnnouncement({ body: "Something happened." })];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} />);
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
     expect(screen.queryByText(/all quiet/i)).not.toBeInTheDocument();
   });
 
@@ -146,7 +152,7 @@ describe("AnnouncementList", () => {
       created_at: "2026-05-20T09:00:00Z",
     });
     render(
-      <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} />
+      <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
     );
 
     const pinnedIncoming = makeAnnouncement({
@@ -169,7 +175,7 @@ describe("AnnouncementList", () => {
 
   it("renders the feed with aria-live='polite' for screen-reader updates", () => {
     const items = [makeAnnouncement({ body: "Visible announcement." })];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} />);
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
     const list = screen.getByRole("list");
     expect(list).toHaveAttribute("aria-live", "polite");
   });
