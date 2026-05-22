@@ -274,7 +274,9 @@ export function LoginForm({ next }: LoginFormProps) {
                 {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
               </button>
             </div>
-            <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
+            {showCreateAccount ? (
+              <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
+            ) : null}
           </div>
           <ErrorNote id="login-error" message={inlineError} />
           <Button type="submit" disabled={isPending} aria-busy={isPending}>

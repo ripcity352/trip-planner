@@ -149,10 +149,10 @@ describe("<LoginForm /> — password mode", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the password helper text", async () => {
+  it("does not show the password helper text on initial sign-in view", async () => {
     render(<LoginForm />);
     await advanceToPasswordMode();
-    expect(screen.getByText(AUTH_COPY.passwordHelper)).toBeInTheDocument();
+    expect(screen.queryByText(AUTH_COPY.passwordHelper)).not.toBeInTheDocument();
   });
 
   it("password field type is 'password' by default", async () => {
@@ -282,6 +282,11 @@ describe("<LoginForm /> — sign-up path (after wrong password)", () => {
       ).toBeInTheDocument();
     });
   }
+
+  it("shows password helper text once create-account path is revealed", async () => {
+    await triggerWrongPassword();
+    expect(screen.getByText(AUTH_COPY.passwordHelper)).toBeInTheDocument();
+  });
 
   it("calls signUpAction when 'Create account instead' is clicked", async () => {
     signUpActionMock.mockResolvedValue({ ok: true });
