@@ -5,9 +5,14 @@
  * explicit column list, no `select('*')`. First consumer: the
  * /account/sign-in-and-security page reading `has_password`.
  *
- * RLS: `profiles` has an existing "users can update their own profile"
- * policy from M1 (m1_foundation.sql). The authenticated user reads their
- * own row via `auth.uid() = id` — no service-role required.
+ * RLS (M1, `0001_init.sql:25-34`):
+ *   SELECT: `to authenticated using (true)` — any authenticated user can
+ *     read any profile row. The query restricts to one's own row via
+ *     `.eq("id", userId)` where `userId` is server-pinned from
+ *     `auth.getUser()` — never trust client-supplied ids.
+ *   UPDATE: `using (auth.uid() = id) with check (auth.uid() = id)` —
+ *     this gates write authorization (used by the W0 atomic setters).
+ * No service-role required.
  *
  * Error handling follows the `lib/db/trips.ts` pattern:
  *   - PGRST116 (no rows) → return null
