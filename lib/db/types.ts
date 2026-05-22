@@ -82,6 +82,10 @@ export interface Profile {
   display_name: string | null;
   avatar_url: string | null;
   created_at: string;
+  // W0 addition — mirrors auth.users.encrypted_password presence without
+  // exposing the auth schema to RLS. Written atomically inside the same
+  // server-action closure as updateUser({password}) / signUp({password}).
+  has_password: boolean;
 }
 
 // Trip is defined in the M3 section below with the `notes` column added.
