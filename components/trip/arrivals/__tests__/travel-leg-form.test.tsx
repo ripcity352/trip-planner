@@ -42,7 +42,7 @@ describe("TravelLegForm — add mode", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders all form fields", () => {
+  it("renders all form fields (flight default — AirlinePicker instead of plain carrier)", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
@@ -54,7 +54,9 @@ describe("TravelLegForm — add mode", () => {
     expect(screen.getByLabelText("How")).toBeInTheDocument();
     expect(screen.getByLabelText("Leave")).toBeInTheDocument();
     expect(screen.getByLabelText("Arrive")).toBeInTheDocument();
-    expect(screen.getByLabelText("Carrier")).toBeInTheDocument();
+    // Default kind is "flight" — AirlinePicker renders instead of plain carrier input
+    expect(screen.getByRole("combobox", { name: /airline/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Carrier")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Confirmation #")).toBeInTheDocument();
     expect(screen.getByLabelText("Notes")).toBeInTheDocument();
   });
@@ -185,16 +187,17 @@ describe("TravelLegForm — edit mode", () => {
     vi.restoreAllMocks();
   });
 
-  it("pre-populates fields from the existing leg", () => {
+  it("pre-populates fields from the existing leg (train kind — plain carrier input)", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
-        leg={makeLeg()}
+        leg={makeLeg({ kind: "train" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
+    // Train uses plain carrier input — verify pre-population
     const carrierInput = screen.getByLabelText("Carrier") as HTMLInputElement;
     expect(carrierInput.value).toBe("Southwest");
 
@@ -338,5 +341,89 @@ describe("TravelLegForm — edit mode", () => {
         expect.any(String)
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Carrier / AirlinePicker mutual-exclusion (W1b fix)
+// ---------------------------------------------------------------------------
+
+describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("flight kind renders AirlinePicker and NOT the plain carrier text input", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({ kind: "flight" })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    // AirlinePicker combobox must be present
+    expect(screen.getByRole("combobox", { name: /airline/i })).toBeInTheDocument();
+    // Plain carrier text input must NOT be present
+    expect(screen.queryByLabelText("Carrier")).not.toBeInTheDocument();
+  });
+
+  it("drive kind renders plain carrier text input and NOT the AirlinePicker", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({ kind: "drive" })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    // Plain carrier input must be present
+    expect(screen.getByLabelText("Carrier")).toBeInTheDocument();
+    // AirlinePicker combobox must NOT be present
+    expect(screen.queryByRole("combobox", { name: /airline/i })).not.toBeInTheDocument();
+  });
+
+  it("train kind renders plain carrier text input and NOT the AirlinePicker", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({ kind: "train" })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Carrier")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /airline/i })).not.toBeInTheDocument();
+  });
+
+  it("other kind renders plain carrier text input and NOT the AirlinePicker", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({ kind: "other" })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Carrier")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /airline/i })).not.toBeInTheDocument();
+  });
+
+  it("add mode defaults to flight: shows AirlinePicker, not plain carrier input", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    // Default kind is "flight"
+    expect(screen.getByRole("combobox", { name: /airline/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Carrier")).not.toBeInTheDocument();
   });
 });

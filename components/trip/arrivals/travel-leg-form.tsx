@@ -105,6 +105,7 @@ export function TravelLegForm({
     register,
     handleSubmit,
     control,
+    watch,
     formState: { isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -167,6 +168,8 @@ export function TravelLegForm({
     onSuccess();
   };
 
+  const kind = watch("kind");
+
   const inputClass = cn(
     "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
     "placeholder:text-muted-foreground",
@@ -226,55 +229,56 @@ export function TravelLegForm({
         />
       </div>
 
-      {/* Carrier — kept for freeform + non-flight legs */}
-      <div>
-        <label htmlFor="leg-carrier" className={labelClass}>
-          {M3_UI_STRINGS.arrivals_leg_form_carrier_label}
-        </label>
-        <input
-          id="leg-carrier"
-          type="text"
-          {...register("carrier")}
-          disabled={isBusy}
-          className={inputClass}
+      {/* Carrier — AirlinePicker for flights; plain text for all other kinds */}
+      {kind === "flight" ? (
+        <Controller
+          name="airlineIata"
+          control={control}
+          render={({ field: airlineField }) => (
+            <Controller
+              name="flightNumber"
+              control={control}
+              render={({ field: flightField }) => (
+                <Controller
+                  name="carrier"
+                  control={control}
+                  render={({ field: carrierField }) => (
+                    <AirlinePicker
+                      value={{
+                        airlineIata: airlineField.value,
+                        flightNumber: flightField.value,
+                        carrier: carrierField.value,
+                      }}
+                      onChange={(next) => {
+                        airlineField.onChange(next.airlineIata);
+                        flightField.onChange(next.flightNumber);
+                        // Freeform carrier flows back into the carrier field
+                        if (next.carrier !== undefined) {
+                          carrierField.onChange(next.carrier);
+                        }
+                      }}
+                      disabled={isBusy}
+                    />
+                  )}
+                />
+              )}
+            />
+          )}
         />
-      </div>
-
-      {/* Airline picker — M4 W2c: IATA typeahead + flight number */}
-      <Controller
-        name="airlineIata"
-        control={control}
-        render={({ field: airlineField }) => (
-          <Controller
-            name="flightNumber"
-            control={control}
-            render={({ field: flightField }) => (
-              <Controller
-                name="carrier"
-                control={control}
-                render={({ field: carrierField }) => (
-                  <AirlinePicker
-                    value={{
-                      airlineIata: airlineField.value,
-                      flightNumber: flightField.value,
-                      carrier: carrierField.value,
-                    }}
-                    onChange={(next) => {
-                      airlineField.onChange(next.airlineIata);
-                      flightField.onChange(next.flightNumber);
-                      // Freeform carrier flows back into the carrier field
-                      if (next.carrier !== undefined) {
-                        carrierField.onChange(next.carrier);
-                      }
-                    }}
-                    disabled={isBusy}
-                  />
-                )}
-              />
-            )}
+      ) : (
+        <div>
+          <label htmlFor="leg-carrier" className={labelClass}>
+            {M3_UI_STRINGS.arrivals_leg_form_carrier_label}
+          </label>
+          <input
+            id="leg-carrier"
+            type="text"
+            {...register("carrier")}
+            disabled={isBusy}
+            className={inputClass}
           />
-        )}
-      />
+        </div>
+      )}
 
       {/* Confirmation code */}
       <div>
