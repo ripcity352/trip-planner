@@ -228,7 +228,7 @@ describe("TravelLegForm — edit mode", () => {
       />
     );
     expect(
-      screen.getByRole("button", { name: /delete leg/i })
+      screen.getByRole("button", { name: /delete travel/i })
     ).toBeInTheDocument();
   });
 
@@ -245,7 +245,7 @@ describe("TravelLegForm — edit mode", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /delete leg/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete travel/i }));
 
     await waitFor(() => {
       expect(mockDelete).toHaveBeenCalledWith("leg-99");
@@ -268,7 +268,7 @@ describe("TravelLegForm — edit mode", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /delete leg/i }));
+    fireEvent.click(screen.getByRole("button", { name: /delete travel/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();

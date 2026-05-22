@@ -28,7 +28,7 @@ export type EmptyStateKey =
   | "invites_for_trip";
 
 export const EMPTY_STATES: Record<EmptyStateKey, string> = {
-  itinerary: "Nothing booked yet. Dave's working on it.",
+  itinerary: "Nothing booked yet. The organizers are on it.",
   members: "Just you so far. The group chat fills in fast.",
   expenses: "No one's spent a dime — or no one's logged it. Same diff.",
   announcements: "All quiet. No news is probably good news.",
@@ -270,7 +270,7 @@ export const M3_UI_STRINGS = {
   // Travel legs / arrivals manifest (#37, Wave 4a)
   arrivals_pageTitle: "Arrivals",
   arrivals_heading: "Who's landing when",
-  arrivals_addLeg_cta: "Add a leg",
+  arrivals_addLeg_cta: "Add your travel",
   arrivals_leg_form_kind_label: "How",
   arrivals_leg_form_kind_flight: "Flight",
   arrivals_leg_form_kind_train: "Train",
@@ -282,13 +282,13 @@ export const M3_UI_STRINGS = {
   arrivals_leg_form_confirmation_label: "Confirmation #",
   arrivals_leg_form_notes_label: "Notes",
   arrivals_leg_form_submit: "Save it",
-  arrivals_leg_form_delete: "Delete leg",
-  arrivals_empty: "No legs logged yet. Drop yours and we'll see the manifest.",
+  arrivals_leg_form_delete: "Delete travel",
+  arrivals_empty: "Nobody's logged travel yet. Drop yours so we know when you land.",
   // Arrivals CTAs (Wave 4a fix-up — added so we don't reuse itineraryForm_* keys
   // cross-feature; voice-tested)
   arrivals_cancel_cta: "Cancel",
   arrivals_edit_cta: "Edit",
-  arrivals_add_cta: "Add a leg",
+  arrivals_add_cta: "Add your travel",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   roster_heading: "Who's coming",
@@ -321,6 +321,17 @@ export const M3_UI_STRINGS = {
   invitesForm_expires_placeholder: "Leave blank for no expiry",
   invitesForm_submit: "Mint it",
   invitesForm_cancel: "Cancel",
+  // Wave 0 trip-readiness additions — 5 new keys (consumers in W1/W2)
+  // announcements_author_fallback: shown when a post author can't be resolved
+  announcements_author_fallback: "Someone",
+  // crew_invite_cta: CTA to add someone to the trip crew
+  crew_invite_cta: "Add to the crew",
+  // nav_account_trips_link: nav link label for the user's trips list
+  nav_account_trips_link: "Your trips",
+  // nav_brand_label: the app name as it appears in the nav/header
+  nav_brand_label: "Party Trip",
+  // tripsList_newTrip_cta: CTA to start a new trip from the trips list
+  tripsList_newTrip_cta: "Start a trip",
 } as const;
 
 export type M3UIStringKey = keyof typeof M3_UI_STRINGS;
