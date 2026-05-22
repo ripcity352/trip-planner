@@ -124,12 +124,14 @@ describe("LodgingRoster", () => {
     expect(screen.queryAllByText("Dave")).toHaveLength(0);
   });
 
-  // #160 — dropdown must NOT show UUID when display_name is null
-  it("shows email-localpart in dropdown when member has no display_name but has email", async () => {
+  // #240 — dropdown must NEVER show UUID or email when display_name is null.
+  // W1a decision: resolveMemberName replaces the old display_name ?? email ?? id
+  // chain. Email was a PII leak in the dropdown; "Guest" is the safe fallback.
+  it("shows 'Guest' in dropdown when member has no display_name (even if email is set)", async () => {
     const members = [
       // member-1 is already assigned (in defaultProps.assignments)
       makeMember({ id: "member-1", display_name: "Dave" }),
-      // member-2 has no display_name — dropdown must show localpart, not UUID
+      // member-2 has no display_name — dropdown must show "Guest", not email or UUID
       makeMember({
         id: "member-2",
         display_name: null,
@@ -150,13 +152,14 @@ describe("LodgingRoster", () => {
     // Open the assign form
     fireEvent.click(screen.getByRole("button", { name: /assign a room/i }));
 
-    // The select must show the email address, not the UUID "member-2"
-    const option = screen.getByRole("option", { name: "pete@example.com" });
+    // The select must show "Guest", not the email or UUID
+    const option = screen.getByRole("option", { name: "Guest" });
     expect(option).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "pete@example.com" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "member-2" })).not.toBeInTheDocument();
   });
 
-  it("shows member id in dropdown only when both display_name and email are null", async () => {
+  it("shows 'Guest' in dropdown when both display_name and email are null — never the UUID", async () => {
     const members = [
       makeMember({ id: "member-1", display_name: "Dave" }),
       makeMember({
@@ -178,8 +181,9 @@ describe("LodgingRoster", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /assign a room/i }));
 
-    // Last resort: show the id (still better than nothing, but never preferred)
-    const option = screen.getByRole("option", { name: "member-2" });
+    // resolveMemberName fallback — "Guest" not "member-2"
+    const option = screen.getByRole("option", { name: "Guest" });
     expect(option).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "member-2" })).not.toBeInTheDocument();
   });
 });

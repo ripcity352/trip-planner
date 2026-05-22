@@ -169,8 +169,9 @@ describe("ArrivalsManifest", () => {
     expect(screen.getByText("Dave")).toBeInTheDocument();
   });
 
-  // #162 — display_name is null: fall back to email, not "Someone"
-  it("falls back to email when member display_name is null but email is set", () => {
+  // #240 — display_name is null: resolveMemberName falls back to "Guest",
+  // never email or raw id (W1a decision: email is PII, id is a UUID leak).
+  it("falls back to 'Guest' when member display_name is null (even if email is set)", () => {
     const legs = [makeLeg({ id: "leg-1", trip_member_id: "member-1" })];
     const members = [
       makeMember({
@@ -189,13 +190,14 @@ describe("ArrivalsManifest", () => {
       />
     );
 
-    // Must show email, not "Someone"
-    expect(screen.getByText("dave@example.com")).toBeInTheDocument();
+    // resolveMemberName reads only display_name; "Guest" is the fallback
+    expect(screen.getByText("Guest")).toBeInTheDocument();
+    expect(screen.queryByText("dave@example.com")).not.toBeInTheDocument();
     expect(screen.queryByText("Someone")).not.toBeInTheDocument();
   });
 
-  // #162 — both display_name and email are null: fall back to member id, not "Someone"
-  it("falls back to member id when display_name and email are both null", () => {
+  // #240 — both display_name and email are null: "Guest", not raw id
+  it("falls back to 'Guest' when display_name and email are both null — never the raw id", () => {
     const legs = [makeLeg({ id: "leg-1", trip_member_id: "member-1" })];
     const members = [
       makeMember({ id: "member-1", display_name: null, email: null }),
@@ -210,11 +212,12 @@ describe("ArrivalsManifest", () => {
       />
     );
 
-    expect(screen.getByText("member-1")).toBeInTheDocument();
+    expect(screen.getByText("Guest")).toBeInTheDocument();
+    expect(screen.queryByText("member-1")).not.toBeInTheDocument();
     expect(screen.queryByText("Someone")).not.toBeInTheDocument();
   });
 
-  it("falls back to trip_member_id when leg owner is not in tripMembers", () => {
+  it("falls back to 'Guest' when leg owner is not in tripMembers — never the raw UUID", () => {
     const legs = [makeLeg({ id: "leg-1", trip_member_id: "member-unknown" })];
     const members = [makeMember({ id: "member-1", display_name: "Dave" })];
 
@@ -227,8 +230,9 @@ describe("ArrivalsManifest", () => {
       />
     );
 
-    // The card renders with the raw id as final fallback
-    expect(screen.getByText("member-unknown")).toBeInTheDocument();
+    // resolveMemberName returns "Guest" when id not in map
+    expect(screen.getByText("Guest")).toBeInTheDocument();
+    expect(screen.queryByText("member-unknown")).not.toBeInTheDocument();
   });
 
   it("does not render empty state when legs exist", () => {

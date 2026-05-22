@@ -17,6 +17,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { resolveMemberName } from "@/lib/utils/member-display";
 import type { ItineraryItemMemberFlag } from "@/lib/db/types";
 
 export interface OrganizerFlagViewProps {
@@ -53,10 +54,24 @@ export function OrganizerFlagView({
     {}
   );
 
+  // Adapter: wrap the Record<string, string> in a ReadonlyMap so
+  // resolveMemberName can be used consistently across all member-display
+  // sites. The Record values are pre-resolved caller-supplied strings;
+  // wrapping as { display_name } lets resolveMemberName apply the "Guest"
+  // fallback when a key is missing. Prop type kept as Record<string,string>
+  // to avoid cascading caller changes (W1a decision).
+  const memberMap: ReadonlyMap<string, { display_name: string | null }> =
+    new Map(
+      Object.entries(memberNames).map(([id, name]) => [
+        id,
+        { display_name: name },
+      ]),
+    );
+
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {Object.entries(grouped).map(([memberId, memberFlags]) => {
-        const displayName = memberNames[memberId] ?? memberId;
+        const displayName = resolveMemberName(memberMap, memberId);
         return (
           <div key={memberId} className="flex flex-col gap-1.5">
             <p className="text-xs font-semibold">{displayName}</p>
