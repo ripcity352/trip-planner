@@ -63,7 +63,12 @@ export default async function RosterPage({ params }: PageProps) {
         <p className="text-muted-foreground mt-1 text-sm">{trip.name}</p>
       </header>
 
-      <RosterList members={members} tripName={trip.name} />
+      <RosterList
+        members={members}
+        tripName={trip.name}
+        tripSlug={slug}
+        viewerRole={viewer.role}
+      />
     </section>
   );
 }
