@@ -233,7 +233,7 @@ export async function signUpAction(input: {
 
   try {
     const supabase = await createClient();
-    const { error } = await rateLimitedAction(
+    const { data, error } = await rateLimitedAction(
       RATE_LIMIT_SCOPES.AUTH_PASSWORD,
       email,
       () =>
@@ -252,6 +252,26 @@ export async function signUpAction(input: {
       });
       const mapped = mapAuthErrorToKey(error);
       return { ok: false, errorKey: mapped ?? "network" };
+    }
+
+    // Atomically mark has_password in profiles — same closure as signUp,
+    // so this only runs when signUp succeeds. W0 D6 (trip-readiness).
+    const userId = data?.user?.id;
+    if (userId) {
+      const { error: hpErr } = await supabase
+        .from("profiles")
+        .update({ has_password: true })
+        .eq("id", userId)
+        .select()
+        .single();
+
+      if (hpErr) {
+        // TODO: surface to Sentry once observability layer settles
+        console.error("[auth] has_password write failed after signUp", {
+          code: (hpErr as { code?: string }).code,
+        });
+        return { ok: false, errorKey: "network" };
+      }
     }
 
     return { ok: true };

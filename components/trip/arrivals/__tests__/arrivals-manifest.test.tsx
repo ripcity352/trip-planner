@@ -113,7 +113,7 @@ describe("ArrivalsManifest", () => {
     );
     expect(
       screen.getByText(
-        "No legs logged yet. Drop yours and we'll see the manifest."
+        "Nobody's logged travel yet. Drop yours so we know when you land."
       )
     ).toBeInTheDocument();
   });

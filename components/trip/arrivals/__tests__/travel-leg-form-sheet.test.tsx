@@ -30,7 +30,7 @@ describe("TravelLegFormSheet — add mode (no leg prop)", () => {
   it("renders the 'Add a leg' CTA button initially", () => {
     render(<TravelLegFormSheet tripId="trip-1" />);
     expect(
-      screen.getByRole("button", { name: /add a leg/i })
+      screen.getByRole("button", { name: /add your travel/i })
     ).toBeInTheDocument();
   });
 
@@ -41,13 +41,13 @@ describe("TravelLegFormSheet — add mode (no leg prop)", () => {
 
   it("shows the form when CTA is clicked", () => {
     render(<TravelLegFormSheet tripId="trip-1" />);
-    fireEvent.click(screen.getByRole("button", { name: /add a leg/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add your travel/i }));
     expect(screen.getByTestId("travel-leg-form")).toBeInTheDocument();
   });
 
   it("hides the form when cancel is clicked inside the form", () => {
     render(<TravelLegFormSheet tripId="trip-1" />);
-    fireEvent.click(screen.getByRole("button", { name: /add a leg/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add your travel/i }));
     expect(screen.getByTestId("travel-leg-form")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
