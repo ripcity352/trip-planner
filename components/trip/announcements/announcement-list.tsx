@@ -6,6 +6,12 @@
  * Subscribes to `announcements:{tripId}` on mount via
  * `subscribeToAnnouncements` and removes the channel on unmount.
  * Renders pinned announcements first, then chronological (newest first).
+ *
+ * W1c (#239): accepts `memberUserMap` (user_id → display_name) so that both
+ * the initial server-rendered list and the realtime INSERT payloads surface
+ * the author's name. The map is passed through to `subscribeToAnnouncements`
+ * for realtime enrichment, and each initial announcement already has
+ * `authorDisplayName` resolved by `getAnnouncements` at the page layer.
  */
 
 import { useEffect, useState } from "react";
@@ -18,6 +24,12 @@ import type { Announcement } from "@/lib/db/types";
 interface AnnouncementListProps {
   tripId: string;
   initialAnnouncements: Announcement[];
+  /**
+   * Map of user_id → display_name for all trip members. Used to resolve
+   * authorDisplayName on realtime INSERT payloads. Passed through directly
+   * to subscribeToAnnouncements. Built server-side from getTripMembers().
+   */
+  memberUserMap: ReadonlyMap<string, string | null>;
 }
 
 /** Sort pinned first, then by created_at descending (newest first). */
@@ -31,6 +43,7 @@ function sortAnnouncements(items: Announcement[]): Announcement[] {
 export function AnnouncementList({
   tripId,
   initialAnnouncements,
+  memberUserMap,
 }: AnnouncementListProps) {
   const [announcements, setAnnouncements] = useState<Announcement[]>(
     () => sortAnnouncements(initialAnnouncements)
@@ -47,13 +60,14 @@ export function AnnouncementList({
           // Prepend then re-sort so pinned state is honoured
           sortAnnouncements([newAnnouncement, ...prev])
         );
-      }
+      },
+      memberUserMap
     );
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [tripId]);
+  }, [tripId, memberUserMap]);
 
   if (announcements.length === 0) {
     return (
@@ -71,7 +85,10 @@ export function AnnouncementList({
     >
       {announcements.map((a) => (
         <li key={a.id}>
-          <AnnouncementCard announcement={a} />
+          <AnnouncementCard
+            announcement={a}
+            authorDisplayName={a.authorDisplayName}
+          />
         </li>
       ))}
     </ol>
