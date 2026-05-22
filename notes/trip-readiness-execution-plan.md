@@ -508,3 +508,68 @@ Zero console errors across all 6 scenarios. Informational accessibility hints (e
 ---
 
 *Plan locked 2026-05-22. Operator CONFIRM gates Wave 0 dispatch (Phase 4 hard gate).*
+
+---
+
+## Phase 6 closure — verification status (2026-05-22)
+
+Production walk on `https://travelston.com` at 375×812 performed 2026-05-22 ~17:34 UTC. Session was already authed (cookie persistence from W0 walk). Screenshots in `notes/trip-readiness-screenshots/closure-walk-*.png` (8 files, 1 per scenario).
+
+### Verified `[v]` end-to-end on production
+
+| Issue / scope | Wave | Evidence file | Status |
+|---|---|---|---|
+| #238 — header brand `<Link>` | W2a | `closure-walk-01-trips-authed-before-cta-deploy.png` (banner row shows brand as a link) | ✅ `[v]` live |
+| #238 — account dropdown adds Your trips + Sign-in & security | W2a | `closure-walk-02-account-dropdown-w2a.png` | ✅ `[v]` live |
+| #233 — `/account/sign-in-and-security` State A (passworded account) | W2c | `closure-walk-03-account-security-state-a-w2c.png` | ✅ `[v]` live (State A) |
+| #236 — `/trips` populated list "Start a trip" CTA | W2b | `closure-walk-04-trips-list-start-cta-w2b.png` | ✅ `[v]` live |
+| #237 — crew tab "Add to the crew" CTA → `/invites` | W2a | `closure-walk-05-crew-add-cta-w2a.png` | ✅ `[v]` live |
+| #239 — announcement author renders "Someone" fallback (no UUID) | W1c | `closure-walk-06-announcement-someone-fallback-w1c.png` | ✅ `[v]` live (fallback path; real-name path covered by unit tests + producer enrichment is wired) |
+| #240 — lodging shows "Guest" not UUID | W1a | `closure-walk-07-lodging-guest-fallback-w1a.png` | ✅ `[v]` live |
+| #240 — arrivals shows "Guest" not UUID | W1a | `closure-walk-08-arrivals-guest-flight-w1a-w1b.png` | ✅ `[v]` live |
+| #241 — travel-leg form: Flight kind single-field render + "Add your travel" voice | W1b | `closure-walk-08-arrivals-guest-flight-w1a-w1b.png` | ✅ `[v]` live |
+| Empty-state — itinerary "Dave" name-drop removed | W0 | `rg "Dave's working on it" lib/` → 0 matches; voice-lock test green | ✅ `[v]` via test guard |
+
+### Provisional `[v]` — carries to next session
+
+| Item | Why provisional | Issue tracker |
+|---|---|---|
+| #233 — fresh OTP-only signup → State B path | Needed an OTP-only account; walked session was already passworded. State B is covered by 9 unit tests + the deterministic backfill SQL. | **#255** |
+| iOS Safari keyboard-up pass on post-composer + travel-leg form | Playwright doesn't drive iOS Safari well; needs an operator's real device. | (consolidated under closure; can re-walk on real device) |
+
+### Console errors observed
+
+`/trips/[id]/arrivals` surfaces a single React error #418 (hydration text mismatch — likely a date-format SSR/client drift on the new date-fns-tz output). Page renders correctly visually; not user-visible. **Not introduced by this sweep — pre-existing pattern on the arrivals route.** Tracked: **#254**.
+
+### Pre-walk eyeball check
+
+Skipped — no Supabase Dashboard step paired with code in this sweep (Override J inactive). Vercel preview deploys eventually surfaced "Ready" status on all 7 PRs after stale-comment refresh via no-op trigger commits.
+
+### Override G — `app/page.tsx` decision
+
+**Kept as-is.** This sweep added navigation + author attribution + nav-affordance copy — all post-sign-in surfaces. The marketing landing page's CTA ("Sign in to your trip") is auth-method-agnostic and unaffected. Same call as M5 closure.
+
+### Carry-back / out-of-PR follow-ups filed during execution
+
+| # | Title | Source |
+|---|---|---|
+| #244 | refactor: consolidate atomic `has_password` writes into `markPasswordSet` helper | W0 code-review MEDIUM-1 |
+| #245 | docs: note `account-actions.test.ts` default-passes the new `has_password` chain | W0 code-review LOW-1 |
+| #248 | fix: cross-field guard for travel-leg `kind != flight` | W1b both reviewers (pre-existing) |
+| #250 | refactor: consolidate announcements author-enrichment via SQL view OR drop unused param | W1c code-review LOW |
+| #254 | fix: React hydration mismatch (#418) on `/arrivals` | Closure walk observation |
+| #255 | chore: fresh OTP-only signup walk for State B (#233 `[v]`) | Closure walk provisional |
+
+### Final commit chain on `main`
+
+```
+300ea1b fix(#236): add 'Start a trip' CTA to populated /trips list (#252)
+8f2396e fix(#233): /account/sign-in-and-security uses has_password shadow column for State B detection (#253)
+5117e03 fix(#237+#238): nav affordances — header brand link, account dropdown adds Your trips + Sign-in & security, crew tab 'Add to the crew' CTA (#251)
+008e90f fix(#239): wire authorDisplayName through announcements — initial fetch + realtime payload (#249)
+587147a fix(#241): travel-leg form — collapse redundant Carrier+AirlinePicker into kind-conditional render (#247)
+69acbe6 fix(#240): replace raw trip_member_id UUID with resolveMemberName helper at 4 sites (#246)
+e025115 chore(trip-readiness): W0 foundations — resolveMemberName helper + copy keys + has_password migration + atomic setters (#243)
+```
+
+**Sweep target met:** 3 waves, 7 PRs + closure (within the ≤4 waves / ≤8 PRs budget per `goal.md:111`).

@@ -5,6 +5,92 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-22 — Polish-sweep notes (`/goal trip-readiness`)
+
+**Decision:** Between-milestones polish sweep — six P0 UX bugs filed during
+the post-M5 dogfood pass on 2026-05-21 — shipped across 3 waves / 7 PRs
+(#243, #246, #247, #249, #251, #252, #253) + closure PR. NOT a milestone;
+no retro file. M6 remains hard-gated on the real-trip retrospective.
+
+See `notes/trip-readiness-execution-plan.md` §"Phase 6 closure" for the
+full verification status table + screenshot evidence.
+
+### Load-bearing patterns reinforced
+
+1. **`resolveMemberName(memberMap, id)`** as the canonical UUID-leak guard
+   for any user-facing rendering of a `trip_member_id`. 3-line pure
+   function at `lib/utils/member-display.ts`. Consumed by lodging-roster
+   (display + organizer dropdown — the latter retains email-fallback),
+   arrivals-manifest, organizer-flag-view. Display contexts use the
+   helper terminal ("Guest"); the organizer-only assign dropdown keeps
+   `display_name ?? email ?? "Guest"` for disambiguation per W1a
+   code-reviewer's MEDIUM-1 fix-up.
+
+2. **`announcements_author_fallback = "Someone"`** distinct from
+   `roster_member_fallback_name = "Guest"`. The realtime/missing-author
+   context shouldn't reuse the roster fallback — "Guest" implies
+   not-quite-on-the-trip; "Someone" reads as humble fallback. Voice-lock
+   test pins both.
+
+3. **`profiles.has_password` shadow column** as the canonical State A vs
+   State B identity check. Supabase's `identities.provider === "email"`
+   covers BOTH password and OTP-only accounts, so it can't gate State B.
+   Migration `20260522155912_trip_readiness_has_password.sql` adds the
+   column with a deterministic backfill from
+   `auth.users.encrypted_password IS NOT NULL`. Four atomic setters
+   (`signUpAction`, `setPasswordViaRecoveryAction`, `changePasswordAction`,
+   `setPasswordAction`) write `has_password = true` *inside* their
+   `rateLimitedAction` closures, after the `signUp()` / `updateUser`
+   success branch. NO trigger on `auth.users` — the per-action atomic
+   write is the M5 PR4 canonical pattern.
+
+4. **Phantom-wiring audit table in PR body** as a standing W0-style
+   discipline: each new symbol gets a row listing producer + staged
+   consumer. M5 retro recommendation #1 → trip-readiness applied it
+   on W0 PR #243; zero dead-code findings.
+
+### Process observations
+
+- **Vercel preview comment shows stale "Error" status** even after a
+  successful rebuild — refreshes via a no-op trigger commit on the
+  branch. Observed on W1a (#246), W1b (#247). The check_runs API
+  rolling up "Vercel Preview Comments: SUCCESS" was more reliable
+  than the embedded comment's status. Worth knowing for future
+  sweeps.
+
+- **Pre-existing CI flake** in `tests/unit/account-sign-in-and-security.test.tsx`
+  ("cancel in State C") and `tests/unit/login-form.test.tsx` ("calls
+  signUpAction when 'Create account instead' is clicked"). Both
+  verified pre-existing against `origin/main` via `git show`; both
+  passed on re-run with no code change. Distinct from #230 (rsvp-toggle).
+  CI-only flakes; local passes consistently. File a follow-up if
+  recurrence rate exceeds 1/3 runs.
+
+- **`gh pr update-branch` rebases the branch on the remote**, which
+  then conflicts with locally-cached screenshot commits if the
+  worktree pushed first. Workflow: rebase locally (`git pull --rebase`)
+  before pushing screenshots to a PR whose base just shifted.
+
+- **Override A (375px preview smoke)** ran per PR but value-add was
+  limited for foundations-only PRs (W0) where no UI consumer was
+  added. The deeper authed verification lives in the closure walk.
+  Per-PR smokes remain useful as build-health regression checks.
+
+### Why no retro file
+
+Adapter notes for `/goal trip-readiness` explicitly bypass the retro
+file — this is a polish sweep, not a milestone. The above entry is
+the entire process record. Subsequent milestone retros can reference
+this entry by date.
+
+**Bright line unchanged from M4/M5:** *use the app for one real
+bachelor party.* The six P0s that drove this sweep were surfaced by
+dogfooding; M6 still gates on the real-trip retrospective. **Don't
+start M6 just because trip-readiness is green — gate on the actual
+trip.**
+
+---
+
 ## 2026-05-21 — M5 — auth redesign — milestone closed
 
 **Decision:** M5 closed. The v3.2 auth redesign shipped across 5

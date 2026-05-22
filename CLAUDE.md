@@ -275,12 +275,27 @@ See `notes/retros/m5-retro.md` for the M5 closure and `notes/decisions.md`
 "M5 auth redesign — milestone closed" ADR for the load-bearing
 decisions made during execution.
 
-**Next:** real-trip retrospective gates M6 — same bright line as M4.
-M1–M5 shipped the MVP + auth substrate; use the app for the real
-bachelor party before scoping M6. M5 carry-backs:
+**Trip-readiness polish sweep — Closed (2026-05-22).** Six P0 UX bugs
+filed during the post-M5 dogfood pass shipped across 3 waves / 7 PRs
+(#243, #246, #247, #249, #251, #252, #253) + closure PR. Closes #233,
+#236, #237, #238, #239, #240, #241. See
+`notes/trip-readiness-execution-plan.md` §"Phase 6 closure" and
+`notes/decisions.md` "Polish-sweep notes" for the load-bearing
+patterns codified (resolveMemberName helper, has_password shadow
+column + 4 atomic setters, "Someone" vs "Guest" author-fallback split,
+phantom-wiring audit).
+
+**Next:** real-trip retrospective still gates M6 — same bright line
+as M4/M5. **Trip-readiness made the app safer to hand to real
+attendees but does NOT lift the M6 gate.** M5 + trip-readiness
+carry-backs:
 - **#230** — chronic flake in `rsvp-toggle.test.tsx:192` (gate on M6 Wave 0)
 - **#232** — OAuth-existing-user alert detection wiring
-- **#233** — `/account/sign-in-and-security` State B identity check
+- **#244** — DRY: extract `markPasswordSet` from 4 atomic setters
+- **#248** — travel-leg `kind != flight` cross-field guard
+- **#250** — consolidate announcements author-enrichment (SQL view vs unused param)
+- **#254** — React #418 hydration on `/arrivals`
+- **#255** — fresh OTP-only walk for #233 State B `[v]`
 
 When you complete a milestone, update `/notes/roadmap.md` to mark it done
 and add any deviations or follow-ups to `/notes/decisions.md`.
