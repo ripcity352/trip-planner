@@ -124,12 +124,14 @@ describe("LodgingRoster", () => {
     expect(screen.queryAllByText("Dave")).toHaveLength(0);
   });
 
-  // #160 — dropdown must NOT show UUID when display_name is null
-  it("shows email-localpart in dropdown when member has no display_name but has email", async () => {
+  // #240 — dropdown must NEVER show a raw UUID. Display sites use
+  // resolveMemberName ("Guest" terminal); the organizer-only assign dropdown
+  // keeps the email-fallback tier so two unnamed members are disambiguable.
+  it("shows email fallback in dropdown when member has no display_name (organizer-only disambiguation)", async () => {
     const members = [
       // member-1 is already assigned (in defaultProps.assignments)
       makeMember({ id: "member-1", display_name: "Dave" }),
-      // member-2 has no display_name — dropdown must show localpart, not UUID
+      // member-2 has no display_name — dropdown must show email (NOT the UUID)
       makeMember({
         id: "member-2",
         display_name: null,
@@ -150,13 +152,14 @@ describe("LodgingRoster", () => {
     // Open the assign form
     fireEvent.click(screen.getByRole("button", { name: /assign a room/i }));
 
-    // The select must show the email address, not the UUID "member-2"
+    // The select shows the email so the organizer can disambiguate
     const option = screen.getByRole("option", { name: "pete@example.com" });
     expect(option).toBeInTheDocument();
+    // UUID must never appear
     expect(screen.queryByRole("option", { name: "member-2" })).not.toBeInTheDocument();
   });
 
-  it("shows member id in dropdown only when both display_name and email are null", async () => {
+  it("shows 'Guest' in dropdown when both display_name and email are null — never the UUID", async () => {
     const members = [
       makeMember({ id: "member-1", display_name: "Dave" }),
       makeMember({
@@ -178,8 +181,9 @@ describe("LodgingRoster", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /assign a room/i }));
 
-    // Last resort: show the id (still better than nothing, but never preferred)
-    const option = screen.getByRole("option", { name: "member-2" });
+    // resolveMemberName fallback — "Guest" not "member-2"
+    const option = screen.getByRole("option", { name: "Guest" });
     expect(option).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "member-2" })).not.toBeInTheDocument();
   });
 });
