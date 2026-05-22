@@ -151,7 +151,10 @@ export function LodgingRoster({
               <option value="">{M3_UI_STRINGS.lodging_assign_pick_person}</option>
               {unassignedMembers.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {resolveMemberName(memberMap, m.id)}
+                  {/* Organizer-only dropdown: keep email fallback so two unnamed
+                   * members don't both render as identical "Guest" options.
+                   * Display sites use resolveMemberName (no email exposure). */}
+                  {m.display_name ?? m.email ?? M3_UI_STRINGS.roster_member_fallback_name}
                 </option>
               ))}
             </select>

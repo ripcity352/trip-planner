@@ -124,14 +124,14 @@ describe("LodgingRoster", () => {
     expect(screen.queryAllByText("Dave")).toHaveLength(0);
   });
 
-  // #240 — dropdown must NEVER show UUID or email when display_name is null.
-  // W1a decision: resolveMemberName replaces the old display_name ?? email ?? id
-  // chain. Email was a PII leak in the dropdown; "Guest" is the safe fallback.
-  it("shows 'Guest' in dropdown when member has no display_name (even if email is set)", async () => {
+  // #240 — dropdown must NEVER show a raw UUID. Display sites use
+  // resolveMemberName ("Guest" terminal); the organizer-only assign dropdown
+  // keeps the email-fallback tier so two unnamed members are disambiguable.
+  it("shows email fallback in dropdown when member has no display_name (organizer-only disambiguation)", async () => {
     const members = [
       // member-1 is already assigned (in defaultProps.assignments)
       makeMember({ id: "member-1", display_name: "Dave" }),
-      // member-2 has no display_name — dropdown must show "Guest", not email or UUID
+      // member-2 has no display_name — dropdown must show email (NOT the UUID)
       makeMember({
         id: "member-2",
         display_name: null,
@@ -152,10 +152,10 @@ describe("LodgingRoster", () => {
     // Open the assign form
     fireEvent.click(screen.getByRole("button", { name: /assign a room/i }));
 
-    // The select must show "Guest", not the email or UUID
-    const option = screen.getByRole("option", { name: "Guest" });
+    // The select shows the email so the organizer can disambiguate
+    const option = screen.getByRole("option", { name: "pete@example.com" });
     expect(option).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "pete@example.com" })).not.toBeInTheDocument();
+    // UUID must never appear
     expect(screen.queryByRole("option", { name: "member-2" })).not.toBeInTheDocument();
   });
 
