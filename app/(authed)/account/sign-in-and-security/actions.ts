@@ -197,7 +197,24 @@ export async function changePasswordAction(input: {
           return { ok: false, errorKey: mapped ?? "network" };
         }
 
-        // 4. Revoke other sessions — wrapped so a transient blip doesn't
+        // 4. Atomically mark has_password — same closure as updateUser,
+        //    only reachable on success. W0 D6 (trip-readiness).
+        const { error: hpErr } = await supabase
+          .from("profiles")
+          .update({ has_password: true })
+          .eq("id", user.id)
+          .select()
+          .single();
+
+        if (hpErr) {
+          // TODO: surface to Sentry once observability layer settles
+          console.error("[account-security] has_password write failed (changePassword)", {
+            code: (hpErr as { code?: string }).code,
+          });
+          return { ok: false, errorKey: "network" };
+        }
+
+        // 5. Revoke other sessions — wrapped so a transient blip doesn't
         //    flip a successful rotation into a "network" error.
         await revokeOtherSessions(supabase, "change-password");
 
@@ -300,7 +317,24 @@ export async function setPasswordViaRecoveryAction(input: {
           return { ok: false, errorKey: mapped ?? "network" };
         }
 
-        // 4. Revoke other sessions — wrapped.
+        // 4. Atomically mark has_password — same closure as updateUser,
+        //    only reachable on success. W0 D6 (trip-readiness).
+        const { error: hpErr } = await supabase
+          .from("profiles")
+          .update({ has_password: true })
+          .eq("id", user.id)
+          .select()
+          .single();
+
+        if (hpErr) {
+          // TODO: surface to Sentry once observability layer settles
+          console.error("[account-security] has_password write failed (recovery)", {
+            code: (hpErr as { code?: string }).code,
+          });
+          return { ok: false, errorKey: "network" };
+        }
+
+        // 5. Revoke other sessions — wrapped.
         await revokeOtherSessions(supabase, "recovery");
 
         return { ok: true };
@@ -387,6 +421,23 @@ export async function setPasswordAction(input: {
           });
           const mapped = mapAuthErrorToKey(updateErr);
           return { ok: false, errorKey: mapped ?? "network" };
+        }
+
+        // 4. Atomically mark has_password — same closure as updateUser,
+        //    only reachable on success. W0 D6 (trip-readiness).
+        const { error: hpErr } = await supabase
+          .from("profiles")
+          .update({ has_password: true })
+          .eq("id", user.id)
+          .select()
+          .single();
+
+        if (hpErr) {
+          // TODO: surface to Sentry once observability layer settles
+          console.error("[account-security] has_password write failed (setPassword)", {
+            code: (hpErr as { code?: string }).code,
+          });
+          return { ok: false, errorKey: "network" };
         }
 
         // NOTE: No signOut({scope:'others'}) — State B has no prior credential

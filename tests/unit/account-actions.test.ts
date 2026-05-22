@@ -24,6 +24,15 @@ const mockUpdateUser = vi.fn();
 const mockSignOut = vi.fn();
 const mockVerifyOtp = vi.fn();
 
+// Profiles update chain — stubbed to succeed by default so existing tests
+// that don't care about has_password behaviour remain unaffected. Individual
+// tests in has-password-writes.test.ts verify the chain calls explicitly.
+const mockHpSingle = vi.fn().mockResolvedValue({ data: { has_password: true }, error: null });
+const mockHpSelect = vi.fn(() => ({ single: mockHpSingle }));
+const mockHpEq = vi.fn(() => ({ select: mockHpSelect }));
+const mockHpUpdate = vi.fn(() => ({ eq: mockHpEq }));
+const mockHpFrom = vi.fn(() => ({ update: mockHpUpdate }));
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() =>
     Promise.resolve({
@@ -34,6 +43,7 @@ vi.mock("@/lib/supabase/server", () => ({
         signOut: mockSignOut,
         verifyOtp: mockVerifyOtp,
       },
+      from: mockHpFrom,
     })
   ),
 }));
