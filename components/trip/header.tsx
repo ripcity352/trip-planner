@@ -1,11 +1,13 @@
 import * as React from "react";
 
+import Link from "next/link";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
 import { HeaderMenu } from "@/components/trip/header-menu";
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 
 /**
  * Shape we accept from `supabase.auth.getUser()`. We don't depend on
@@ -37,9 +39,13 @@ export function Header({ user }: { user: HeaderUser }) {
   return (
     <header className="border-border/60 bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 border-b backdrop-blur">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-        <span className="text-base font-semibold tracking-tight">
-          Party Trip
-        </span>
+        <Link
+          href="/trips"
+          aria-label={M3_UI_STRINGS.nav_brand_label}
+          className="text-base font-semibold tracking-tight"
+        >
+          {M3_UI_STRINGS.nav_brand_label}
+        </Link>
         <HeaderMenu>
           <Avatar size="default">
             {avatarUrl ? (

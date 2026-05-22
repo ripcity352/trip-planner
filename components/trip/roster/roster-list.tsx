@@ -10,6 +10,7 @@
  *     both export paths.
  */
 
+import Link from "next/link";
 import { M3_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
 import type { TripRole } from "@/lib/db/types";
 import { VCardDownloadButton } from "./vcard-download-button";
@@ -26,7 +27,17 @@ export interface RosterMember {
 interface RosterListProps {
   members: RosterMember[];
   tripName: string;
+  /** URL slug for the trip — used to build the invite CTA href. */
+  tripSlug?: string;
+  /** Viewer's role — determines whether the invite CTA is shown. */
+  viewerRole?: TripRole;
 }
+
+/** Organizer roles that may mint invites. */
+const ORGANIZER_ROLES: ReadonlySet<TripRole> = new Set([
+  "organizer",
+  "co_organizer",
+]);
 
 /** Returns a human-readable role label from the copy palette, or null. */
 function roleLabel(role: TripRole, isCelebrant: boolean): string | null {
@@ -42,7 +53,14 @@ function roleLabel(role: TripRole, isCelebrant: boolean): string | null {
   return null;
 }
 
-export function RosterList({ members, tripName }: RosterListProps) {
+export function RosterList({
+  members,
+  tripName,
+  tripSlug,
+  viewerRole,
+}: RosterListProps) {
+  const canInvite =
+    viewerRole !== undefined && ORGANIZER_ROLES.has(viewerRole);
   // Members with a stored phone — used for both export paths.
   const membersWithPhone = members
     .filter((m): m is RosterMember & { phone: string } => m.phone !== null)
@@ -55,10 +73,20 @@ export function RosterList({ members, tripName }: RosterListProps) {
 
   return (
     <div>
-      {/* Section heading */}
-      <h2 className="text-xl font-semibold tracking-tight mb-4">
-        {M3_UI_STRINGS.roster_heading}
-      </h2>
+      {/* Section heading + organizer invite CTA */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold tracking-tight">
+          {M3_UI_STRINGS.roster_heading}
+        </h2>
+        {canInvite && tripSlug ? (
+          <Link
+            href={`/trips/${tripSlug}/invites`}
+            className="text-sm font-medium text-primary"
+          >
+            {M3_UI_STRINGS.crew_invite_cta}
+          </Link>
+        ) : null}
+      </div>
 
       {/* Export CTAs */}
       <div className="flex flex-wrap gap-3 mb-6">

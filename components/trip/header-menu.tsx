@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import Link from "next/link";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { signOut } from "@/lib/actions/auth";
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { AUTH_COPY } from "@/lib/copy/auth";
 
 /**
  * Tiny client wrapper around the avatar — only the parts that need
@@ -35,6 +38,18 @@ export function HeaderMenu({ children }: { children: React.ReactNode }) {
         {children}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="min-w-40">
+        {/* Navigation items — above sign-out */}
+        <DropdownMenuItem>
+          <Link href="/trips" className="w-full">
+            {M3_UI_STRINGS.nav_account_trips_link}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <Link href="/account/sign-in-and-security" className="w-full">
+            {AUTH_COPY.accountSecurity_meNavLink}
+          </Link>
+        </DropdownMenuItem>
+
         <form ref={formRef} action={signOut} className="contents">
           <DropdownMenuItem
             // Native menu item -> manually submit the wrapping form so
