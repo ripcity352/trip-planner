@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { listMyTrips } from "@/lib/db/trips";
-import { EMPTY_STATES, EMPTY_STATE_CTAS } from "@/lib/copy/empty-states";
+import { EMPTY_STATES, EMPTY_STATE_CTAS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { createClient } from "@/lib/supabase/server";
 import type { Trip } from "@/lib/db/types";
 
@@ -39,7 +39,7 @@ export default async function TripsPage() {
 
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
-      <h1 className="mb-4 text-xl font-semibold tracking-tight">Your trips</h1>
+      <TripsListHeader />
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {trips.map((trip) => (
           <li key={trip.id}>
@@ -48,6 +48,30 @@ export default async function TripsPage() {
         ))}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Header strip for the populated trip list: page heading + "Start a trip"
+ * CTA. Exported as a named component so it can be unit-tested in isolation
+ * (TripsPage is an async Server Component; the header strip is sync).
+ *
+ * CTA placement: top of list, inline with the heading, right-aligned.
+ * Matches the visual rhythm of the existing <h1> + grid pattern without
+ * introducing a floating action button (FAB would require "use client" for
+ * fixed positioning; overkill for a single CTA at this screen size).
+ */
+export function TripsListHeader() {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <h1 className="text-xl font-semibold tracking-tight">Your trips</h1>
+      <Link
+        href="/trips/new"
+        className={buttonVariants({ variant: "default", size: "sm" })}
+      >
+        {M3_UI_STRINGS.tripsList_newTrip_cta}
+      </Link>
+    </div>
   );
 }
 
