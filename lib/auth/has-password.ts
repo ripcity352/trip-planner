@@ -27,7 +27,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type MarkPasswordSetResult = { ok: true } | { ok: false };
+export type MarkPasswordSetResult = { ok: boolean };
 
 export async function markPasswordSet(
   supabase: SupabaseClient,
