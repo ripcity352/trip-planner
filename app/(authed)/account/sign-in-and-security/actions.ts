@@ -36,6 +36,7 @@ import {
   RateLimitError,
   rateLimitedAction,
 } from "@/lib/rate-limit";
+import { markPasswordSet } from "@/lib/auth/has-password";
 
 // ---------------------------------------------------------------------------
 // Zod schemas (M4 W1b — co-located with actions, never split)
@@ -199,18 +200,12 @@ export async function changePasswordAction(input: {
 
         // 4. Atomically mark has_password — same closure as updateUser,
         //    only reachable on success. W0 D6 (trip-readiness).
-        const { error: hpErr } = await supabase
-          .from("profiles")
-          .update({ has_password: true })
-          .eq("id", user.id)
-          .select()
-          .single();
-
-        if (hpErr) {
-          // TODO: surface to Sentry once observability layer settles
-          console.error("[account-security] has_password write failed (changePassword)", {
-            code: (hpErr as { code?: string }).code,
-          });
+        const hp = await markPasswordSet(
+          supabase,
+          user.id,
+          "account-security:changePassword",
+        );
+        if (!hp.ok) {
           return { ok: false, errorKey: "network" };
         }
 
@@ -319,18 +314,12 @@ export async function setPasswordViaRecoveryAction(input: {
 
         // 4. Atomically mark has_password — same closure as updateUser,
         //    only reachable on success. W0 D6 (trip-readiness).
-        const { error: hpErr } = await supabase
-          .from("profiles")
-          .update({ has_password: true })
-          .eq("id", user.id)
-          .select()
-          .single();
-
-        if (hpErr) {
-          // TODO: surface to Sentry once observability layer settles
-          console.error("[account-security] has_password write failed (recovery)", {
-            code: (hpErr as { code?: string }).code,
-          });
+        const hp = await markPasswordSet(
+          supabase,
+          user.id,
+          "account-security:recovery",
+        );
+        if (!hp.ok) {
           return { ok: false, errorKey: "network" };
         }
 
@@ -425,18 +414,12 @@ export async function setPasswordAction(input: {
 
         // 4. Atomically mark has_password — same closure as updateUser,
         //    only reachable on success. W0 D6 (trip-readiness).
-        const { error: hpErr } = await supabase
-          .from("profiles")
-          .update({ has_password: true })
-          .eq("id", user.id)
-          .select()
-          .single();
-
-        if (hpErr) {
-          // TODO: surface to Sentry once observability layer settles
-          console.error("[account-security] has_password write failed (setPassword)", {
-            code: (hpErr as { code?: string }).code,
-          });
+        const hp = await markPasswordSet(
+          supabase,
+          user.id,
+          "account-security:setPassword",
+        );
+        if (!hp.ok) {
           return { ok: false, errorKey: "network" };
         }
 
