@@ -484,6 +484,41 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
     });
   });
 
+  it("self-heals: editing a non-flight leg that has stale airline data nulls them on save", async () => {
+    // Pre-#248 data path: a row exists with kind=drive but stale
+    // airline_iata/flight_number from before the form learned to clear them.
+    // Opening this row in edit mode + clicking save (without changing
+    // anything) should write null/null back to the airline columns.
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({
+          id: "leg-99",
+          kind: "drive",
+          airline_iata: "AA",
+          flight_number: "1234",
+        })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "drive",
+          airlineIata: null,
+          flightNumber: null,
+        }),
+        expect.any(String)
+      );
+    });
+  });
+
   it("preserves airlineIata + flightNumber when kind is still flight", async () => {
     mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
 

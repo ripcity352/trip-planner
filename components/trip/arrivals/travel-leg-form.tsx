@@ -107,6 +107,10 @@ export function TravelLegForm({
     // kind to drive/train/other, RHF still holds the stale values — clear
     // them here so the server superRefine guard is never reached in normal
     // use. Belt + suspenders with the server-side check.
+    //
+    // If the server's validation_failed surfaces here in production it
+    // signals a client bug (e.g. RHF mutated externally, or a future caller
+    // forgets the ternary), not a user error.
     const isFlight = values.kind === "flight";
 
     const result = await upsertTravelLeg(
