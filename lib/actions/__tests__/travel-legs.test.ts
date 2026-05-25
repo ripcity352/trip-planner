@@ -256,6 +256,72 @@ describe("upsertTravelLeg", () => {
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
   });
 
+  // ── #248: cross-field guard — airline fields only on kind=flight ─────────
+  //
+  // Background: pre-#248, a user could pick kind=flight, fill airlineIata,
+  // switch kind to drive, and the airline value persisted to the DB. Server
+  // schema accepted it. This block locks the invariant: airlineIata and
+  // flightNumber are ONLY valid when kind === "flight"; any other kind with
+  // those fields populated returns validation_failed.
+
+  it("returns validation_failed when kind=drive and airlineIata is set", async () => {
+    primeAuth(VALID_USER_ID);
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      { tripId: VALID_TRIP_ID, kind: "drive", airlineIata: "AA" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed when kind=train and flightNumber is set", async () => {
+    primeAuth(VALID_USER_ID);
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      { tripId: VALID_TRIP_ID, kind: "train", flightNumber: "1234" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed when kind=other and both airline fields are set", async () => {
+    primeAuth(VALID_USER_ID);
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "other",
+        airlineIata: "BA",
+        flightNumber: "100",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("accepts kind=drive with no airline fields (null/undefined)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({
+      data: { ...mockLeg, kind: "drive" },
+      error: null,
+    }));
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "drive",
+        airlineIata: null,
+        flightNumber: null,
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result.ok).toBe(true);
+  });
+
   it("strips NUL from carrier via zod trim (null coercion) — NUL in string hits max length or passes through; raw NUL causes no server error", async () => {
     // Zod .trim() does not strip NUL — the AirlinePicker sanitizes before
     // sending. This test verifies the server action accepts a clean carrier

@@ -102,6 +102,13 @@ export function TravelLegForm({
     setServerErrorKey(null);
     const idempotencyKey = crypto.randomUUID();
 
+    // #248: cross-field guard. airlineIata + flightNumber are flight-only.
+    // If the user starts on flight, fills the airline picker, then switches
+    // kind to drive/train/other, RHF still holds the stale values — clear
+    // them here so the server superRefine guard is never reached in normal
+    // use. Belt + suspenders with the server-side check.
+    const isFlight = values.kind === "flight";
+
     const result = await upsertTravelLeg(
       {
         tripId,
@@ -112,9 +119,9 @@ export function TravelLegForm({
         confirmationCode: values.confirmationCode || null,
         notes: values.notes || null,
         legId: isEditMode ? leg.id : undefined,
-        // M4 W2c additions
-        airlineIata: values.airlineIata || null,
-        flightNumber: values.flightNumber || null,
+        // M4 W2c additions — only sent when kind === "flight" (#248)
+        airlineIata: isFlight ? values.airlineIata || null : null,
+        flightNumber: isFlight ? values.flightNumber || null : null,
       },
       idempotencyKey
     );
