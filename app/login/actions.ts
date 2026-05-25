@@ -33,6 +33,7 @@ import {
   rateLimitedAction,
 } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/auth/safe-next";
+import { markPasswordSet } from "@/lib/auth/has-password";
 
 // ---------------------------------------------------------------------------
 // Zod schemas (M4 W1b — co-located with actions)
@@ -258,18 +259,8 @@ export async function signUpAction(input: {
     // so this only runs when signUp succeeds. W0 D6 (trip-readiness).
     const userId = data?.user?.id;
     if (userId) {
-      const { error: hpErr } = await supabase
-        .from("profiles")
-        .update({ has_password: true })
-        .eq("id", userId)
-        .select()
-        .single();
-
-      if (hpErr) {
-        // TODO: surface to Sentry once observability layer settles
-        console.error("[auth] has_password write failed after signUp", {
-          code: (hpErr as { code?: string }).code,
-        });
+      const hp = await markPasswordSet(supabase, userId, "auth:signUp");
+      if (!hp.ok) {
         return { ok: false, errorKey: "network" };
       }
     }
