@@ -64,6 +64,40 @@ describe("CreateInviteForm", () => {
     });
   });
 
+  it("converts a datetime-local expiry to an ISO-8601 string (regression: #257)", async () => {
+    createInviteActionMock.mockResolvedValueOnce({
+      ok: true,
+      invite: {
+        token: "tok-expiry",
+        trip_id: defaultProps.tripId,
+        created_by: "u-1",
+        expires_at: new Date().toISOString(),
+        uses_left: null,
+        created_at: new Date().toISOString(),
+      },
+    });
+
+    render(<CreateInviteForm {...defaultProps} />);
+    // datetime-local inputs accept "YYYY-MM-DDTHH:MM" — the exact shape
+    // the browser produces. Pick a future time so the server's
+    // refine(> Date.now()) would accept it on a real round-trip.
+    const futureLocal = "2099-12-31T23:59";
+    fireEvent.change(screen.getByLabelText(/expires/i), {
+      target: { value: futureLocal },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /mint it/i }));
+
+    await waitFor(() => {
+      expect(createInviteActionMock).toHaveBeenCalledTimes(1);
+    });
+    const callArg = createInviteActionMock.mock.calls[0][0] as {
+      expiresAt: string | null;
+    };
+    expect(callArg.expiresAt).toEqual(new Date(futureLocal).toISOString());
+    // Belt-and-suspenders: must satisfy z.string().datetime() — seconds + Z/offset.
+    expect(callArg.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/);
+  });
+
   it("passes usesLeft as a number when filled in", async () => {
     createInviteActionMock.mockResolvedValueOnce({
       ok: true,
