@@ -21,6 +21,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
+import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/utils/datetime";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { upsertTravelLeg, deleteTravelLeg } from "@/lib/actions/travel-legs";
@@ -75,31 +76,6 @@ export function TravelLegForm({
     null
   );
   const [isDeleting, setIsDeleting] = React.useState(false);
-
-  // Convert ISO timestamptz → datetime-local string (YYYY-MM-DDTHH:MM) in the
-  // viewer's local timezone. Previously this used `.slice(0, 16)`, which
-  // discarded the UTC offset entirely — the input then interpreted the value
-  // as local time, shifting the stored instant by the viewer's offset on
-  // every edit round-trip.
-  const toDatetimeLocal = (iso: string | null | undefined): string => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
-  // Convert datetime-local input (local TZ) → ISO with UTC offset before
-  // posting. Without this, the server would store the literal "YYYY-MM-DDTHH:MM"
-  // string and Postgres would interpret it as either local-server or UTC
-  // depending on the column — same drift bug, server-side. Empty string → null
-  // (the schema treats both as "field not set").
-  const fromDatetimeLocal = (localInput: string | undefined): string | null => {
-    if (!localInput) return null;
-    const d = new Date(localInput);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString();
-  };
 
   const {
     register,

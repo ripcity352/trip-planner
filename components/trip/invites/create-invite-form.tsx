@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
 import { createInviteAction } from "@/lib/actions/invites";
+import { fromDatetimeLocal } from "@/lib/utils/datetime";
 import type { Invite } from "@/lib/db/types";
 
 // Form stores everything as strings (HTML form values). The schema
@@ -72,7 +73,11 @@ export function CreateInviteForm({ tripId, onCreated }: CreateInviteFormProps) {
       values.usesLeft && values.usesLeft !== ""
         ? parseInt(values.usesLeft, 10)
         : null;
-    const expiresAt = values.expiresAt || null;
+    // The datetime-local input emits "YYYY-MM-DDTHH:MM" (no seconds, no
+    // offset). The server's zod schema requires a full ISO-8601 string
+    // (z.string().datetime()), so coerce here. Empty input → null (the
+    // schema treats both as "no expiry").
+    const expiresAt = fromDatetimeLocal(values.expiresAt);
 
     const result = await createInviteAction({ tripId, usesLeft, expiresAt });
 
