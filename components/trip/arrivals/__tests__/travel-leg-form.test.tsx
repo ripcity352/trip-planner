@@ -427,3 +427,126 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     expect(screen.queryByLabelText("Carrier")).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// #248: cross-field guard — client clears airline fields when kind != flight
+// ---------------------------------------------------------------------------
+//
+// Pre-#248: edit a flight leg (airlineIata="AA", flightNumber="1234"), switch
+// the kind to "drive", click save — RHF retained the airline values in
+// memory and posted them to the server. Server accepted them (no
+// cross-field guard).
+//
+// The server now rejects this combination (#248 superRefine guard). The
+// client clears the two airline fields in onSubmit so the server rejection
+// is never reached in normal use — UX defense to keep the form from
+// surfacing a "validation_failed" the user can't act on.
+
+describe("TravelLegForm — kind switch clears airline fields on submit", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("nulls airlineIata + flightNumber when submitting with kind != flight", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({
+          id: "leg-77",
+          kind: "flight",
+          airline_iata: "AA",
+          flight_number: "1234",
+        })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    // Switch kind off flight — the airline picker un-renders, but RHF
+    // would otherwise still hold the stale airlineIata/flightNumber.
+    fireEvent.change(screen.getByLabelText("How"), {
+      target: { value: "drive" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "drive",
+          airlineIata: null,
+          flightNumber: null,
+        }),
+        expect.any(String)
+      );
+    });
+  });
+
+  it("self-heals: editing a non-flight leg that has stale airline data nulls them on save", async () => {
+    // Pre-#248 data path: a row exists with kind=drive but stale
+    // airline_iata/flight_number from before the form learned to clear them.
+    // Opening this row in edit mode + clicking save (without changing
+    // anything) should write null/null back to the airline columns.
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({
+          id: "leg-99",
+          kind: "drive",
+          airline_iata: "AA",
+          flight_number: "1234",
+        })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "drive",
+          airlineIata: null,
+          flightNumber: null,
+        }),
+        expect.any(String)
+      );
+    });
+  });
+
+  it("preserves airlineIata + flightNumber when kind is still flight", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({
+          id: "leg-78",
+          kind: "flight",
+          airline_iata: "AA",
+          flight_number: "1234",
+        })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "flight",
+          airlineIata: "AA",
+          flightNumber: "1234",
+        }),
+        expect.any(String)
+      );
+    });
+  });
+});

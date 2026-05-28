@@ -5,6 +5,38 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-05-25 — Carry-back wave #244 / #248 / #250
+
+**Decision:** Three sequential single-issue PRs (#274 / #275 / TBD)
+closing the M5 + trip-readiness carry-backs. Not a milestone; no retro
+file. M6 remains hard-gated on the real-trip retrospective.
+
+### #248 — travel-leg cross-field guard
+
+Server `superRefine` is the load-bearing check; the form clear is UX
+defense. Pre-existing rows where `kind != 'flight' AND airline_iata IS
+NOT NULL` (any data created between M4 PR #198 and #248 shipping) are
+**not retro-cleaned by migration**. They self-heal on next edit:
+opening such a row in the edit form un-renders the airline picker (W1b
+collapse), and the new `isFlight ? ... : null` ternary in
+`onSubmit` writes the fields back to NULL. The read-side UI for
+non-flight kinds doesn't surface `airline_iata` / `flight_number`, so
+the stale data is invisible. No backfill needed.
+
+### #244 — markPasswordSet helper
+
+Refactor only. The 4 atomic setters now call
+`markPasswordSet(supabase, userId, context)` from
+`lib/auth/has-password.ts`. PostgREST chain preserved exactly so the
+per-action assertions in `tests/unit/has-password-writes.test.ts` stay
+green. Log format flipped from
+`[area] has_password write failed (sub-context)` to
+`[context] has_password write failed` — unified scheme, but a minor
+break for any operator regex anchored on the old bracket-tag. No
+scraping contract exists yet (Sentry is still TODO).
+
+---
+
 ## 2026-05-22 — Polish-sweep notes (`/goal trip-readiness`)
 
 **Decision:** Between-milestones polish sweep — six P0 UX bugs filed during

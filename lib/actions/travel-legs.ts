@@ -30,28 +30,50 @@ import type { TravelLeg } from "@/lib/db/types";
 
 const TRAVEL_LEG_KIND = ["flight", "train", "drive", "other"] as const;
 
-const upsertLegSchema = z.object({
-  tripId: z.string().uuid(),
-  kind: z.enum(TRAVEL_LEG_KIND),
-  departAt: z.string().nullable().optional(),
-  arriveAt: z.string().nullable().optional(),
-  carrier: z.string().trim().max(100).nullable().optional(),
-  confirmationCode: z.string().trim().max(100).nullable().optional(),
-  notes: z.string().trim().max(1000).nullable().optional(),
-  // Optional: if provided, used to update an existing leg row.
-  legId: z.string().uuid().nullable().optional(),
-  // M4 W2c: airline IATA code and flight number
-  airlineIata: z
-    .string()
-    .regex(/^[A-Z0-9]{2}$/)
-    .nullable()
-    .optional(),
-  flightNumber: z
-    .string()
-    .regex(/^[A-Z0-9]{1,8}$/)
-    .nullable()
-    .optional(),
-});
+const upsertLegSchema = z
+  .object({
+    tripId: z.string().uuid(),
+    kind: z.enum(TRAVEL_LEG_KIND),
+    departAt: z.string().nullable().optional(),
+    arriveAt: z.string().nullable().optional(),
+    carrier: z.string().trim().max(100).nullable().optional(),
+    confirmationCode: z.string().trim().max(100).nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+    // Optional: if provided, used to update an existing leg row.
+    legId: z.string().uuid().nullable().optional(),
+    // M4 W2c: airline IATA code and flight number
+    airlineIata: z
+      .string()
+      .regex(/^[A-Z0-9]{2}$/)
+      .nullable()
+      .optional(),
+    flightNumber: z
+      .string()
+      .regex(/^[A-Z0-9]{1,8}$/)
+      .nullable()
+      .optional(),
+  })
+  // #248: cross-field guard. airlineIata + flightNumber are flight-only;
+  // any non-flight kind with either field populated is rejected. The form
+  // ALSO clears these in onSubmit when kind switches off flight (belt +
+  // suspenders) — this is the load-bearing server check.
+  .superRefine((data, ctx) => {
+    if (data.kind === "flight") return;
+    if (data.airlineIata != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["airlineIata"],
+        message: "airlineIata is only valid when kind is 'flight'",
+      });
+    }
+    if (data.flightNumber != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["flightNumber"],
+        message: "flightNumber is only valid when kind is 'flight'",
+      });
+    }
+  });
 
 const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
 
