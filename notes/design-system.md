@@ -785,6 +785,64 @@ config when M1 #69 is implemented.
 
 ---
 
+## Component & content contracts (v3)
+
+> **Why this block exists.** v1/v2 spec the *visual system* (color, type,
+> motion, degradation). They do not spec the *component- and content-level
+> contracts* that the same categorical slips keep violating every
+> milestone — which component renders which token, what verb a button
+> uses, what an empty state says, how an RSVP chip encodes state, how an
+> error surfaces, how a destructive action confirms. This v3 block is
+> Layer-1 of the three-layer enforcement model (ADR `decisions.md`
+> 2026-06-08): it names the contract so the primitive (Layer 2) and the
+> lint/PR-check (Layer 3) have something concrete to enforce.
+>
+> **Section-ownership map (Wave-1 serialization, Override H).** The six
+> contracts below land in **two serialized PRs**, append-only, never
+> parallel agents on this file:
+> - **PR-A:** Component bindings (#183) → Verbs table (#184) → Empty-state
+>   register (#185)
+> - **PR-B (after PR-A merges):** RSVP chip shape contract (#208) →
+>   Error-surface contract (#209) → Destructive-action contract (#210)
+>
+> Each contract cites `lib/copy/*` KEY NAMES, never inline literals
+> (Override F). The subsection skeleton below is committed in Wave 0 so
+> both PRs append into a pre-agreed structure with zero header collisions.
+
+### Component bindings (#183)
+
+> _Wave 1 PR-A — placeholder. Maps each v3 contract + primitive
+> (`<Identifier>`, `useDisplayName`, the date/time primitives) to its real
+> consumer component(s)._
+
+### Verbs table (#184)
+
+> _Wave 1 PR-A — placeholder. Canonical action verbs and their copy-key
+> sources._
+
+### Empty-state register (#185)
+
+> _Wave 1 PR-A — placeholder. Enumerated, voice-checked `EMPTY_STATES`
+> keys per surface._
+
+### RSVP chip shape contract (#208)
+
+> _Wave 1 PR-B — placeholder. State-via-shape ●/◐/○ + color; `◐` =
+> "undecided" only; per-day partial attendance is a separate future
+> primitive._
+
+### Error-surface contract (#209)
+
+> _Wave 1 PR-B — placeholder. Enumerated `ERRORS` keys + `--surface-error`;
+> no red flood; no account-existence leak._
+
+### Destructive-action contract (#210)
+
+> _Wave 1 PR-B — placeholder. `*_confirm` keys; desaturated persimmon, ⚠
+> icon, two-step confirm._
+
+---
+
 ## v2 additions — rendering-context degradation (2026-05-19)
 
 > **Why this section exists.** v1 specs *runtime* degradation
