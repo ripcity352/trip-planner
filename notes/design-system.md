@@ -957,19 +957,105 @@ feature lands).
 
 ### RSVP chip shape contract (#208)
 
-> _Wave 1 PR-B — placeholder. State-via-shape ●/◐/○ + color; `◐` =
-> "undecided" only; per-day partial attendance is a separate future
-> primitive._
+RSVP state is **encoded by shape, not color alone** (§"State signals":
+color is never the only signal). The chip is the canonical render of a
+member's trip-level RSVP on the dashboard "Who's in" surface
+(`dashboard_section_rsvp_heading`) and the invite preview.
+
+| State | Glyph | Color token | Copy key | Means |
+|---|---|---|---|---|
+| Going | ● filled circle | `--accent-heat` | `rsvp_chip_going` ("Going") | yes, attending |
+| Maybe | ◐ half circle | `--ink-secondary` | `rsvp_chip_maybe` ("Maybe") | **undecided — has not committed** |
+| Declined | ○ empty circle | `--ink-tertiary` | `rsvp_chip_declined` ("Can't make it") | no (name redacted to non-organizers per M1 RLS) |
+
+**Load-bearing semantic — `◐` = "undecided" ONLY.** It is *not* "going to
+part of the trip." **Per-day / partial attendance is a separate future
+primitive** (the late-arrival, the broke friend who skips the pricey
+night, the +1 who joins Saturday) — it must NOT be collapsed into the
+`maybe` chip. Encoding partial attendance as `◐` would lose the
+organizer's signal and foreclose the per-day RSVP feature. When per-day
+lands, it is a distinct data model + render, not a chip state.
+
+**Anti-tells:**
+- **No RSVP-speed ranking.** The roster is *who's in*, never *who
+  RSVP'd first* (§"What this rules out": no leaderboards). Chips render in
+  roster order, not response order.
+- **Aggregate-first.** Counts come from `dashboard_rsvp_count_template`
+  (`"{going} going, {maybe} maybe, {invited} invited"`); per-name
+  visibility is opt-in (M1 RLS). A non-organizer never sees who declined.
+- **Shape is mandatory.** A color-only chip (no glyph) fails the contract
+  — Smart Invert / colorblind users lose the state.
 
 ### Error-surface contract (#209)
 
-> _Wave 1 PR-B — placeholder. Enumerated `ERRORS` keys + `--surface-error`;
-> no red flood; no account-existence leak._
+Errors render on a **calm surface, never a red flood** (§"State signals":
+the single-accent system means "bad" states wear an ink shade + a
+hairline, not pomegranate red). Every mutation surface (RSVP, itinerary,
+announcements, invites, travel legs, lodging) renders failure the same
+way.
+
+**Surface treatment.** `--surface-error` is a *treatment, not a standalone
+token* (see the #182 token re-verification note — it is not in
+`globals.css`): render on `--surface-elevated` with a **1px hairline
+border in `--accent-heat-text` at 40% alpha**. No red fill, no full-width
+red banner, no shake animation. The hairline signals "something needs
+attention" without yelling.
+
+**The 5 canonical cross-cutting strings** (`lib/copy/errors.ts` `ERRORS`).
+Every surface reuses these; only when none fits does a feature add a
+`<feature>_<verb>_failed` string:
+
+| Key | String | When |
+|---|---|---|
+| `network` | "Couldn't reach the server. Pull to retry." | offline / fetch failure (the drunk-bad-signal primary case) |
+| `rls_denied` | "Not your trip to see. Ask whoever invited you." | RLS block |
+| `validation_failed` | (form-level) | client/server validation reject |
+| `rate_limit` | "Easy, tiger. Give it a sec and try again." | rate-limit hit |
+| `idempotency_replayed` | "Already done — no double-tap needed." | idempotency-key replay (drunk double-tap) |
+
+Feature-specific failures (`rsvp_save_failed`, `itinerary_save_failed`,
+`invite_revoke_failed`, `travel_leg_save_failed`, …) follow the same
+`<feature>_<verb>_failed` shape and the same surface treatment.
+
+**No account-existence leak (load-bearing).** No error string may confirm
+or deny whether an account / email exists — that is an enumeration
+oracle. Auth error copy (`auth_failed`, `auth_wrong_password`,
+`auth_code_invalid`) is deliberately ambiguous about account existence.
+A new auth/invite error string must pass this check before it ships.
+
+**Anti-tells:** no red flood, no toast spam (one error surface per
+action), no raw exception text, no stack traces, no "Error 500" codes —
+the user gets a voice-checked human string, the console gets the detail.
 
 ### Destructive-action contract (#210)
 
-> _Wave 1 PR-B — placeholder. `*_confirm` keys; desaturated persimmon, ⚠
-> icon, two-step confirm._
+Destructive actions (delete, revoke, remove, leave) use a **two-step
+confirm** in **desaturated persimmon + a `⚠` icon** — never pomegranate
+red (§"State signals" `warning` row: `--accent-heat` desaturated ~40% +
+`⚠`). The single-accent system has no red, so "danger" is signalled by
+desaturation + icon + the two-step, not by a new color.
+
+**Two-step pattern.** Tap the destructive verb → a confirm surface
+appears naming the object and the consequence → confirm or cancel. The
+confirm copy is a `*_confirm` key (`lib/copy/empty-states.ts`), never an
+inline literal, and never the generic "Are you sure?".
+
+| Action | Verb key | Confirm key | Confirm copy |
+|---|---|---|---|
+| Delete itinerary item | `itineraryForm_delete` ("Delete") | `itineraryForm_delete_confirm` | "Delete this item? Can't undo." |
+| Revoke invite link | `invitesPage_revoke_cta` ("Revoke") | `invitesPage_revoke_confirm` | "Revoke this link? Anyone with it can't join." |
+| Delete travel leg | `arrivals_leg_form_delete` ("Delete travel") | _(adds `*_confirm` when built)_ | follows the same shape |
+
+**Confirm-copy rules:**
+- **Name the object + the consequence**, not "Are you sure?" — "Delete
+  this item? Can't undo." tells you *what* and *what happens*.
+- **Plain, not scary.** The `⚠` icon + desaturated persimmon carry the
+  caution; the copy stays in the app's voice ("Can't undo", not "This
+  action is permanent and irreversible").
+- **Cancel is the safe default** — cancel is the larger / primary-position
+  affordance; the destructive confirm is secondary.
+- **Two-step is mandatory for irreversible actions.** A one-tap delete
+  with no confirm fails the contract (drunk-thumb protection).
 
 ---
 
