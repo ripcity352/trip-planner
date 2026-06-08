@@ -240,6 +240,74 @@ Switzer so the voice moments *feel* different.
 
 ---
 
+## Date and time
+
+> **Why this section exists.** v1 specs *fonts* for numerics (JetBrains
+> Mono) but is silent on *formatting*. Production M4 grew at least four
+> idioms for the same value — `Aug 14 - Aug 16`, `Friday · Aug 14`,
+> `about 22 hours ago`, `12 days away` — because the spec's silence is
+> what shadcn / `date-fns` defaults keep filling. This register locks the
+> five format tiers and the primitive contracts that enforce them.
+> Layer-1 spec per the three-layer ADR (2026-06-08); the primitive
+> *components* are a deferred companion feat (blocked-by this doc), not
+> built in the `ds` wave.
+
+### The five format tiers
+
+| Tier | Example | Font / size | Case | Never |
+|---|---|---|---|---|
+| **Range** | `Aug 14 → Aug 16` | JetBrains Mono caption (12px) when ancillary; **Fraunces 32px display** when primary (hero date) | `Mmm D` | `Aug 14, 2026` long-form; `08/14–08/16` |
+| **Day header** (timeline) | `fri 14` / `sat 15` / `sun 16` | JetBrains Mono caption | **lowercase** | `FRIDAY · AUG 14`; any uppercase tracked eyebrow |
+| **Relative** | `22h`, `3d`, `last week` | JetBrains Mono caption | lowercase, abbreviated | `about 22 hours ago`; `22 hours`; `2 days ago` |
+| **Absolute time** | `9:00 pm` | JetBrains Mono caption | **lowercase am/pm** | `9:00 PM`; `21:00` (unless user-locale 24h) |
+| **Countdown** | `12 days away` (ancillary) · `12 days` (hero) | JetBrains Mono caption when ancillary; **Fraunces display** when hero | sentence | `12 Days Away`; `T-minus 12` |
+
+The arrow in **Range** is `→` (U+2192), not a hyphen — the hyphen reads
+as a date-input separator; the arrow reads as motion through time.
+
+### Anti-tells (these fail the voice/visual bar)
+
+- Uppercase day headers (`FRIDAY · AUG 14`) — AI-tracked-eyebrow tell.
+- `about 22 hours ago` — `formatDistanceToNow`'s default verbose form.
+  Use the abbreviated `22h`.
+- `Aug 14, 2026` long form with year — the year is noise for a trip
+  inside the current planning horizon. Drop it unless the range spans a
+  year boundary.
+- Uppercase `AM` / `PM` — lowercase `am` / `pm` only.
+
+### Primitive contracts (Layer 2 — deferred feat)
+
+**Rule: no React component calls `format()`, `formatDistance()`, or
+`formatDistanceToNow()` directly.** Every date/time render goes through a
+primitive that owns its tier's format string:
+
+| Primitive | Owns tier | Signature (locked) |
+|---|---|---|
+| `<DateRange>` | Range | `({ start: Date, end: Date, variant?: "ancillary" \| "hero" })` |
+| `<DayHeader>` | Day header | `({ date: Date })` — emits lowercase `eee d` |
+| `<RelativeTime>` | Relative | `({ date: Date })` — abbreviated units |
+| `<TimeOfDay>` | Absolute time | `({ date: Date })` — lowercase am/pm |
+| `<Countdown>` | Countdown | `({ target: Date, variant?: "ancillary" \| "hero" })` |
+
+These primitives live in `components/ui/datetime/**`. They are **not**
+built in the `ds` wave — this register is the contract a future
+`feat: date/time primitive components` issue implements (it is blocked-by
+this doc). Until they exist, the register governs reviewers' eyes.
+
+### ESLint rule sketch (lands in #182, Layer 3)
+
+> Ban `date-fns` imports outside `components/ui/datetime/**`. Any other
+> file importing `format` / `formatDistance` / `formatDistanceToNow`
+> fails `pnpm lint`, with the message pointing here. This is the
+> enforcement half of the pair: the primitive (Layer 2) gives the dev
+> somewhere to go; the rule (Layer 3) makes the direct call fail.
+
+Cross-reference: §"Component bindings" (#183) maps each primitive to its
+real consumer surfaces; the three-layer ADR (`decisions.md`, 2026-06-08)
+explains the pair-shipping order.
+
+---
+
 ## Spacing
 
 Tailwind base (4px grid) with one editorial extension: **deliberate
