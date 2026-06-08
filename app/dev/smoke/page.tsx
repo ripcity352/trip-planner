@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Identifier } from "@/components/ui/identifier";
 
 /**
  * /dev/smoke — design system token smoke page.
@@ -107,6 +108,20 @@ export default function SmokePage() {
             Check in · Dinner · No agenda
           </p>
         </div>
+      </section>
+
+      {/* Identifier primitive (#215) — raw mono render + copy-on-tap.
+          Rendered here so the 375px preview smoke (Override A) has a real
+          surface to exercise render + clipboard. */}
+      <section data-primitive="identifier" className="space-y-2">
+        <p className="text-xs font-mono" style={{ color: "var(--ink-tertiary)" }}>
+          identifier / raw value / font-mono / copy-on-tap
+        </p>
+        <Identifier
+          value="3a9f2c8e-1b4d-4e7a-9c2f-8e1b4d4e7a9c"
+          label="invite code"
+          copyable
+        />
       </section>
 
       {/* Token dump — lets Playwright read resolved values without getComputedStyle */}
