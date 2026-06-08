@@ -870,19 +870,90 @@ config when M1 #69 is implemented.
 
 ### Component bindings (#183)
 
-> _Wave 1 PR-A — placeholder. Maps each v3 contract + primitive
-> (`<Identifier>`, `useDisplayName`, the date/time primitives) to its real
-> consumer component(s)._
+Each v3 contract and Layer-2 primitive binds to a **real consumer
+surface**. A contract without a binding is aspirational; this table is
+what makes the lint rules (Layer 3) point at concrete code. "Binds today"
+= the surface exists in M4; "binds on build" = the surface is a deferred
+feat and the binding is the contract it will honor.
+
+| Contract / primitive | Consumer surface(s) | Status |
+|---|---|---|
+| `<Identifier>` (#215) | `components/trip/invites/invite-list.tsx` (the raw invite `token`) | binds today — the one extant opaque-ID render |
+| `useDisplayName` (#216) | every `resolveMemberName` consumer: lodging-roster, arrivals-manifest, organizer-flag-view | binds today — wraps the existing single resolution path |
+| `<DateRange>` (#211) | dashboard hero date, trip-dates header | binds on build (date/time feat) |
+| `<DayHeader>` (#211) | itinerary timeline day rows | binds on build |
+| `<RelativeTime>` (#211) | announcements timestamps, "last seen" | binds on build |
+| `<TimeOfDay>` (#211) | itinerary item times, Up Next card | binds on build |
+| `<Countdown>` (#211) | dashboard Up Next, home hero | binds on build |
+| RSVP chip contract (#208) | dashboard "Who's in" (`dashboard_section_rsvp_heading`), invite-preview roster | binds today |
+| Empty-state register (#185) | each tab's empty view (itinerary / members / expenses / announcements / polls / photos / trips_mine / invites_for_trip) | binds today |
+| Error-surface contract (#209) | every mutation surface (RSVP, itinerary, announcements, invites, travel legs, lodging) | binds today |
+| Destructive-action contract (#210) | itinerary delete, invite revoke, travel-leg delete | binds today |
+
+The home-tab anatomy (§"Home tab anatomy") composes the `<Identifier>`-free
+hero + the date/time primitives + the RSVP chip into one surface; it is
+the integration test for these bindings when the home refactor ships.
 
 ### Verbs table (#184)
 
-> _Wave 1 PR-A — placeholder. Canonical action verbs and their copy-key
-> sources._
+Buttons say **the thing they do** (the §"Vibecoded-specific bans" rule:
+no "Get Started" / "Learn More"). This table is the canonical verb per
+action and the `lib/copy/*` key it is sourced from — the enforcement
+point is that a new CTA reuses an existing verb key, not an inline
+literal (Override F). Semantic/voice judgement on *new* verbs routes to
+the #186 PR-template checklist, not to lint.
+
+| Action | Canonical verb | Copy key (`lib/copy/*`) |
+|---|---|---|
+| Create a trip | "Lock it in" | `M2_UI_STRINGS.newTrip_submit` |
+| RSVP yes (trip) | "Count me in" | `M2_UI_STRINGS.invitePreview_cta_authed` |
+| RSVP yes (date poll) | "I'm in" | `M2_UI_STRINGS.datePoll_member_vote_yes` |
+| RSVP no (date poll) | "Skip me" | `M2_UI_STRINGS.datePoll_member_vote_no` |
+| RSVP states (chip) | "Going" / "Maybe" / "Can't make it" | `rsvp_chip_going` / `rsvp_chip_maybe` / `rsvp_chip_declined` |
+| Add a date window | "Add a window" / "Add it" | `datePoll_add_window_cta` / `datePoll_add_form_submit` |
+| Share invite | "Share the link" | `M2_UI_STRINGS.dashboard_section_invite_heading` |
+| Copy invite link | "Copy link" / "Copied" | `invitesPage_copy_link_cta` / `invitesPage_copied` |
+| Delete itinerary item | "Delete" | `itineraryForm_delete` |
+| Delete travel leg | "Delete travel" | `arrivals_leg_form_delete` |
+| Revoke invite | "Revoke" | `invitesPage_revoke_cta` |
+
+**Verb voice rules:** imperative, lowercase-after-first-word, occasion-
+specific where it earns it ("Lock it in" > "Save"). Destructive verbs name
+the object ("Delete travel", "Revoke") so the two-step confirm (#210) is
+unambiguous. No generic "Submit" / "OK" / "Continue" as a primary CTA —
+those are the AI-template tell.
 
 ### Empty-state register (#185)
 
-> _Wave 1 PR-A — placeholder. Enumerated, voice-checked `EMPTY_STATES`
-> keys per surface._
+Empty states are copy-only (no coach-marks, no onboarding banners — §"What
+this rules out"). Every surface that can be empty has **one** registered,
+voice-checked string keyed in `EMPTY_STATES` (`lib/copy/empty-states.ts`).
+A surface inventing its own "No items yet" inline literal is the slip this
+register closes (Override F). The strings below are the *shipped* values —
+this register ratifies them as the contract; it does not author new ones
+(net-new keys are out of `ds` scope, filed as follow-ups when their
+feature lands).
+
+| Surface | `EMPTY_STATES` key | Registered copy | CTA (`EMPTY_STATE_CTAS`) |
+|---|---|---|---|
+| Itinerary | `itinerary` | "Nothing booked yet. The organizers are on it." | — |
+| Members / crew | `members` | "Just you so far. The group chat fills in fast." | — |
+| Expenses | `expenses` | "No one's spent a dime — or no one's logged it. Same diff." | — |
+| Announcements | `announcements` | "All quiet. No news is probably good news." | — (silence is the message) |
+| Polls | `polls` | "Nothing to vote on yet. Someone's got opinions, just not here." | — |
+| Photos | `photos` | "No photos yet. Someone has to be sober enough to take the first one." | — |
+| My trips | `trips_mine` | "Nothing planned yet. Start a trip and we'll figure the rest out." | "Start a trip" |
+| Invite links | `invites_for_trip` | "No links out yet. Mint one and start texting it around." | — |
+
+**Register rules:**
+- **One key per surface.** No bespoke per-page empty copy.
+- **Voice test on every string** — would you say it at a pre-trip dinner?
+  Each shipped string passes (warm, a little irreverent, never SaaS).
+- **CTA is optional** (`EMPTY_STATE_CTAS` is `Partial`). Sometimes the
+  absence *is* the message (`announcements`) — no button.
+- **No guilt empty-states.** No "you haven't…" nudges, no streak-break
+  shame (§"What this rules out": no Duolingo-owl empty-state guilt).
+- **≤40 chars on CTA labels** so they don't wrap at 375px.
 
 ### RSVP chip shape contract (#208)
 
