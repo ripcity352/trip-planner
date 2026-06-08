@@ -707,6 +707,65 @@ Cross-referenced from 2026 vibecoded-tells research
 | "Get Started" / "Learn More" generic CTAs | Voice violation. Buttons say the *thing they do*: "I'm in," "Send it," "Lock the dates." |
 | Skeleton shimmer that pulses indefinitely | We use shimmer (`--surface-loading`) but cap at 4s — after that, swap to error state. Indefinite shimmer reads "hung." |
 
+### #182 ESLint anti-tells — token re-verification (2026-06-08)
+
+> **Why this note exists.** Issue #182 (the Layer-3 ESLint anti-tells)
+> soft-depended on #180 ("token names must exist to lint against"). #180
+> is now **closed**, so before #182 encodes any rule against a token
+> name, the `ds` wave re-grepped `app/globals.css` against the token
+> names this doc and #182 reference. This records the result so the #182
+> rule-author does not write a rule against a token that does not exist.
+
+**Authoritative #182 ban list (from the issue, scoped to
+`app/(authed)/**`).** This supersedes any inferred list — #182 lints
+exactly these four:
+
+| Rule | Bans | Token-dependent? |
+|---|---|---|
+| **(a)** light-mode utility classes | `bg-white`, `bg-zinc-50`, any explicit light-mode utility | No |
+| **(b)** emoji as section/icon substitute | raw emoji in JSX (allowed inside user-generated string content) | No |
+| **(c)** UUID-shaped string in JSX text | `/[0-9a-f]{8}-[0-9a-f]{4}-/` in a JSX text node | No — redirects to `<Identifier>` (#215) |
+| **(d)** non-token button radius | `<button>`/`<Button>` with `rounded` / `rounded-md` etc. — force the hairline token or `rounded-full` | **YES — see drift below** |
+
+The original uppercase-tracked-label rule from the Claude-Design prompt
+stays **dropped** (verified: sentence-case throughout via `lib/copy/*`).
+
+**Grep result — token reality vs. spec (the load-bearing finding):**
+
+| Token | Spec (this doc) | `app/globals.css` | Verdict |
+|---|---|---|---|
+| `--accent-heat` | `#FF6A3D` | `#ff6a3d` (L149) | ✅ present, matches |
+| `--accent-heat-text` | `#FF8A65` | `#ff8a65` (L150) | ✅ present, matches |
+| `--accent-heat-soft` | persimmon @ 16% | `rgb(255 106 61 / 16%)` (L151) | ✅ present, matches |
+| `--focus-ring` / `--ring` | `#FF8A65` | `#ff8a65` (L155 / L174) | ✅ present, matches |
+| `--surface-base/elevated/sunken/paper` | per §Color | L137–140 | ✅ present, matches |
+| **`--radius-xs` (2px button hairline)** | `radius-xs` = 2px (§Radius) | **ABSENT** | ⚠️ **DRIFT — token does not exist** |
+| **`--surface-error`** | cited §A11y + #209 | **ABSENT** | ⚠️ **DRIFT — token does not exist** |
+| radius scale generally | polar (2 / 8 / 16 / 24 / 999) | shadcn-default calc: `--radius-sm` `calc(*0.6)`≈6px … `--radius-4xl`≈26px (L42–48), `--radius` = 10px (L75) | ⚠️ **DRIFT — the "poisoned middle" the spec bans is what's shipped** |
+
+**Resolution for #182 (the rule-author must honor this):**
+
+1. **Rules (a)/(b)/(c) are unblocked** — no token dependency; the
+   accent/focus/surface tokens they don't touch are confirmed present.
+2. **Rule (d) is blocked on the missing `--radius-xs` token.** #182 must
+   NOT lint "use `--radius-xs`" — that token is absent. Pick one:
+   - **(d-i)** Add `--radius-xs: 2px` to `globals.css` as part of #182
+     (one-line token add), then lint buttons to that token or
+     `rounded-full`; **or**
+   - **(d-ii)** lint structurally — ban `rounded`/`rounded-md`/`rounded-lg`
+     on `<button>`/`<Button>`, allow `rounded-none` / `rounded-[2px]` /
+     `rounded-full` — no token reference needed.
+   The broader radius-scale drift (CSS ships the banned middle radii) is a
+   **pre-existing implementation gap, not introduced by #180**, and is
+   **out of `ds` scope** — flag as a follow-up (`fix: bind radius scale to
+   the polar spec`), do not fix here.
+3. **`--surface-error` absence** is the #209 error-surface contract's
+   problem (Wave 1) — that contract must either reference an existing
+   surface + hairline (per §A11y `--surface-error` *treatment*, which is
+   "`--surface-elevated` + 1px hairline", not a standalone token) or flag
+   the token as a follow-up. Recorded here so #209 doesn't cite a
+   non-existent token as if it shipped.
+
 ---
 
 ## Decisions locked

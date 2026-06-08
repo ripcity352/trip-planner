@@ -394,7 +394,7 @@ Two axes per Override E. `[v]` ticked at closure only.
 - [x]d [ ]v #211 date/time format register + primitive contracts (PR #277)
 - [x]d [ ]v #212 home-tab anatomy spec — **markdown only, NOT a live surface** (PR #278)
 - [x]d [ ]v v3 section-ownership skeleton committed to `design-system.md` (PR 0d)
-- [ ]d [ ]v #182 token re-verification note (grep result recorded, drift resolved) (PR 0e)
+- [x]d [ ]v #182 token re-verification note (grep result recorded, drift resolved) (PR 0e) — found `--radius-xs` + `--surface-error` ABSENT; authoritative #182 ban list = issue's (a)/(b)/(c)/(d); rule (d) blocked on missing token → resolution recorded
 - [x]d [ ]v DoD `[d]`/`[v]` skeleton incl. 375px gate + security-reviewer on #215 (PR 0d)
 - [x]d [ ]v Self-merge-eligibility declaration (docs/CI OK; #215/#216 NOT) (PR 0d)
 
