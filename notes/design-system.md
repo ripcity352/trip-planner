@@ -879,7 +879,7 @@ feat and the binding is the contract it will honor.
 | Contract / primitive | Consumer surface(s) | Status |
 |---|---|---|
 | `<Identifier>` (#215) | `components/trip/invites/invite-list.tsx` (the raw invite `token`) | binds today — the one extant opaque-ID render |
-| `useDisplayName` (#216) | every `resolveMemberName` consumer: lodging-roster, arrivals-manifest, organizer-flag-view, announcements author | binds today — wraps the existing single resolution path |
+| `useDisplayName` (#216) | every `resolveMemberName` consumer: lodging-roster, arrivals-manifest, organizer-flag-view | binds today — wraps the existing single resolution path |
 | `<DateRange>` (#211) | dashboard hero date, trip-dates header | binds on build (date/time feat) |
 | `<DayHeader>` (#211) | itinerary timeline day rows | binds on build |
 | `<RelativeTime>` (#211) | announcements timestamps, "last seen" | binds on build |
