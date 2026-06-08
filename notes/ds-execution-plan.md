@@ -399,9 +399,9 @@ Two axes per Override E. `[v]` ticked at closure only.
 - [x]d [ ]v Self-merge-eligibility declaration (docs/CI OK; #215/#216 NOT) (PR 0d)
 
 **Wave 1 — v3 contracts (single file, serialized)**
-- [ ]d [ ]v #183 component bindings (PR 1-A)
-- [ ]d [ ]v #184 verbs table (PR 1-A)
-- [ ]d [ ]v #185 empty-state register — ENUMERATED voice-checked `EMPTY_STATES` keys (PR 1-A)
+- [x]d [ ]v #183 component bindings (PR 1-A)
+- [x]d [ ]v #184 verbs table (PR 1-A)
+- [x]d [ ]v #185 empty-state register — ENUMERATED voice-checked `EMPTY_STATES` keys (PR 1-A)
 - [ ]d [ ]v #208 RSVP chip shape contract — `◐` = "undecided" only; per-day deferred (PR 1-B)
 - [ ]d [ ]v #209 error-surface contract — ENUMERATED `ERRORS` keys + `--surface-error`; no account-existence leak (PR 1-B)
 - [ ]d [ ]v #210 destructive-action contract — `*_confirm` keys (PR 1-B)
