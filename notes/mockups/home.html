@@ -1,0 +1,226 @@
+<!doctype html>
+<!--
+  Home tab anatomy mockup — design artifact for issue #212.
+  NOT app code: no JSX, no route, no data wiring. Static reference only,
+  to ratify the three-block home anatomy (hero → Up Next → Who's-In)
+  before the deferred home-refactor feat. Tokens mirror app/globals.css
+  (bachelor theme). Type stack via Fontshare CDN (Fraunces + Switzer +
+  JetBrains Mono), matching design-system.md §Typography.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Home tab anatomy — mockup</title>
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Fraunces (display) + JetBrains Mono (numerics) via Google Fonts CDN;
+         Fontshare does not host Fraunces. Both are OFL, matching the spec. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        /* bachelor theme tokens — mirror app/globals.css */
+        --surface-base: #100c0f;
+        --surface-elevated: #1a1517;
+        --ink-primary: #f3e9d2;
+        --ink-secondary: #a89e89;
+        --ink-tertiary: #6b6356;
+        --accent-heat: #ff6a3d;
+        --accent-heat-text: #ff8a65;
+        --focus-ring: #ff8a65;
+        --space-4: 16px;
+        --space-5: 24px;
+        --space-6: 32px;
+        --space-8: 64px;
+        --radius-xs: 2px; /* spec value; NOTE: not yet in globals.css — see 0e token note */
+        --radius-md: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+
+      body {
+        background: #000;
+        font-family: "Switzer", system-ui, sans-serif;
+        display: flex;
+        justify-content: center;
+        padding: 24px 0;
+      }
+
+      /* 375px phone frame */
+      .phone {
+        width: 375px;
+        min-height: 760px;
+        background: var(--surface-base);
+        color: var(--ink-primary);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .scroll {
+        flex: 1;
+        padding: var(--space-6) var(--space-4) 96px;
+      }
+
+      /* Block 1 — trip-name hero (Fraunces masthead, left-aligned) */
+      .hero {
+        font-family: "Fraunces", serif;
+        font-optical-sizing: auto;
+        font-weight: 600;
+        font-size: 64px;
+        line-height: 1.04;
+        letter-spacing: -0.02em;
+        text-wrap: balance;
+        margin-bottom: var(--space-8);
+      }
+
+      /* Block 2 — Up Next card (no eyebrow above it) */
+      .card {
+        background: var(--surface-elevated);
+        border-radius: var(--radius-md);
+        padding: var(--space-5);
+        margin-bottom: var(--space-8);
+      }
+
+      .card-title {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        font-size: 24px;
+        line-height: 1.1;
+        letter-spacing: -0.005em;
+        margin-bottom: var(--space-4);
+      }
+
+      .mono {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: var(--ink-secondary);
+      }
+
+      .countdown {
+        color: var(--accent-heat-text);
+      }
+
+      .card-meta {
+        margin-top: var(--space-4);
+        display: flex;
+        gap: var(--space-4);
+      }
+
+      /* Block 3 — Who's-In card with RSVP chips (state-via-shape ●/◐/○) */
+      .roster-title {
+        font-family: "Switzer", sans-serif;
+        font-weight: 600;
+        font-size: 18px;
+        margin-bottom: var(--space-5);
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-4);
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+      }
+
+      .glyph {
+        font-size: 14px;
+        line-height: 1;
+      }
+      .going .glyph {
+        color: var(--accent-heat);
+      }
+      .maybe .glyph {
+        color: var(--ink-secondary);
+      }
+      .declined .glyph {
+        color: var(--ink-tertiary);
+      }
+      .going-count {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 12px;
+        color: var(--ink-secondary);
+        margin-top: var(--space-5);
+      }
+
+      /* Bottom tab bar — owns navigation (home does NOT re-list these) */
+      .tabbar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 64px;
+        background: var(--surface-elevated);
+        border-top: 1px solid rgb(107 99 86 / 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        color: var(--ink-tertiary);
+      }
+      .tabbar .active {
+        color: var(--accent-heat-text);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="phone">
+      <div class="scroll">
+        <!-- Block 1: the masthead. Trip name IS the brand (§Logo Option C). -->
+        <h1 class="hero">Scottsdale Bender</h1>
+
+        <!-- Block 2: Up Next. No "UP NEXT" eyebrow above it. -->
+        <section class="card" aria-label="Up next">
+          <h2 class="card-title">Rooftop dinner at Mora</h2>
+          <div class="card-meta">
+            <span class="mono">sat 15 · 8:00 pm</span>
+            <span class="mono countdown">2 days away</span>
+          </div>
+        </section>
+
+        <!-- Block 3: Who's-In. RSVP chips = state-via-shape, aggregate-first. -->
+        <section class="card" aria-label="Who's in">
+          <h2 class="roster-title">Who's in</h2>
+          <div class="chips">
+            <span class="chip going"><span class="glyph">●</span>Dave</span>
+            <span class="chip going"><span class="glyph">●</span>Pete</span>
+            <span class="chip going"><span class="glyph">●</span>Sam</span>
+            <span class="chip maybe"><span class="glyph">◐</span>Marcus</span>
+            <span class="chip declined"><span class="glyph">○</span>Hugo</span>
+          </div>
+          <div class="going-count">3 in · 1 maybe · 1 out</div>
+        </section>
+      </div>
+
+      <!-- Bottom tab bar handles nav. Home never re-lists these as rows. -->
+      <nav class="tabbar" aria-label="Primary">
+        <span class="active">home</span>
+        <span>plan</span>
+        <span>crew</span>
+        <span>$</span>
+        <span>photos</span>
+      </nav>
+    </main>
+  </body>
+</html>
