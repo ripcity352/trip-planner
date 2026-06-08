@@ -5,6 +5,73 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-08 — ADR: three-layer design-system enforcement (#213)
+
+**Status:** Accepted. Wave-0 foundation of the `ds` (Design-System
+hardening) wave. Closes #213.
+
+**Context.** The M3 → M4 pattern is that the *same categories of visual
+slip* ship every milestone even after the bans were written down:
+uppercase day-headers, emoji-as-icon, raw UUIDs in JSX, red destructive
+actions, middle-radii inputs, `about 22 hours ago` relative time,
+email-local-part rendered as a name. The design system (`design-system.md`)
+is documentary — **nothing fails CI when the slip hits the bundle**, so
+the doc is advisory and the slip lands in screenshot review (or worse, in
+production). Writing more bans into the doc does not change this; the doc
+already bans most of these.
+
+**Decision.** The design system becomes *operational* only when three
+layers exist together. No single layer is sufficient:
+
+| Layer | Artifact | What it does | Without it |
+|---|---|---|---|
+| **1 — Spec** | `design-system.md` contracts (component bindings, verbs table, empty-state register, date/time register, RSVP-chip / error-surface / destructive-action contracts) | Names the rule and the token | Implementers guess; shadcn defaults fill the silence |
+| **2 — Primitives** | `<Identifier>`, `useDisplayName`, (future `<RelativeTime>`, `<DateRange>`, `<TimeOfDay>`, `<DayHeader>`, `<Countdown>`) | Makes the *correct* render the path of least resistance | Every call site re-implements; drift is inevitable |
+| **3 — Enforcement** | ESLint anti-tells (#182) + PR-template self-check (#186) | Fails the build / blocks the PR on a slip | Layers 1–2 are opt-in; the busy/drunk-committing dev skips them |
+
+**Ordering decision — primitives ship as PAIRS with their lint rule, not
+serially.** A primitive without its enforcing rule is opt-in; a rule
+without its primitive has nothing to redirect violators *to*. The pairs:
+
+- `<Identifier>` ↔ UUID-shaped-string-in-JSX rule (#215 ↔ #182c)
+- `useDisplayName` ↔ `.email` / `.split('@')`-in-JSX rule (#216 ↔ #182)
+- `<RelativeTime>` et al. ↔ `date-fns`-direct-import-outside-`components/ui/datetime/**` rule (future feat ↔ #211 sketch → #182)
+
+Spec updates (Layer 1) ship in parallel with primitives (Layer 2); the
+PR-template self-check (#186, Layer 3's human half) lands **last** — it
+has teeth only once the primitives + lints it references exist.
+
+**Enforcement teeth, not just process.** Layer 3 is the load-bearing
+change vs. prior milestones. ESLint (#182) fails `pnpm lint` in CI on the
+enumerated tells; the PR template (#186) makes the reviewer quote the
+governing `design-system.md` section. The 10-item self-check is
+documentary until #182 + the primitives exist — which is why this wave
+sequences spec (Wave 0–1) → primitives (Wave 2) → enforcement (Wave 3).
+
+**Scope guard (between-milestones wave).** This ADR ships ZERO schema,
+ZERO server actions, ZERO gated feature surface. It does **not** lift the
+real-trip retro gate — M6 features remain gated. The original #213
+acceptance asked to update `roadmap.md` M5 ordering for pair-shipping;
+that is **N/A** here (M5 is closed, there is no roadmap `§ds` section).
+The pair-shipping order is instead sequenced in
+`notes/ds-execution-plan.md` (Wave 2 primitives ↔ Wave 3 #182 rules).
+
+**Alternatives considered.**
+- *Doc-only (status quo):* rejected — proven to leak the same categories
+  every milestone.
+- *Lint-only (skip primitives):* rejected — a rule that bans
+  `uuid-in-JSX` with no `<Identifier>` to redirect to just produces
+  `eslint-disable` comments.
+- *Primitives-only (skip lint):* rejected — opt-in; the slip ships from
+  the one call site that forgot the primitive.
+
+**Cross-references:** #182 (Layer 3 CI), #211 (date/time register +
+primitive contracts), #183/#184/#185/#208/#209/#210 (Layer 1 spec),
+#215/#216 (Layer 2 primitives), #186 (Layer 3 PR template). Critique
+2026-05-21 — Prompts 1, 2, 9, 10.
+
+---
+
 ## 2026-05-25 — Carry-back wave #244 / #248 / #250
 
 **Decision:** Three sequential single-issue PRs (#274 / #275 / TBD)
