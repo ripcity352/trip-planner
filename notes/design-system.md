@@ -534,6 +534,62 @@ flattening into a crypto vibe.
 
 ---
 
+## Home tab anatomy
+
+> **The tension this resolves.** §Logo Option C says *"the trip name IS
+> the brand"* — home opens with a Fraunces masthead. But home also has to
+> answer *"what's happening now."* Production M4 picked **all three**
+> answers to "what is home" — magazine cover, status feed, *and* nav
+> index — and shipped the union: an 8-block home where the bottom tab bar
+> already duplicates 4 of the 5 nav-list rows. This subsection ratifies a
+> single answer. **Spec only — no component is built in the `ds` wave;
+> the home refactor is a deferred companion feat (blocked-by this doc).**
+
+### Ratified anatomy (top → bottom)
+
+| # | Block | Type / source | Note |
+|---|---|---|---|
+| 1 | **Trip-name hero** | Fraunces 56–72px, wonk=1, `--ink-primary` on `--surface-base` | The masthead (§Logo Option C). Left-aligned, never centered. The *only* place the trip name renders at hero scale. |
+| 2 | **Up Next card** | Headline (Fraunces 24px) title + date/time via the §"Date and time" primitives (`<DateRange>` / `<Countdown>`) | Sits **immediately** under the hero. **No section-label eyebrow** above it ("UP NEXT" tracked-caps is AI tell #14 — the masthead already establishes context). |
+| 3 | **Who's-In card** | Title (Switzer 18px) + RSVP chips per the RSVP-chip shape contract (#208) | Aggregate-first; per-name visibility is opt-in (M1 RLS). Chips are state-via-shape ●/◐/○, **not** a who-RSVP'd-first ranking. |
+
+That is the whole home tab. Three blocks, one screen, generous
+`space-8` breaks between them.
+
+### What gets deleted
+
+**Delete the five nav-list rows that duplicate the bottom tab bar:**
+*What's the plan* · *Announcements* · *Who's landing when* · *Who's
+coming* · *Invite links*. The bottom tab bar owns navigation. A home
+screen that re-lists the tab bar as tappable rows is a nav index pretending
+to be content — kill it. Home is a *status surface* (hero + what's-now),
+not a menu.
+
+### Anti-tells (specific to home)
+
+- **Nav-list rows duplicating the bottom tab bar** — banned outright (the
+  core slip this section closes).
+- **Card-inside-card nesting** — live in M4 prod today. Max one level of
+  card nesting (§Radius). The Up Next and Who's-In cards hold primitives,
+  not other cards.
+- **A section-label eyebrow above Up Next** — the masthead is the context;
+  a tracked-caps "UP NEXT" reintroduces AI tell #14.
+- **Centering the hero** — left-aligned per §Aesthetic; the hero is type-
+  as-image, not a splash screen.
+
+### Mockup
+
+A static HTML mockup lives at `notes/mockups/home.html` — full type stack
+(Fraunces + Switzer + JetBrains Mono via Fontshare CDN) on the existing
+CSS tokens, at 375px. It is a **design artifact, not app code** (no JSX,
+no route, no data wiring); it exists to ratify the anatomy visually before
+the deferred home-refactor feat.
+
+Cross-reference: §"Component bindings" (#183), the RSVP-chip contract
+(#208), and §"Date and time" (#211).
+
+---
+
 ## Bachelor vs. future Generic — the theme delta
 
 Both themes share the entire `base` layer (type, spacing, motion,
