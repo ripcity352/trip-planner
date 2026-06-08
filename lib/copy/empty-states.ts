@@ -332,9 +332,11 @@ export const M3_UI_STRINGS = {
   nav_brand_label: "Party Trip",
   // tripsList_newTrip_cta: CTA to start a new trip from the trips list
   tripsList_newTrip_cta: "Start a trip",
-  // identifier_copied: generic confirmation for the <Identifier> primitive
-  // copy-on-tap affordance. Deliberately shorter than invitesPage_copied
-  // because Identifier is a generic primitive, not invite-specific.
+  // identifier_copy / identifier_copied: the <Identifier> primitive's
+  // copy-on-tap affordance — idle label and post-copy confirmation.
+  // Deliberately shorter than invitesPage_* because Identifier is a generic
+  // primitive, not invite-specific.
+  identifier_copy: "Copy",
   identifier_copied: "Copied",
 } as const;
 

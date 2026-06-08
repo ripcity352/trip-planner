@@ -89,9 +89,9 @@ export function Identifier({
             }
             className="shrink-0 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           >
-            {M3_UI_STRINGS.identifier_copied && copied
+            {copied
               ? M3_UI_STRINGS.identifier_copied
-              : "Copy"}
+              : M3_UI_STRINGS.identifier_copy}
           </button>
         ) : null}
       </div>
