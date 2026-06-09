@@ -40,6 +40,12 @@ Closes #
 - [ ] **Vibecoded patterns audit:** none of — purple/violet gradients, bento grids, glassmorphism cards, side-tab borders, gradient text, centered heroes (see `notes/design-system.md` "Vibecoded-specific bans")
 - [ ] **Copy palettes:** strings sourced from `/lib/copy/empty-states.ts` or `/lib/copy/errors.ts`, not inline literals
 - [ ] **Visual regression:** if this PR updates a signature visual pattern, baselines regenerated under `/test/visual-fixtures/__baselines__/`
+- [ ] **Governing section quoted:** name the `notes/design-system.md` §section(s) this UI change implements or honors, and quote the load-bearing rule below (e.g. *"§Date and time — Relative tier: `22h`, never `about 22 hours ago`"*). If no section governs it, that's a spec gap — open a follow-up before merging.
+
+  > _governing section + rule:_
+- [ ] **v3 contracts:** where applicable, the change conforms to the relevant `## Component & content contracts (v3)` contract — Component bindings (#183), Verbs table (#184), Empty-state register (#185), RSVP chip shape (#208), Error-surface (#209), Destructive-action (#210).
+- [ ] **`<Identifier>` label voice:** if a caller passes `<Identifier label=…>`, the label string passes the "would you say it at a pre-trip dinner?" test (e.g. "link to send your crew", not "Invitation URL").
+- [ ] **Anti-tells CI:** the #182 ESLint anti-tells passed without an `eslint-disable` (light-mode utilities, emoji-as-icon, UUID-in-JSX, non-token button radius); if one was needed, justify it in Notes.
 
 ## Mobile screenshot (UI changes only)
 
