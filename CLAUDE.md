@@ -285,9 +285,29 @@ patterns codified (resolveMemberName helper, has_password shadow
 column + 4 atomic setters, "Someone" vs "Guest" author-fallback split,
 phantom-wiring audit).
 
+**DS — design-system three-layer hardening — Closed (2026-06-08).**
+14 issues across 4 waves / 13 PRs (#276–#287) + closure PR. Made the
+design system *operational*: Layer-1 spec (date/time register #211 +
+the v3 contracts block #183/#184/#185/#208/#209/#210), Layer-2 primitives
+(`<Identifier>` #215, `useDisplayName` #216), Layer-3 CI enforcement
+(ESLint anti-tells #182, PR-template governing-section quote #186, visual
+baselines #217). A between-milestones **pre-gate infra wave** — shipped
+ZERO schema, ZERO server actions, ZERO feature surface. **Does NOT lift
+the M6 gate — M6 features remain gated.** See `notes/retros/ds-retro.md`
+and `notes/decisions.md` "ds — design-system hardening — milestone
+closed" ADR. DS carry-forwards:
+- **#288** — wire `<Identifier>` into `invite-list.tsx` + prod 375px walk
+  → tick deferred #215 prod-consumer `[v]` (primitive shipped ahead of
+  consumer; don't let it become dead code)
+- radius-scale drift fix (`--radius-xs` 2px + reconcile shadcn calc scale
+  to the polar spec) — M6 Wave-0 infra
+- self-host Fraunces/Switzer/JetBrains for the home visual fixture before
+  it gates required CI; trim `webkit` install from `visual.yml`
+- move the `useDisplayName` no-local-part grep into a `pnpm test` target
+
 **Next:** real-trip retrospective still gates M6 — same bright line
-as M4/M5. **Trip-readiness made the app safer to hand to real
-attendees but does NOT lift the M6 gate.** M5 + trip-readiness
+as M4/M5. **Trip-readiness and the DS wave made the app safer / the design
+system enforceable, but neither lifts the M6 gate.** M5 + trip-readiness
 carry-backs:
 - **#230** — chronic flake in `rsvp-toggle.test.tsx:192` (gate on M6 Wave 0)
 - **#232** — OAuth-existing-user alert detection wiring
