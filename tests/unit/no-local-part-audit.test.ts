@@ -67,11 +67,11 @@ function findViolations(): Violation[] {
 
 describe("detector self-proof: fires on known-bad fixtures", () => {
   it.each([
-    ['const name = email.split("@")[0];', "double quotes"],
-    ["const name = email.split('@')[0];", "single quotes"],
-    ["const name = email.split(`@`)[0];", "backticks"],
-    ['const name = user.email.split("@") [0];', "whitespace before index"],
-  ])("detects %s (%s)", (badLine, _label) => {
+    'const name = email.split("@")[0];',
+    "const name = email.split('@')[0];",
+    "const name = email.split(`@`)[0];",
+    'const name = user.email.split("@") [0];',
+  ])("detects %s", (badLine) => {
     expect(LOCAL_PART_DERIVATION.test(badLine)).toBe(true);
   });
 
