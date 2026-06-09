@@ -6,13 +6,18 @@ design system in isolation (no app chrome, no routing, no network), so a
 regression in any one pattern surfaces as a focused diff on a single
 baseline image.
 
-## Status: scaffold only
+## Status: two fixtures today
 
-The pipeline is wired end-to-end, but the only real fixture today is
-`_placeholder.html` — a 320×480 dark surface that proves screenshot capture,
-baseline storage, and the CI workflow all work. The signature patterns
-called out in issue #85 will ship as real fixtures when those components
-are built:
+Two fixtures currently guard CI:
+
+- `_placeholder.html` — a 320×480 dark surface that proves screenshot
+  capture, baseline storage, and the CI workflow all work. Solid-color
+  dominant, so it renders deterministically across OSes.
+- `home.visual.spec.ts` → `notes/mockups/home.html` — the home-tab anatomy
+  design artifact (#212). The first *real design* fixture.
+
+The signature patterns called out in issue #85 will ship as real fixtures
+when those components are built:
 
 - `pulse-poll.html` (default + voted state)
 - `blur-gradient.html` (frosted slot in 3 sizes)
@@ -20,14 +25,24 @@ are built:
 - `for-your-eyes-only.html` (celebrant drawer)
 - `hairline-card.html` (brutalist card variant)
 
-Until those components land, the placeholder is what guards CI.
+> **Cross-OS webfont caveat (#217).** `home.html` pulls Fraunces / Switzer /
+> JetBrains Mono over CDN. The committed baseline was generated on macOS;
+> CI runs on `ubuntu-latest`. It passes today within the 2% tolerance, but
+> CDN webfonts are not a fully deterministic pixel-diff target across OS /
+> runner. **Follow-up: self-host the fonts before this fixture gates
+> required CI**, or regenerate its baseline on the CI runner. Until then,
+> the deterministic `_placeholder` fixture is the reliable guard.
 
 ## How baselines work
 
 - Baselines live under `__baselines__/<project>/<fixture>.png`, where
-  `<project>` is one of `chromium`, `webkit`, or `Mobile-Chrome-Pixel-7-`
-  (Playwright sanitizes the configured `"Mobile Chrome (Pixel 7)"`
-  project name into a filesystem-safe form).
+  `<project>` is `Mobile-Chrome` (Playwright sanitizes the configured
+  `"Mobile Chrome"` project name into a filesystem-safe form).
+- **Single browser (#217):** the config runs ONE project — Mobile Chrome
+  at an explicit `375×812` viewport (the M3–M5 standard). The `chromium`
+  (Desktop Chrome) and `webkit` (Desktop Safari) projects were dropped to
+  keep baseline maintenance proportionate to a 2-dev project; re-add them
+  post-M6 if a desktop surface needs guarding.
 - Playwright config: `playwright.visual.config.ts`. Tolerance:
   `maxDiffPixelRatio: 0.02` (2% pixel difference per fixture).
 - Tests match `**/*.visual.spec.ts` in this directory.
@@ -39,8 +54,8 @@ only with a maintainer reviewing the diff in the PR. Otherwise you are
 ratifying the bug.
 
 ```sh
-pnpm exec playwright install --with-deps chromium webkit
-pnpm test:visual --update-snapshots
+pnpm exec playwright install --with-deps chromium
+pnpm exec playwright test -c playwright.visual.config.ts --update-snapshots
 ```
 
 Commit the changed PNGs under `test/visual-fixtures/__baselines__/`. The
@@ -57,17 +72,12 @@ If a snapshot differs, Playwright writes the actual + diff PNGs into
 `test/visual-fixtures/test-results/`. CI uploads that folder as an
 artifact on failure.
 
-## WebKit note
+## Cross-OS baseline note
 
-The WebKit download (~80 MB) can be slow or flaky on shared dev
-machines. If you couldn't install it locally and pushed without a
-`webkit/` baseline, CI's first run will **fail** on the missing
-snapshot, then write the actual screenshot into
-`visual-test-results` (uploaded as an artifact). Pull that artifact,
-drop the PNG into `__baselines__/webkit/`, and push — that commit is
-the maintainer-reviewed WebKit baseline.
-
-Baselines for `chromium`, `webkit`, and `Mobile-Chrome-Pixel-7-` were
-all generated locally in the initial scaffold commit, so this fallback
-path is only relevant if a future contributor regenerates baselines on
-a machine without WebKit.
+Baselines are committed from the machine that runs `--update-snapshots`.
+The deterministic `_placeholder` fixture renders the same across OSes; the
+`home.html` webfont fixture can drift (see the caveat above). If CI's
+`playwright pixel-diff` fails on a baseline you didn't intend to change,
+Playwright writes the actual + diff PNGs into `test/visual-fixtures/
+test-results/` and CI uploads that folder as an artifact — pull it to see
+exactly what moved before deciding whether to re-baseline.
