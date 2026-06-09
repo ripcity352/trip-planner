@@ -29,6 +29,10 @@ const SCAN_ROOTS = ["lib", "components", "app"] as const;
 const SCAN_EXTENSIONS = [".ts", ".tsx"] as const;
 
 // `.split("@")[0]` with any quote style and incidental whitespace.
+// Scope-faithful to the grep it replaces: the `[0]`-index form only.
+// Equivalent derivations (`.at(0)`, `?.[0]`, destructuring, indexOf
+// slicing) are NOT caught — this is a tell-detector, not a complete
+// semantic gate; the #186 PR-template human check is the backstop.
 const LOCAL_PART_DERIVATION = /\.split\((["'`])@\1\)\s*\[\s*0\s*\]/;
 
 interface Violation {
@@ -67,7 +71,7 @@ describe("detector self-proof: fires on known-bad fixtures", () => {
     ["const name = email.split('@')[0];", "single quotes"],
     ["const name = email.split(`@`)[0];", "backticks"],
     ['const name = user.email.split("@") [0];', "whitespace before index"],
-  ])("detects %s (%s)", (badLine) => {
+  ])("detects %s (%s)", (badLine, _label) => {
     expect(LOCAL_PART_DERIVATION.test(badLine)).toBe(true);
   });
 
