@@ -67,6 +67,21 @@ describe("InviteList", () => {
     expect(screen.getByText(/expires/i)).toBeInTheDocument();
   });
 
+  it("renders each token via the <Identifier> primitive (display-only mono span)", () => {
+    render(<InviteList invites={[makeInvite({ token: "tok-x" })]} />);
+    // Identifier renders the raw token verbatim in a font-mono <span>.
+    // (The mocked CopyLinkButton also contains the token, in a <button> —
+    // so we assert a SPAN specifically carries it.)
+    const tokenEls = screen.getAllByText("tok-x");
+    expect(tokenEls.some((el) => el.tagName === "SPAN")).toBe(true);
+    // Display-only: no second copy affordance in the row — copying the link
+    // is CopyLinkButton's job. The only "copy"-named control is the mocked
+    // CopyLinkButton (data-testid), NOT an Identifier "Copy" button.
+    expect(
+      screen.queryByRole("button", { name: /^copy$/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders a revoke button for each invite", () => {
     render(<InviteList invites={[makeInvite()]} />);
     // M3_UI_STRINGS.invitesPage_revoke_cta = "Revoke"
