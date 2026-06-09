@@ -190,6 +190,15 @@ describe("rule (d): non-token button radius", () => {
     expect(msgs.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("fires on rounded-2xl on a <button>", async () => {
+    const msgs = antiTellMessages(
+      await lint(
+        `const X = () => <button className="rounded-2xl px-4">Go</button>;`
+      )
+    );
+    expect(msgs.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("fires on rounded-md on a <Button> (shadcn casing)", async () => {
     const msgs = antiTellMessages(
       await lint(

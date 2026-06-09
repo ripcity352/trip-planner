@@ -71,19 +71,26 @@ const authedAntiTells = {
       // (d) Non-token border-radius class on <button> / <Button>.
       // The design system uses polar radii: hairline (rounded-none / rounded-[2px])
       // or pill (rounded-full). The 'middle' range (rounded, rounded-sm,
-      // rounded-md, rounded-lg, rounded-xl) is the iOS-utility vibecoded tell.
+      // rounded-md, rounded-lg, rounded-xl, rounded-2xl, rounded-3xl) is the
+      // iOS-utility vibecoded tell.
       // Note: --radius-xs is ABSENT from globals.css (confirmed 2026-06-08 grep).
       // Lint structurally — ban the middle classes, allow the polar ones.
+      // Limitation: this selector inspects string Literal classNames only; it
+      // does NOT see classes passed through cn(...) / template literals (those
+      // are CallExpression/TemplateLiteral args, not Literals). Same gap applies
+      // to rule (a). Acceptable for a 2-dev project; the PR-template checklist
+      // (#186) is the human backstop. Side-specific corners (rounded-t-md) are
+      // also not matched — rare on buttons; revisit if one lands.
       // Ref: design-system.md §Radius "Polar radii, not middle radii" +
       //      §"#182 ESLint anti-tells — token re-verification" resolution (d-ii)
       // -----------------------------------------------------------------------
       {
         selector:
-          "JSXOpeningElement[name.name=/^[Bb]utton$/] > JSXAttribute[name.name='className'] > Literal[value=/(?:^| )rounded(?:-sm|-md|-lg|-xl)?(?:$| )/]",
+          "JSXOpeningElement[name.name=/^[Bb]utton$/] > JSXAttribute[name.name='className'] > Literal[value=/(?:^| )rounded(?:-sm|-md|-lg|-xl|-2xl|-3xl)?(?:$| )/]",
         message:
           "Non-token border-radius class on <button>/<Button> is banned. " +
           "Use rounded-none, rounded-[2px] (hairline), or rounded-full (pill) only. " +
-          "The 'middle' range (rounded, rounded-sm, rounded-md, rounded-lg, rounded-xl) " +
+          "The 'middle' range (rounded, rounded-sm…rounded-3xl) " +
           "is the iOS-utility tell the design system rejects. " +
           "See design-system.md §Radius — 'Polar radii, not middle radii'.",
       },
