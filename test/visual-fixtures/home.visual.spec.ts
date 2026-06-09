@@ -14,20 +14,20 @@ import { expect, test } from "@playwright/test";
 // components ship. The home mockup + placeholder are what keep the pipeline
 // honest today.
 //
-// Font loading: home.html pulls Fraunces + JetBrains Mono from Google Fonts
-// and Switzer from Fontshare via CDN. If network is unavailable (offline CI),
-// system-ui fallbacks render instead — the layout snapshot will still match
-// within tolerance because the fallback is set on body and the diff is
-// structural, not typographic. If you see font-related drift in CI, add a
-// `--ignore-https-errors` flag or host the fonts locally.
+// Font loading: home.html self-hosts all three faces via @font-face
+// (Fraunces + JetBrains Mono latin subsets in notes/mockups/fonts/, Switzer
+// from the app's own public/fonts/switzer/ file), so the render needs no
+// network and is deterministic across OS/runner — the #217 CDN-webfont
+// caveat no longer applies.
 test("home mockup matches baseline", async ({ page }) => {
   const fixturePath = path.resolve(
     __dirname,
     "../../notes/mockups/home.html",
   );
   await page.goto(`file://${fixturePath}`);
-  // Wait for fonts to load so the baseline captures the design-system
-  // typography rather than a system-font fallback.
-  await page.waitForLoadState("networkidle");
+  // Block until every declared @font-face is loaded so the snapshot never
+  // captures a fallback-font frame (font-display: block in the fixture
+  // covers the paint side; this covers the timing side).
+  await page.evaluate(() => document.fonts.ready);
   await expect(page).toHaveScreenshot("home.png");
 });
