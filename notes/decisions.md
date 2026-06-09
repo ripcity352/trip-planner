@@ -5,6 +5,82 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-08 — ds — design-system hardening — milestone closed
+
+**Decision:** The `ds` (Design-System three-layer hardening) wave shipped
+all 14 issues across 4 waves / 13 PRs (#276–#287) + this closure PR. It is
+a **between-milestones, pre-gate infra wave** — NOT a feature milestone.
+There is no roadmap `§ds` section; per the closure plan this ADR + the
+`CLAUDE.md` "Current phase" update are the closure record (no roadmap
+milestone is marked done).
+
+> **The real-trip retro gate is STILL IN PLACE.** DS made the design
+> system *operational* (spec → primitives → CI enforcement); it did not
+> lift, touch, or depend on the gate. **M6 features remain gated.** DS
+> shipped ZERO schema, ZERO server actions, ZERO feature surface.
+
+**What shipped (three layers, each with an enforceable artifact):**
+- **Layer 1 — spec:** #211 date/time register; #183 component bindings,
+  #184 verbs table, #185 empty-state register, #208 RSVP-chip, #209
+  error-surface, #210 destructive-action contracts (the v3 block in
+  `design-system.md`). All cite real `lib/copy/*` keys (Override F).
+- **Layer 2 — primitives:** #215 `<Identifier>` (raw mono render +
+  copy-on-tap; 40 tests incl. injection vectors; security-reviewed) and
+  #216 `useDisplayName` (wraps `resolveMemberName`; no-local-part grep).
+- **Layer 3 — enforcement:** #182 ESLint anti-tells (4 bans, `app/(authed)`,
+  rule-fires-on-fixture proof), #186 PR-template governing-section quote,
+  #217 visual baselines (Mobile-Chrome 375×812, seeded-regression proof).
+- **Foundation:** #213 three-layer ADR (below), #212 home-tab anatomy +
+  mockup, the v3 skeleton, and the #182 token re-verification note.
+
+**Load-bearing in-execution decisions:**
+1. **#215 short-hash UUIDs DROPPED (BUILD TRIMMED).** Hashing UUIDs into
+   short identifiers was adjudicated security-theater for a 12-person trip
+   (Phase-3a architect). `<Identifier>` renders the raw value in `font-mono`
+   verbatim — hashing would have broken the one real use case (copying the
+   invite token). One real consumer exists (`invite-list.tsx:64`).
+2. **Token drift surfaced, not papered over (0e).** `--radius-xs` (2px) and
+   `--surface-error` are cited by the spec but **absent from `globals.css`**.
+   Recorded in `design-system.md` rather than silently linting a phantom
+   token. #182 rule (d) is therefore **structural** (bans `rounded-*` on
+   buttons, allows `rounded-none`/`-[2px]`/`-full`) — no token reference.
+   Radius-scale drift (shadcn calc scale vs. the polar spec) is a
+   pre-existing follow-up, out of DS scope.
+3. **#208 `◐` = "undecided" ONLY.** Per-day partial attendance is a
+   separate future primitive — the chip contract must not foreclose it.
+4. **#217 trimmed to ONE browser** (Mobile-Chrome 375×812; webkit/chromium
+   dropped) — proportionate baseline maintenance for a 2-dev project.
+5. **`app/page.tsx` kept as-is (Override G).** DS added zero feature
+   surface, so the landing page reflects current reality unchanged. No edit.
+
+**Carry-forwards (filed / noted):**
+- **#288** — wire `<Identifier>` into `invite-list.tsx` + run the prod
+  375px walk → tick the deferred `#215` prod-consumer `[v]`. Primitive
+  shipped ahead of consumer; must not slip past M6 or it's dead code.
+- **#289** — radius-scale drift fix (`--radius-xs` + reconcile the calc
+  scale) — M6 Wave-0 infra.
+- Self-host Fraunces/Switzer/JetBrains for the home visual fixture
+  (CDN-webfont cross-OS determinism) before it gates required CI; trim
+  `webkit` install from `visual.yml`.
+- Move the `useDisplayName` no-local-part grep into a `pnpm test` target.
+- #182 `cn()` / dynamic-class limitation: string-literal bans don't see
+  `cn()`-composed classes; the #186 human check is the backstop.
+
+**Verification:** docs landed on main (grep-verified); #182 rule fires on
+its fixture; #217 visual check green on ubuntu CI + seeded-regression
+caught; #215 local 375px smoke (raw-value clipboard read-back, zero
+console errors); production root healthy (200). See `notes/retros/ds-retro.md`
+for the full reconciled retro and `notes/ds-execution-plan.md` for the
+`[d]`/`[v]` DoD.
+
+**Alternatives considered:** shipping #215 wired into `invite-list` in the
+same wave (rejected — rewiring a real authed surface is product work
+beyond a pre-gate infra wave; the primitive + its smoke is the DS
+deliverable, the wiring is the carry-forward). Keeping 3 visual-baseline
+browsers (rejected — maintenance cost disproportionate to a 2-dev MVP).
+
+---
+
 ## 2026-06-08 — ADR: three-layer design-system enforcement (#213)
 
 **Status:** Accepted. Wave-0 foundation of the `ds` (Design-System

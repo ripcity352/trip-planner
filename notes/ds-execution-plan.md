@@ -390,36 +390,36 @@ single-browser scoping (Mobile-Chrome only) contains it.
 Two axes per Override E. `[v]` ticked at closure only.
 
 **Wave 0 — Foundation (markdown / config)**
-- [x]d [ ]v #213 three-layer enforcement ADR in `notes/decisions.md` (PR #276)
-- [x]d [ ]v #211 date/time format register + primitive contracts (PR #277)
-- [x]d [ ]v #212 home-tab anatomy spec — **markdown only, NOT a live surface** (PR #278)
-- [x]d [ ]v v3 section-ownership skeleton committed to `design-system.md` (PR 0d)
-- [x]d [ ]v #182 token re-verification note (grep result recorded, drift resolved) (PR 0e) — found `--radius-xs` + `--surface-error` ABSENT; authoritative #182 ban list = issue's (a)/(b)/(c)/(d); rule (d) blocked on missing token → resolution recorded
-- [x]d [ ]v DoD `[d]`/`[v]` skeleton incl. 375px gate + security-reviewer on #215 (PR 0d)
-- [x]d [ ]v Self-merge-eligibility declaration (docs/CI OK; #215/#216 NOT) (PR 0d)
+- [x]d [x]v #213 three-layer enforcement ADR in `notes/decisions.md` (PR #276) — landed on main
+- [x]d [x]v #211 date/time format register + primitive contracts (PR #277) — landed on main
+- [x]d [x]v #212 home-tab anatomy spec — **markdown only, NOT a live surface** (PR #278) — landed on main
+- [x]d [x]v v3 section-ownership skeleton committed to `design-system.md` (PR 0d) — landed on main
+- [x]d [x]v #182 token re-verification note (grep result recorded, drift resolved) (PR 0e) — found `--radius-xs` + `--surface-error` ABSENT; authoritative #182 ban list = issue's (a)/(b)/(c)/(d); rule (d) blocked on missing token → resolution recorded
+- [x]d [x]v DoD `[d]`/`[v]` skeleton incl. 375px gate + security-reviewer on #215 (PR 0d)
+- [x]d [x]v Self-merge-eligibility declaration (docs/CI OK; #215/#216 NOT) (PR 0d)
 
 **Wave 1 — v3 contracts (single file, serialized)**
-- [x]d [ ]v #183 component bindings (PR 1-A)
-- [x]d [ ]v #184 verbs table (PR 1-A)
-- [x]d [ ]v #185 empty-state register — ENUMERATED voice-checked `EMPTY_STATES` keys (PR 1-A)
-- [x]d [ ]v #208 RSVP chip shape contract — `◐` = "undecided" only; per-day deferred (PR 1-B)
-- [x]d [ ]v #209 error-surface contract — ENUMERATED `ERRORS` keys + `--surface-error`; no account-existence leak (PR 1-B)
-- [x]d [ ]v #210 destructive-action contract — `*_confirm` keys (PR 1-B)
+- [x]d [x]v #183 component bindings (PR 1-A) — landed on main (announcements-author binding dropped per reviewer / #250)
+- [x]d [x]v #184 verbs table (PR 1-A) — landed on main
+- [x]d [x]v #185 empty-state register — ENUMERATED voice-checked `EMPTY_STATES` keys (PR 1-A) — landed on main
+- [x]d [x]v #208 RSVP chip shape contract — `◐` = "undecided" only; per-day deferred (PR 1-B) — landed on main
+- [x]d [x]v #209 error-surface contract — ENUMERATED `ERRORS` keys + `--surface-error`; no account-existence leak (PR 1-B) — landed on main
+- [x]d [x]v #210 destructive-action contract — `*_confirm` keys (PR 1-B) — landed on main
 
 **Wave 2 — Primitives**
-- [ ]d [ ]v #215 `<Identifier>` — reuses copy-link clipboard path; injection vectors inert; preview-smoke at PR (Override A merge-gate) + production walk at closure; caller-label voice-gated
-- [ ]d [ ]v #216 `useDisplayName` — wraps `resolveMemberName`; no email-local-part derivation
+- [x]d [~]v #215 `<Identifier>` (PR #283) — 40 tests incl. injection vectors; security+code reviewed; **375px smoke verified on local dev** (render + raw-value-verbatim clipboard read-back + aria-live + zero console errors). `[v]` PARTIAL: no prod surface (`/dev/smoke` 404s in prod; `invite-list` not rewired) → **prod-consumer walk carries forward** (see #288)
+- [x]d [x]v #216 `useDisplayName` (PR #284) — wraps `resolveMemberName`; 10 tests; no-local-part grep returns zero hits
 
 **Wave 3 — CI / infra**
-- [ ]d [ ]v #182 ESLint anti-tells — ~8 class/string bans; rule fires on known-bad fixture
-- [ ]d [ ]v #186 PR-template UI-checklist
-- [ ]d [ ]v #217 visual baselines — Mobile-Chrome 375×812; diff fails on seeded regression
+- [x]d [x]v #182 ESLint anti-tells — issue's 4 bans (a/b/c/d), `app/(authed)/**`; 22 tests; **rule fires on known-bad fixture**; lint stays green on existing code (PR #287)
+- [x]d [x]v #186 PR-template UI-checklist — governing-section quote + v3-contract + `<Identifier>` label voice items (PR #285)
+- [x]d [x]v #217 visual baselines — Mobile-Chrome 375×812; **visual check green on ubuntu CI** + seeded-regression proof (0.50 diff ratio) (PR #286)
 
 **Process / closure**
-- [ ]d [ ]v `app/page.tsx` updated OR explicit "kept as-is" decision (Override G)
-- [ ]d [ ]v `notes/retros/ds-retro.md` authored
-- [ ]d [ ]v `notes/decisions.md` "ds — design-system hardening — closed" ADR appended
-- [ ]d [ ]v CLAUDE.md "Current phase" records DS shipped WITH real-trip gate STILL in place
+- [x]d [x]v `app/page.tsx` — **kept as-is** (DS added zero feature surface; decision recorded in closure ADR, Override G)
+- [x]d [x]v `notes/retros/ds-retro.md` authored (2 reconciled lenses)
+- [x]d [x]v `notes/decisions.md` "ds — design-system hardening — closed" ADR appended
+- [x]d [x]v CLAUDE.md "Current phase" records DS shipped WITH real-trip gate STILL in place
 
 ---
 
