@@ -57,8 +57,8 @@ milestone is marked done).
 - **#288** — wire `<Identifier>` into `invite-list.tsx` + run the prod
   375px walk → tick the deferred `#215` prod-consumer `[v]`. Primitive
   shipped ahead of consumer; must not slip past M6 or it's dead code.
-- Radius-scale drift fix (`--radius-xs` + reconcile the calc scale) — M6
-  Wave-0 infra.
+- **#289** — radius-scale drift fix (`--radius-xs` + reconcile the calc
+  scale) — M6 Wave-0 infra.
 - Self-host Fraunces/Switzer/JetBrains for the home visual fixture
   (CDN-webfont cross-OS determinism) before it gates required CI; trim
   `webkit` install from `visual.yml`.
