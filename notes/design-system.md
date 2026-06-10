@@ -893,6 +893,7 @@ feat and the binding is the contract it will honor.
 |---|---|---|
 | `<Identifier>` (#215) | `components/trip/invites/invite-list.tsx` (the raw invite `token`) | binds today — the one extant opaque-ID render |
 | `useDisplayName` (#216) | every `resolveMemberName` consumer: lodging-roster, arrivals-manifest, organizer-flag-view | binds today — wraps the existing single resolution path |
+| Announcements author attribution (#250) | `announcement-card.tsx` via `enrichAnnouncements` (`lib/db/announcements.ts`) — post-fetch `memberUserMap` lookup, NOT `useDisplayName`/`resolveMemberName` (the #281 first-draft binding was wrong and dropped); fallback key `announcements_author_fallback` ("Someone") | binds today — settled #250: post-fetch map, no SQL view; revisit on N+1 pain |
 | `<DateRange>` (#211) | dashboard hero date, trip-dates header | binds on build (date/time feat) |
 | `<DayHeader>` (#211) | itinerary timeline day rows | binds on build |
 | `<RelativeTime>` (#211) | announcements timestamps, "last seen" | binds on build |

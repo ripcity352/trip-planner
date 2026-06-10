@@ -3,14 +3,21 @@
  *
  * Tests:
  *   1. `getAnnouncements` — success, empty, null data, error propagation.
- *   2. `subscribeToAnnouncements` — channel is returned, correct event
+ *   2. `enrichAnnouncements` (#250) — the single post-fetch author-
+ *      enrichment path: map hit, map miss, null created_by, null
+ *      display_name, input immutability.
+ *   3. `subscribeToAnnouncements` — channel is returned, correct event
  *      type and table filter, onInsert callback fires with the payload.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getAnnouncements, subscribeToAnnouncements } from "../announcements";
+import {
+  enrichAnnouncements,
+  getAnnouncements,
+  subscribeToAnnouncements,
+} from "../announcements";
 import type { Announcement } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -104,6 +111,47 @@ describe("getAnnouncements", () => {
     await expect(getAnnouncements(client, TRIP_ID)).rejects.toThrow(
       "getAnnouncements failed: rls denied"
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enrichAnnouncements (#250 — the one post-fetch enrichment path)
+// ---------------------------------------------------------------------------
+
+describe("enrichAnnouncements", () => {
+  const memberUserMap = new Map<string, string | null>([
+    ["user-1", "Dave"],
+    ["user-2", null],
+  ]);
+
+  it("resolves authorDisplayName from the map by created_by", () => {
+    const result = enrichAnnouncements([mockAnnouncement], memberUserMap);
+    expect(result).toHaveLength(1);
+    expect(result[0].authorDisplayName).toBe("Dave");
+  });
+
+  it("yields null when created_by is missing from the map", () => {
+    const orphan: Announcement = { ...mockAnnouncement, created_by: "gone" };
+    const [enriched] = enrichAnnouncements([orphan], memberUserMap);
+    expect(enriched.authorDisplayName).toBeNull();
+  });
+
+  it("yields null when created_by is null", () => {
+    const legacy: Announcement = { ...mockAnnouncement, created_by: null };
+    const [enriched] = enrichAnnouncements([legacy], memberUserMap);
+    expect(enriched.authorDisplayName).toBeNull();
+  });
+
+  it("yields null when the member has no display_name", () => {
+    const anon: Announcement = { ...mockAnnouncement, created_by: "user-2" };
+    const [enriched] = enrichAnnouncements([anon], memberUserMap);
+    expect(enriched.authorDisplayName).toBeNull();
+  });
+
+  it("does not mutate the input rows", () => {
+    const input = { ...mockAnnouncement };
+    enrichAnnouncements([input], memberUserMap);
+    expect(input).toEqual(mockAnnouncement);
   });
 });
 

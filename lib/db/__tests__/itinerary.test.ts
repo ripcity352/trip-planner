@@ -19,7 +19,6 @@ import {
   getMyItemRsvps,
   getItemFlagsForOrganizer,
   getLodgingAssignments,
-  getNextUpcomingItem,
 } from "../itinerary";
 import type { ItineraryItem, LodgingAssignment } from "../types";
 
@@ -160,40 +159,6 @@ describe("getItineraryItem", () => {
     });
     await expect(getItineraryItem(client, ITEM_ID)).rejects.toThrow(
       "getItineraryItem failed"
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getNextUpcomingItem
-// ---------------------------------------------------------------------------
-
-describe("getNextUpcomingItem", () => {
-  it("returns the nearest upcoming item", async () => {
-    const client = makeClient({
-      itinerary_items: () => ({ data: mockItem, error: null }),
-    });
-    const result = await getNextUpcomingItem(client, TRIP_ID);
-    expect(result?.title).toBe("Morning hike");
-  });
-
-  it("returns null when no upcoming items", async () => {
-    const client = makeClient({
-      itinerary_items: () => ({ data: null, error: null }),
-    });
-    const result = await getNextUpcomingItem(client, TRIP_ID);
-    expect(result).toBeNull();
-  });
-
-  it("throws on Supabase error", async () => {
-    const client = makeClient({
-      itinerary_items: () => ({
-        data: null,
-        error: { message: "db error" },
-      }),
-    });
-    await expect(getNextUpcomingItem(client, TRIP_ID)).rejects.toThrow(
-      "getNextUpcomingItem failed"
     );
   });
 });
