@@ -20,9 +20,9 @@
  * same gating at the row level as defense-in-depth.
  *
  * Wave 3b (M3) addition: NowNextCard + TripNotesEditor wired into the
- * dashboard. The single-item-preview helper (`getNextUpcomingItem`) was
- * superseded by `getItineraryByTrip` so the now/next pure function has
- * the full item list to compute the current/next pair.
+ * dashboard. The dashboard fetches the full item list via
+ * `getItineraryByTrip` so the now/next pure function can compute the
+ * current/next pair (a single-item-preview helper was tried and deleted).
  *
  * Wave 5 (M3) closure addition: link cards for the five M3 sub-routes
  * (Itinerary, Announcements, Arrivals, Roster, Invites). Invites is
@@ -87,9 +87,9 @@ export default async function TripDashboardPage({ params }: PageProps) {
   }
 
   // Fan out independent reads in parallel.
-  // Wave 3b: replaced getNextUpcomingItem with getItineraryByTrip so the
-  // now/next pure function has the full item list. getTripNotes is a
-  // focused read of trips.notes without pulling the full Trip row again.
+  // Wave 3b: getItineraryByTrip gives the now/next pure function the full
+  // item list. getTripNotes is a focused read of trips.notes without
+  // pulling the full Trip row again.
   const [counts, myRsvp, organizerCheck, allItems, tripNotes] = await Promise.all([
     getRsvpCountsForTrip(supabase, trip.id),
     getMyRsvp(supabase, trip.id, user.id),
