@@ -5,6 +5,37 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-10 — #289 re-scoped — radius call-site reconcile deferred behind audit
+
+**Decision:** The deliberate `rounded-*` audit mandated by the #289
+slice-1 ADR landed (`notes/radius-audit.md`, CARRY PR 1c). It found
+**46 visually-changing call sites** under the ratified decision rule
+(buttons/inputs → 2px hairline; cards/sheets/popovers → 8px;
+chips/pills/avatars/badges stay `rounded-full`) — 7.7× over the N=6
+single-PR guideline. Per the built-in re-scope trigger, **#289 closes as
+re-scoped**: this wave ships the audit doc only — zero CSS, zero
+call-site changes. The reconcile moves to follow-up issue #304 with the
+audit as its spec.
+
+**Why one coherent follow-up, not slices:** (1) the token rebase and the
+call-site rewrite are inseparable — today `rounded-lg` *happens* to
+compute to the polar 8px (`--radius` = 0.5rem under the bachelor theme)
+while the spec's named scale says `radius-lg` = 16, so rebasing the
+tokens without re-pointing every call site flips current no-ops into
+regressions; (2) `button.tsx:7` / `input.tsx:12` cascade to every
+rendered button/input — the blast radius wants one #217-baselined PR +
+full 375px walk; (3) two spec gaps gate ~20 sites and need ratification
+first: whether the shipped pill CTAs (16 sites) sharpen to the hairline
+or get spec-blessed (§Radius says `radius-full` "never buttons"), and
+the error-banner radius (#209 is silent; 4 sites, adjacent to #301).
+
+**Alternatives considered:** reconciling the ≤6 "worst" sites now
+(rejected — there is no coherent ≤6 subset; the scale rebase forces the
+full rewrite); rebasing tokens only, keeping classes (rejected — moves
+every `rounded-xl` card to 24px, the opposite of intent).
+
+---
+
 ## 2026-06-09 — #289 slice 1: `--radius-xs` token lands; `--surface-error` settled as treatment-not-token
 
 **Decision:** Split #289 (radius-scale drift). Slice 1 (this entry) adds
