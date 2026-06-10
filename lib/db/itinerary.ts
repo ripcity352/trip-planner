@@ -67,36 +67,6 @@ export async function getItineraryItem(
 }
 
 /**
- * Return the next upcoming itinerary item for a trip — the earliest item
- * whose `day` is >= today (in the DB timezone, UTC). Returns null if no
- * upcoming items exist (all in the past or the itinerary is empty).
- *
- * Used by the dashboard "now/next" card to show the first upcoming event.
- */
-export async function getNextUpcomingItem(
-  supabase: SupabaseClient,
-  tripId: string
-): Promise<ItineraryItem | null> {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
-
-  const { data, error } = await supabase
-    .from("itinerary_items")
-    .select(ITINERARY_ITEM_COLUMNS)
-    .eq("trip_id", tripId)
-    .gte("day", today)
-    .order("day", { ascending: true })
-    .order("start_time", { ascending: true, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`getNextUpcomingItem failed: ${error.message}`);
-  }
-
-  return data as ItineraryItem | null;
-}
-
-/**
  * Return all per-item RSVPs for the calling member across a trip.
  * Absence of a row for an item means the member inherits the day-level RSVP.
  * RLS: trip members can read all RSVPs for items in their trip.

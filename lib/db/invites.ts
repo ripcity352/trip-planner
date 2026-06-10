@@ -94,14 +94,13 @@ export async function getInvitePreview(
 
 /**
  * Lists every invite for a trip, newest first. SELECT RLS on `invites`
- * is currently gated by `is_trip_member(trip_id)` (NOT organizer-only),
- * so the page-level `is_trip_organizer` check in
- * `app/(authed)/trips/[tripId]/invites/page.tsx` is the load-bearing
- * gate that prevents non-organizer trip members from listing tokens.
- *
- * Follow-up: tighten the SELECT policy to `is_trip_organizer` in a
- * future migration so this is enforced at the row level too. Out of
- * scope for Wave 4c (migration ordering risk); tracked for M4.
+ * is gated by `is_trip_organizer(trip_id)` (organizers + co-organizers)
+ * since 20260610051214_carry_invites_select_organizers_only.sql (#155)
+ * — for a non-organizer member this returns `[]`, not an error. The
+ * page-level `is_trip_organizer` check in
+ * `app/(authed)/trips/[tripId]/invites/page.tsx` remains the first
+ * gate (404 so the surface stays invisible); RLS is the authoritative
+ * row-level one.
  *
  * Alias: `getInvitesByTrip` — same function, exported under the name
  * used by Wave 4c pages per `notes/m3-execution-plan.md` §"Wave 4".
