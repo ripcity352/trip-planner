@@ -739,9 +739,9 @@ stays **dropped** (verified: sentence-case throughout via `lib/copy/*`).
 | `--accent-heat-soft` | persimmon @ 16% | `rgb(255 106 61 / 16%)` (L151) | ✅ present, matches |
 | `--focus-ring` / `--ring` | `#FF8A65` | `#ff8a65` (L155 / L174) | ✅ present, matches |
 | `--surface-base/elevated/sunken/paper` | per §Color | L137–140 | ✅ present, matches |
-| **`--radius-xs` (2px button hairline)** | `radius-xs` = 2px (§Radius) | **ABSENT** | ⚠️ **DRIFT — token does not exist** |
-| **`--surface-error`** | cited §A11y + #209 | **ABSENT** | ⚠️ **DRIFT — token does not exist** |
-| radius scale generally | polar (2 / 8 / 16 / 24 / 999) | shadcn-default calc: `--radius-sm` `calc(*0.6)`≈6px … `--radius-4xl`≈26px (L42–48), `--radius` = 10px (L75) | ⚠️ **DRIFT — the "poisoned middle" the spec bans is what's shipped** |
+| **`--radius-xs` (2px button hairline)** | `radius-xs` = 2px (§Radius) | ~~ABSENT~~ → `--radius-xs: 2px` (literal, not calc) | ✅ **RESOLVED 2026-06-09** (#289 slice 1) |
+| **`--surface-error`** | cited §A11y + #209 | absent **by design** | ✅ **RESOLVED 2026-06-09 — treatment, not a token.** The #209 contract spells it out: `--surface-elevated` + 1px hairline in `--accent-heat-text` @ 40%. A standalone token would invite a red-flood fill the contract bans. No CSS change. |
+| radius scale generally | polar (2 / 8 / 16 / 24 / 999) | shadcn-default calc: `--radius-sm` `calc(*0.6)`≈6px … `--radius-4xl`≈26px (L42–48), `--radius` = 10px (L75) | ⚠️ **DRIFT — the "poisoned middle" the spec bans is what's shipped** (still open under #289 — reconcile only behind a deliberate app-wide `rounded-*` audit) |
 
 **Resolution for #182 (the rule-author must honor this):**
 
@@ -765,6 +765,16 @@ stays **dropped** (verified: sentence-case throughout via `lib/copy/*`).
    "`--surface-elevated` + 1px hairline", not a standalone token) or flag
    the token as a follow-up. Recorded here so #209 doesn't cite a
    non-existent token as if it shipped.
+
+**Post-`ds` resolution (2026-06-09, #289 slice 1).** `--radius-xs: 2px`
+now ships in `globals.css` (`@theme inline`, literal — the hairline is a
+fixed polar value, not derived from `--radius`), so `rounded-xs` is the
+canonical hairline class; rule (d)'s message redirects to it (the
+structural d-ii ban is unchanged — `rounded-xs` was never in the banned
+alternation). `--surface-error` is settled as **treatment-not-token** per
+the #209 contract — no CSS token will be added. The calc-scale drift (row
+3) is the remaining open scope of #289, gated on a deliberate audit of
+every `rounded-*` call site.
 
 ---
 

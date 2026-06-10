@@ -5,6 +5,34 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-09 — #289 slice 1: `--radius-xs` token lands; `--surface-error` settled as treatment-not-token
+
+**Decision:** Split #289 (radius-scale drift). Slice 1 (this entry) adds
+`--radius-xs: 2px` to `globals.css` as a literal in the `@theme inline`
+block — the hairline is a fixed polar value per §Radius, deliberately
+*not* `calc(var(--radius) * x)`. ESLint rule (d) stays structural (d-ii)
+but its message now redirects to `rounded-xs` as the canonical hairline
+class (`rounded-[2px]` remains allowed for pre-existing call sites).
+
+**`--surface-error`: no token, by design.** The #209 error-surface
+contract already defines it as a *treatment* — `--surface-elevated` +
+1px hairline border in `--accent-heat-text` @ 40% alpha. Minting a
+standalone `--surface-error` color token would invite exactly the
+red-flood fill the contract bans. Drift table updated to RESOLVED;
+nothing ships in CSS.
+
+**Remaining #289 scope (open):** reconciling the shadcn calc radius scale
+(`--radius-sm`…`--radius-4xl`, the "poisoned middle") to the polar spec
+ripples into every `rounded-*` call site in the app — that lands only
+behind a deliberate audit, M6 Wave-0 infra per the ds-closure ADR.
+
+**Alternatives considered:** d-i full form (lint buttons *to* the token —
+rejected for now, structural ban + message redirect gets the same outcome
+without a regex rewrite); shipping the calc-scale reconcile in the same
+PR (rejected — unaudited app-wide visual ripple).
+
+---
+
 ## 2026-06-08 — ds — design-system hardening — milestone closed
 
 **Decision:** The `ds` (Design-System three-layer hardening) wave shipped

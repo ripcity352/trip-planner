@@ -69,11 +69,13 @@ const authedAntiTells = {
       },
       // -----------------------------------------------------------------------
       // (d) Non-token border-radius class on <button> / <Button>.
-      // The design system uses polar radii: hairline (rounded-none / rounded-[2px])
-      // or pill (rounded-full). The 'middle' range (rounded, rounded-sm,
-      // rounded-md, rounded-lg, rounded-xl, rounded-2xl, rounded-3xl) is the
-      // iOS-utility vibecoded tell.
-      // Note: --radius-xs is ABSENT from globals.css (confirmed 2026-06-08 grep).
+      // The design system uses polar radii: hairline (rounded-none / rounded-xs /
+      // rounded-[2px]) or pill (rounded-full). The 'middle' range (rounded,
+      // rounded-sm, rounded-md, rounded-lg, rounded-xl, rounded-2xl,
+      // rounded-3xl) is the iOS-utility vibecoded tell.
+      // --radius-xs (2px) exists in globals.css as of #289 slice 1, so
+      // rounded-xs is the canonical hairline class; rounded-[2px] stays
+      // allowed for pre-existing call sites.
       // Lint structurally — ban the middle classes, allow the polar ones.
       // Limitation: this selector inspects string Literal classNames only; it
       // does NOT see classes passed through cn(...) / template literals (those
@@ -89,7 +91,7 @@ const authedAntiTells = {
           "JSXOpeningElement[name.name=/^[Bb]utton$/] > JSXAttribute[name.name='className'] > Literal[value=/(?:^| )rounded(?:-sm|-md|-lg|-xl|-2xl|-3xl)?(?:$| )/]",
         message:
           "Non-token border-radius class on <button>/<Button> is banned. " +
-          "Use rounded-none, rounded-[2px] (hairline), or rounded-full (pill) only. " +
+          "Use rounded-none, rounded-xs (2px hairline token), or rounded-full (pill) only. " +
           "The 'middle' range (rounded, rounded-sm…rounded-3xl) " +
           "is the iOS-utility tell the design system rejects. " +
           "See design-system.md §Radius — 'Polar radii, not middle radii'.",

@@ -39,6 +39,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Hairline radius is a fixed polar value (design-system.md §Radius), not
+     derived from --radius — buttons are 2px or pill, never the middle. */
+  --radius-xs: 2px;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
