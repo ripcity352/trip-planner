@@ -14,7 +14,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getTripMembers } from "@/lib/db/trips";
-import { getAnnouncements } from "@/lib/db/announcements";
+import { enrichAnnouncements, getAnnouncements } from "@/lib/db/announcements";
 import { AnnouncementList } from "@/components/trip/announcements/announcement-list";
 import { AnnouncementComposer } from "@/components/trip/announcements/announcement-composer";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
@@ -44,10 +44,7 @@ export default async function AnnouncementsPage({ params }: PageProps) {
   // Fan out: announcements + members + organizer check in parallel.
   // Members are needed to build the memberUserMap for author attribution (#239).
   const [announcements, members, organizerCheck] = await Promise.all([
-    // memberUserMap is built below and passed into getAnnouncements
-    // in a second call — or we fetch members first and pass the map.
-    // Simpler: fetch members here, build map, then enrich announcements.
-    getAnnouncements(supabase, trip.id), // enriched below after members resolve
+    getAnnouncements(supabase, trip.id),
     getTripMembers(supabase, trip.id),
     supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
   ]);
@@ -62,13 +59,9 @@ export default async function AnnouncementsPage({ params }: PageProps) {
       .map((m) => [m.user_id as string, m.display_name])
   );
 
-  // Enrich the fetched announcements with authorDisplayName now that we have the map.
-  const enrichedAnnouncements = announcements.map((a) => ({
-    ...a,
-    authorDisplayName: a.created_by
-      ? (memberUserMap.get(a.created_by) ?? null)
-      : null,
-  }));
+  // #250: the one post-fetch enrichment path — getAnnouncements returns flat
+  // rows so the fetch can run in parallel with getTripMembers (the map source).
+  const enrichedAnnouncements = enrichAnnouncements(announcements, memberUserMap);
 
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">

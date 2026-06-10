@@ -5,6 +5,37 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-10 — #250 — announcements author-enrichment: keep post-fetch map, no SQL view
+
+**Decision:** `authorDisplayName` resolution stays a **post-fetch map
+lookup** at the data-layer boundary. The `v_announcements_with_author`
+SQL view proposed in the #249 review is rejected. The seam is settled as
+one exported pure helper, `enrichAnnouncements(announcements,
+memberUserMap)` in `lib/db/announcements.ts` — the page calls it after
+its parallel `getAnnouncements` + `getTripMembers` fan-out, and
+`subscribeToAnnouncements` reuses it per realtime payload (with the
+eager `announcements_author_fallback` "Someone", since realtime bypasses
+the page layer). `getAnnouncements` **drops its `memberUserMap` param**
+— it was dead: the only caller invoked it bare inside `Promise.all`
+(the map can't exist before `getTripMembers` resolves) and then
+re-implemented identical enrichment inline. The dead
+`AuthorMemberJoin`/`AnnouncementRaw` types (relics of an aborted
+PostgREST-join design the flat select never performed) are removed.
+
+**Rationale:** a view adds a migration + an RLS surface + a second read
+path to audit, all to remove a Map lookup over a bachelor-party-sized
+roster the page already fetches for other surfaces. Not worth it for a
+2-dev MVP. Post-fetch enrichment also keeps the announcements fetch
+parallelizable with the members fetch — passing the map *into*
+`getAnnouncements` would force serializing the two round-trips.
+
+**Revisit trigger:** real N+1 pain — e.g. announcements rendered on a
+surface that doesn't already fetch `trip_members`, or roster scale where
+per-request map construction shows up in traces. At that point the view
+(with its own RLS policy) is the known alternative.
+
+---
+
 ## 2026-06-10 — #289 re-scoped — radius call-site reconcile deferred behind audit
 
 **Decision:** The deliberate `rounded-*` audit mandated by the #289
