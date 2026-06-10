@@ -12,10 +12,16 @@
  * External dependencies (Supabase, server actions) are mocked.
  *
  * Placement: tests/unit/ per Override C (never under app/).
+ *
+ * Submit-clicks use `clickAndSettle` (tests/fixtures/dom.ts) where the
+ * button remains in DOM after the action, or `userEvent.click` + waitFor
+ * where a mode-change unmounts the button — fixes the async-submit flake
+ * class (#230, #207).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // --- action mocks (must be before dynamic imports) --------------------------
 
@@ -49,6 +55,25 @@ import {
   type IdentityState,
 } from "@/app/(authed)/account/sign-in-and-security/_form-state";
 import { SecurityForm } from "@/app/(authed)/account/sign-in-and-security/_form";
+import { clickAndSettle } from "@/tests/fixtures/dom";
+
+// Delay injected into action mocks to widen the race window deterministically.
+// Per-test local constant — not a shared seam.
+const MOCK_DELAY_MS = 30;
+
+/**
+ * Wait for a button to become enabled (not disabled).
+ *
+ * Used after async transitions that leave isPending=true while the new view
+ * renders (e.g. "forgot" → C-verify appears, but isPending still true until
+ * the requestEmailCode callback fully returns). Without this wait, fireEvent
+ * on a disabled button is a no-op.
+ */
+async function waitForEnabled(el: HTMLElement): Promise<void> {
+  await waitFor(() => {
+    expect((el as HTMLButtonElement).disabled).toBe(false);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // deriveIdentityState
@@ -157,7 +182,12 @@ describe("SecurityForm", () => {
   // -------------------------------------------------------------------------
 
   it("calls changePasswordAction with currentPassword and newPassword on submit", async () => {
-    mockChangePasswordAction.mockResolvedValue({ ok: true });
+    // On success, mode transitions to "success" — button unmounts.
+    // Use userEvent.click + waitFor on the resulting DOM state.
+    mockChangePasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
 
@@ -167,8 +197,8 @@ describe("SecurityForm", () => {
     fireEvent.change(currentInput, { target: { value: "myoldpass" } });
     fireEvent.change(newInput, { target: { value: "mynewpass123" } });
 
-    const submitBtn = screen.getByRole("button", { name: /update password/i });
-    fireEvent.click(submitBtn);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /update password/i }));
 
     await waitFor(() => {
       expect(mockChangePasswordAction).toHaveBeenCalledWith({
@@ -181,7 +211,10 @@ describe("SecurityForm", () => {
   it("does NOT include an email field in the form payload to changePasswordAction", async () => {
     // Email-pinning enforcement: the form must NOT submit an email field.
     // The action pins the email from the server-side session.
-    mockChangePasswordAction.mockResolvedValue({ ok: true });
+    mockChangePasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
 
@@ -191,7 +224,8 @@ describe("SecurityForm", () => {
     fireEvent.change(currentInput, { target: { value: "myoldpass" } });
     fireEvent.change(newInput, { target: { value: "mynewpass123" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /update password/i }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /update password/i }));
 
     await waitFor(() => {
       const callArg = mockChangePasswordAction.mock.calls[0]?.[0];
@@ -201,7 +235,11 @@ describe("SecurityForm", () => {
   });
 
   it("shows success toast text after successful password change", async () => {
-    mockChangePasswordAction.mockResolvedValue({ ok: true });
+    // On success, mode transitions to "success" — button unmounts.
+    mockChangePasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
 
@@ -212,7 +250,8 @@ describe("SecurityForm", () => {
       target: { value: "mynewpass123" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /update password/i }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /update password/i }));
 
     await waitFor(() => {
       // AUTH_COPY.accountSecurity_successToast
@@ -221,9 +260,10 @@ describe("SecurityForm", () => {
   });
 
   it("shows error message on auth_current_password_incorrect", async () => {
-    mockChangePasswordAction.mockResolvedValue({
-      ok: false,
-      errorKey: "auth_current_password_incorrect",
+    // On error, button stays in DOM and re-enables — clickAndSettle works.
+    mockChangePasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_current_password_incorrect" };
     });
 
     render(<SecurityForm {...baseProps} />);
@@ -235,7 +275,8 @@ describe("SecurityForm", () => {
       target: { value: "mynewpass123" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /update password/i }));
+    const submitBtn = screen.getByRole("button", { name: /update password/i });
+    await clickAndSettle(submitBtn);
 
     await waitFor(() => {
       // ERRORS.auth_current_password_incorrect (H7-locked)
@@ -250,12 +291,17 @@ describe("SecurityForm", () => {
   // -------------------------------------------------------------------------
 
   it("transitions to State C-request when 'forgot' link is clicked", async () => {
-    // Mock returns a pending-then-ok so the component transitions away from C-requesting
-    mockRequestEmailCode.mockResolvedValue({ ok: true });
+    // 'forgot' click triggers handleForgotCurrentPassword — async, causes mode
+    // change (C-requesting → C-verify) so button unmounts. Use userEvent + waitFor.
+    mockRequestEmailCode.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
 
-    fireEvent.click(screen.getByText(/forgot.*password/i));
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/forgot.*password/i));
 
     // requestEmailCode should be called with the user's email
     await waitFor(() => {
@@ -264,10 +310,14 @@ describe("SecurityForm", () => {
   });
 
   it("shows the code-entry step after requestEmailCode succeeds", async () => {
-    mockRequestEmailCode.mockResolvedValue({ ok: true });
+    mockRequestEmailCode.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
-    fireEvent.click(screen.getByText(/forgot.*password/i));
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/forgot.*password/i));
 
     await waitFor(() => {
       // Should show the code field label from AUTH_COPY.accountSecurity_codeFieldLabel
@@ -276,17 +326,26 @@ describe("SecurityForm", () => {
   });
 
   it("transitions to State C-set (new password step) after the user submits the OTP — client-side only, no server call", async () => {
-    mockRequestEmailCode.mockResolvedValue({ ok: true });
+    mockRequestEmailCode.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
-    fireEvent.click(screen.getByText(/forgot.*password/i));
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/forgot.*password/i));
 
     await waitFor(() => screen.getByLabelText(/6-digit code/i));
+    // Verify button is disabled={isPending} while forgot transition is in flight.
+    // Wait for it to re-enable before clicking.
+    const verifyBtn = screen.getByRole("button", { name: /verify/i });
+    await waitForEnabled(verifyBtn);
 
     fireEvent.change(screen.getByLabelText(/6-digit code/i), {
       target: { value: "123456" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /verify/i }));
+    // handleVerifyCode is synchronous (no startTransition) — fireEvent is fine.
+    fireEvent.click(verifyBtn);
 
     await waitFor(() => {
       // Should show the new-password field (without a current-password field)
@@ -298,25 +357,38 @@ describe("SecurityForm", () => {
   });
 
   it("calls setPasswordViaRecoveryAction with BOTH the stored token AND newPassword (atomic submit)", async () => {
-    mockRequestEmailCode.mockResolvedValue({ ok: true });
-    mockSetPasswordViaRecoveryAction.mockResolvedValue({ ok: true });
+    mockRequestEmailCode.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    // On success, mode transitions to "success" — button unmounts.
+    mockSetPasswordViaRecoveryAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
-    fireEvent.click(screen.getByText(/forgot.*password/i));
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/forgot.*password/i));
 
     await waitFor(() => screen.getByLabelText(/6-digit code/i));
+    // Verify button is disabled={isPending} while forgot transition is in flight.
+    const verifyBtn = screen.getByRole("button", { name: /verify/i });
+    await waitForEnabled(verifyBtn);
 
     fireEvent.change(screen.getByLabelText(/6-digit code/i), {
       target: { value: "654321" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /verify/i }));
+    // handleVerifyCode is synchronous — fireEvent is fine.
+    fireEvent.click(verifyBtn);
 
     await waitFor(() => screen.getByLabelText(/new password/i));
 
     fireEvent.change(screen.getByLabelText(/new password/i), {
       target: { value: "brandnewpass" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /update password/i }));
+    // On success, button unmounts — use userEvent + waitFor on result.
+    await user.click(screen.getByRole("button", { name: /update password/i }));
 
     await waitFor(() => {
       expect(mockSetPasswordViaRecoveryAction).toHaveBeenCalledWith({
@@ -328,13 +400,24 @@ describe("SecurityForm", () => {
   });
 
   it("clicking 'cancel' in State C returns to State A without triggering any action", async () => {
-    mockRequestEmailCode.mockResolvedValue({ ok: true });
+    mockRequestEmailCode.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...baseProps} />);
-    fireEvent.click(screen.getByText(/forgot.*password/i));
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/forgot.*password/i));
 
     await waitFor(() => screen.getByLabelText(/6-digit code/i));
 
+    // The cancel button is disabled={isPending} while the forgot transition is in
+    // flight. Wait for it to re-enable before clicking — handles the race between
+    // waitFor(codeField) returning and the transition callback fully completing.
+    await waitFor(() => {
+      expect((screen.getByText(/never mind/i) as HTMLButtonElement).disabled).toBe(false);
+    });
+    // 'cancel' (handleCancel) is synchronous once the button is enabled.
     fireEvent.click(screen.getByText(/never mind/i));
 
     // Should return to State A — current-password field visible again
@@ -346,28 +429,38 @@ describe("SecurityForm", () => {
   });
 
   it("bounces back to C-verify and shows auth_code_invalid when the server rejects the OTP", async () => {
-    mockRequestEmailCode.mockResolvedValue({ ok: true });
-    mockSetPasswordViaRecoveryAction.mockResolvedValue({
-      ok: false,
-      errorKey: "auth_code_invalid",
+    mockRequestEmailCode.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    // On auth_code_invalid, mode bounces back to C-verify — button unmounts.
+    mockSetPasswordViaRecoveryAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_code_invalid" };
     });
 
     render(<SecurityForm {...baseProps} />);
-    fireEvent.click(screen.getByText(/forgot.*password/i));
+    const user = userEvent.setup();
+    await user.click(screen.getByText(/forgot.*password/i));
 
     await waitFor(() => screen.getByLabelText(/6-digit code/i));
+    // Verify button is disabled={isPending} while forgot transition is in flight.
+    const verifyBtn = screen.getByRole("button", { name: /verify/i });
+    await waitForEnabled(verifyBtn);
 
     fireEvent.change(screen.getByLabelText(/6-digit code/i), {
       target: { value: "000000" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /verify/i }));
+    // handleVerifyCode is synchronous — fireEvent is fine.
+    fireEvent.click(verifyBtn);
 
     await waitFor(() => screen.getByLabelText(/new password/i));
 
     fireEvent.change(screen.getByLabelText(/new password/i), {
       target: { value: "freshpass" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /update password/i }));
+    // On C-verify bounce, button unmounts — use userEvent + waitFor on result.
+    await user.click(screen.getByRole("button", { name: /update password/i }));
 
     await waitFor(() => {
       // Form should return to C-verify so the user can re-enter the code,
@@ -424,14 +517,20 @@ describe("SecurityForm — State B (no-password identity)", () => {
   });
 
   it("calls setPasswordAction with newPassword on submit", async () => {
-    mockSetPasswordAction.mockResolvedValue({ ok: true });
+    // On success, mode transitions to "success" — button unmounts.
+    mockSetPasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...stateBProps} />);
 
     fireEvent.change(screen.getByLabelText(/new password/i), {
       target: { value: "mynewpass123" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /set password/i }));
 
     await waitFor(() => {
       expect(mockSetPasswordAction).toHaveBeenCalledWith({
@@ -441,14 +540,19 @@ describe("SecurityForm — State B (no-password identity)", () => {
   });
 
   it("does NOT pass an email field to setPasswordAction", async () => {
-    mockSetPasswordAction.mockResolvedValue({ ok: true });
+    mockSetPasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...stateBProps} />);
 
     fireEvent.change(screen.getByLabelText(/new password/i), {
       target: { value: "mynewpass123" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /set password/i }));
 
     await waitFor(() => {
       const callArg = mockSetPasswordAction.mock.calls[0]?.[0];
@@ -457,14 +561,19 @@ describe("SecurityForm — State B (no-password identity)", () => {
   });
 
   it("shows success toast after setPasswordAction returns { ok: true }", async () => {
-    mockSetPasswordAction.mockResolvedValue({ ok: true });
+    mockSetPasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
 
     render(<SecurityForm {...stateBProps} />);
 
     fireEvent.change(screen.getByLabelText(/new password/i), {
       target: { value: "mynewpass123" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /set password/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toBeDefined();
@@ -472,9 +581,10 @@ describe("SecurityForm — State B (no-password identity)", () => {
   });
 
   it("shows an error on network failure", async () => {
-    mockSetPasswordAction.mockResolvedValue({
-      ok: false,
-      errorKey: "network",
+    // On error, button stays in DOM and re-enables — clickAndSettle works.
+    mockSetPasswordAction.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "network" };
     });
 
     render(<SecurityForm {...stateBProps} />);
@@ -482,7 +592,9 @@ describe("SecurityForm — State B (no-password identity)", () => {
     fireEvent.change(screen.getByLabelText(/new password/i), {
       target: { value: "mynewpass123" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /set password/i }));
+
+    const submitBtn = screen.getByRole("button", { name: /set password/i });
+    await clickAndSettle(submitBtn);
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeDefined();

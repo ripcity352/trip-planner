@@ -13,15 +13,21 @@
  *  7. Freeform "Anything else?" append.
  *  8. Injection vectors — NUL, CRLF, oversized flag (>100), oversized note (>500)
  *     all rejected before submit (Coverage HIGH H1).
+ *
+ * Submit-clicks use `clickAndSettle` (tests/fixtures/dom.ts) to drain
+ * React's transition queue before making assertions — fixes the
+ * async-submit flake class (#230, #207).
  */
 
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { MEMBER_FLAG_CHIPS } from "@/lib/data/member-flags";
 import { M4_UI_STRINGS } from "@/lib/copy/empty-states";
 import { MemberFlagPicker } from "../member-flag-picker";
+import { clickAndSettle } from "@/tests/fixtures/dom";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +43,10 @@ const mockRemove = vi.mocked(removeItemFlag);
 
 const ITEM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
+// Delay injected into action mocks to widen the race window deterministically.
+// Per-test local constant — not a shared seam.
+const MOCK_DELAY_MS = 30;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function renderPicker(props?: Partial<React.ComponentProps<typeof MemberFlagPicker>>) {
@@ -48,6 +58,8 @@ function renderPicker(props?: Partial<React.ComponentProps<typeof MemberFlagPick
 describe("MemberFlagPicker", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: instant-resolve mocks. Tests that need the race-window delay
+    // inject MOCK_DELAY_MS individually (see toggles + multi-chip tests).
     mockAdd.mockResolvedValue({ ok: true });
     mockRemove.mockResolvedValue({ ok: true });
   });
@@ -105,6 +117,15 @@ describe("MemberFlagPicker", () => {
 
   // 6. Multi-select toggle
   it("toggles a chip ON then OFF", async () => {
+    // Delay widens the race window for this async chip-toggle test.
+    mockAdd.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    mockRemove.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
     renderPicker();
 
     const veganBtn = screen.getByRole("button", { name: "Vegan" });
@@ -112,8 +133,8 @@ describe("MemberFlagPicker", () => {
     // Initially not selected
     expect(veganBtn).toHaveAttribute("aria-pressed", "false");
 
-    // Click to select
-    fireEvent.click(veganBtn);
+    // Click to select — wait for the chip to re-enable (action completes).
+    await clickAndSettle(veganBtn);
 
     await waitFor(() => {
       expect(mockAdd).toHaveBeenCalledWith(
@@ -127,8 +148,8 @@ describe("MemberFlagPicker", () => {
       ).toHaveAttribute("aria-pressed", "true");
     });
 
-    // Click again to deselect
-    fireEvent.click(screen.getByRole("button", { name: "Vegan" }));
+    // Click again to deselect — wait for the chip to re-enable.
+    await clickAndSettle(screen.getByRole("button", { name: "Vegan" }));
     await waitFor(() => {
       expect(mockRemove).toHaveBeenCalledWith(ITEM_ID, "Vegan");
     });
@@ -140,10 +161,18 @@ describe("MemberFlagPicker", () => {
   });
 
   it("supports selecting multiple chips simultaneously", async () => {
+    // Delay widens the race window deterministically — without it the second
+    // click can fire while isPending=true from the first, silently dropping it.
+    mockAdd.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
     renderPicker();
 
-    // Click Vegan and wait for it to complete
-    fireEvent.click(screen.getByRole("button", { name: "Vegan" }));
+    // Click Vegan and wait for it to fully complete (re-enable) before Sober.
+    // Without clickAndSettle, the second click races the first action's isPending=true.
+    await clickAndSettle(screen.getByRole("button", { name: "Vegan" }));
+
     await waitFor(() => {
       expect(mockAdd).toHaveBeenCalledWith(
         expect.objectContaining({ flag: "Vegan" })
@@ -156,8 +185,9 @@ describe("MemberFlagPicker", () => {
       );
     });
 
-    // Click Sober after Vegan is done
-    fireEvent.click(screen.getByRole("button", { name: "Sober" }));
+    // Click Sober after Vegan is fully settled.
+    await clickAndSettle(screen.getByRole("button", { name: "Sober" }));
+
     await waitFor(() => {
       expect(mockAdd).toHaveBeenCalledWith(
         expect.objectContaining({ flag: "Sober" })
@@ -184,12 +214,20 @@ describe("MemberFlagPicker", () => {
   });
 
   it("submits freeform flag on form submit", async () => {
+    // Delay widens the race window for this async freeform submit.
+    mockAdd.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
     renderPicker();
     const input = screen.getByPlaceholderText(/anything else/i);
     fireEvent.change(input, { target: { value: "low-FODMAP diet" } });
 
-    const submitBtn = screen.getByRole("button", { name: /add/i });
-    fireEvent.click(submitBtn);
+    // The "Add" button stays disabled after submit (input cleared →
+    // !freeformFlag.trim()). Can't use clickAndSettle; use userEvent.click
+    // + waitFor on the mock call to settle deterministically.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /add/i }));
 
     await waitFor(() => {
       expect(mockAdd).toHaveBeenCalledWith(
@@ -202,11 +240,18 @@ describe("MemberFlagPicker", () => {
   });
 
   it("clears freeform input after successful submit", async () => {
+    // Delay widens the race window for this async freeform submit.
+    mockAdd.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
     renderPicker();
     const input = screen.getByPlaceholderText(/anything else/i);
     fireEvent.change(input, { target: { value: "some special diet" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /add/i }));
+    // Same — button stays disabled after submit (empty input).
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /add/i }));
 
     await waitFor(() => {
       expect((input as HTMLInputElement).value).toBe("");
@@ -214,8 +259,12 @@ describe("MemberFlagPicker", () => {
   });
 
   it("shows quiet 'Saved.' confirmation after chip toggle (no toast, no organizer phrasing)", async () => {
+    mockAdd.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
     renderPicker();
-    fireEvent.click(screen.getByRole("button", { name: "Vegan" }));
+    await clickAndSettle(screen.getByRole("button", { name: "Vegan" }));
 
     await waitFor(() => {
       expect(screen.getByText(/^Saved\.$/)).toBeInTheDocument();
@@ -229,18 +278,21 @@ describe("MemberFlagPicker", () => {
 
   // 8. Injection vectors — Coverage HIGH H1
   describe("injection vector rejection", () => {
+    // No additional beforeEach needed — the outer beforeEach already uses
+    // instant-resolve mocks (no delay) which is correct for these validation tests.
+
     it("rejects NUL character in freeform flag before submit", async () => {
       renderPicker();
       const input = screen.getByPlaceholderText(/anything else/i);
-      // Attempt NUL injection
-      fireEvent.change(input, { target: { value: "bad flag" } });
+      // Attempt NUL injection: include actual NUL byte in the flag value.
+      fireEvent.change(input, { target: { value: "bad\0flag" } });
       fireEvent.click(screen.getByRole("button", { name: /add/i }));
 
-      // addItemFlag should NOT be called with NUL
+      // If addItemFlag is called, the NUL byte must have been stripped by sanitize().
       await waitFor(() => {
         const calls = mockAdd.mock.calls;
         for (const [arg] of calls) {
-          expect(arg.flag).not.toContain(" ");
+          expect(arg.flag).not.toContain("\0");
         }
       });
     });
