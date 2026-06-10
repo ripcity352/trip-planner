@@ -5,6 +5,68 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-10 — #250 — announcements author-enrichment: keep post-fetch map, no SQL view
+
+**Decision:** `authorDisplayName` resolution stays a **post-fetch map
+lookup** at the data-layer boundary. The `v_announcements_with_author`
+SQL view proposed in the #249 review is rejected. The seam is settled as
+one exported pure helper, `enrichAnnouncements(announcements,
+memberUserMap)` in `lib/db/announcements.ts` — the page calls it after
+its parallel `getAnnouncements` + `getTripMembers` fan-out, and
+`subscribeToAnnouncements` reuses it per realtime payload (with the
+eager `announcements_author_fallback` "Someone", since realtime bypasses
+the page layer). `getAnnouncements` **drops its `memberUserMap` param**
+— it was dead: the only caller invoked it bare inside `Promise.all`
+(the map can't exist before `getTripMembers` resolves) and then
+re-implemented identical enrichment inline. The dead
+`AuthorMemberJoin`/`AnnouncementRaw` types (relics of an aborted
+PostgREST-join design the flat select never performed) are removed.
+
+**Rationale:** a view adds a migration + an RLS surface + a second read
+path to audit, all to remove a Map lookup over a bachelor-party-sized
+roster the page already fetches for other surfaces. Not worth it for a
+2-dev MVP. Post-fetch enrichment also keeps the announcements fetch
+parallelizable with the members fetch — passing the map *into*
+`getAnnouncements` would force serializing the two round-trips.
+
+**Revisit trigger:** real N+1 pain — e.g. announcements rendered on a
+surface that doesn't already fetch `trip_members`, or roster scale where
+per-request map construction shows up in traces. At that point the view
+(with its own RLS policy) is the known alternative.
+
+---
+
+## 2026-06-10 — #289 re-scoped — radius call-site reconcile deferred behind audit
+
+**Decision:** The deliberate `rounded-*` audit mandated by the #289
+slice-1 ADR landed (`notes/radius-audit.md`, CARRY PR 1c). It found
+**46 visually-changing call sites** under the ratified decision rule
+(buttons/inputs → 2px hairline; cards/sheets/popovers → 8px;
+chips/pills/avatars/badges stay `rounded-full`) — 7.7× over the N=6
+single-PR guideline. Per the built-in re-scope trigger, **#289 closes as
+re-scoped**: this wave ships the audit doc only — zero CSS, zero
+call-site changes. The reconcile moves to follow-up issue #304 with the
+audit as its spec.
+
+**Why one coherent follow-up, not slices:** (1) the token rebase and the
+call-site rewrite are inseparable — today `rounded-lg` *happens* to
+compute to the polar 8px (`--radius` = 0.5rem under the bachelor theme)
+while the spec's named scale says `radius-lg` = 16, so rebasing the
+tokens without re-pointing every call site flips current no-ops into
+regressions; (2) `button.tsx:7` / `input.tsx:12` cascade to every
+rendered button/input — the blast radius wants one #217-baselined PR +
+full 375px walk; (3) two spec gaps gate ~20 sites and need ratification
+first: whether the shipped pill CTAs (16 sites) sharpen to the hairline
+or get spec-blessed (§Radius says `radius-full` "never buttons"), and
+the error-banner radius (#209 is silent; 4 sites, adjacent to #301).
+
+**Alternatives considered:** reconciling the ≤6 "worst" sites now
+(rejected — there is no coherent ≤6 subset; the scale rebase forces the
+full rewrite); rebasing tokens only, keeping classes (rejected — moves
+every `rounded-xl` card to 24px, the opposite of intent).
+
+---
+
 ## 2026-06-09 — #289 slice 1: `--radius-xs` token lands; `--surface-error` settled as treatment-not-token
 
 **Decision:** Split #289 (radius-scale drift). Slice 1 (this entry) adds

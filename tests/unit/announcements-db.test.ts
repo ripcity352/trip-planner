@@ -5,16 +5,18 @@
  *
  * Override C: tests live in tests/unit/ only.
  *
- * Strategy (W1c ADR): announcements.created_by references auth.users (not
- * trip_members), so there is no direct PostgREST FK join available. Instead,
- * the page layer fetches trip_members separately and builds a memberUserMap
- * (user_id → display_name). getAnnouncements accepts this map and enriches
- * each row; subscribeToAnnouncements captures the map at subscription time
- * and enriches each INSERT payload before invoking onInsert.
+ * Strategy (W1c ADR, settled by #250): announcements.created_by references
+ * auth.users (not trip_members), so there is no direct PostgREST FK join
+ * available. The page layer fetches trip_members separately, builds a
+ * memberUserMap (user_id → display_name), and passes the fetched rows
+ * through `enrichAnnouncements` — the single post-fetch enrichment path.
+ * getAnnouncements itself returns flat rows; subscribeToAnnouncements
+ * captures the map at subscription time and enriches each INSERT payload
+ * before invoking onInsert.
  *
  * Tests assert:
- *   1. getAnnouncements populates authorDisplayName from memberUserMap
- *   2. getAnnouncements sets authorDisplayName null when created_by not in map
+ *   1. getAnnouncements + enrichAnnouncements populates authorDisplayName
+ *   2. enrichment sets authorDisplayName null when created_by not in map
  *   3. subscribeToAnnouncements passes enriched payload with authorDisplayName
  *   4. Realtime fallback: missing member emits "Someone" (not "Guest")
  *   5. Realtime fallback: null created_by emits "Someone"
@@ -89,25 +91,26 @@ function makeSupabaseMock(selectData: unknown[] = []) {
 // ---------------------------------------------------------------------------
 
 import {
+  enrichAnnouncements,
   getAnnouncements,
   subscribeToAnnouncements,
 } from "@/lib/db/announcements";
 
 // ---------------------------------------------------------------------------
-// getAnnouncements — authorDisplayName enrichment
+// getAnnouncements + enrichAnnouncements — authorDisplayName enrichment
 // ---------------------------------------------------------------------------
 
-describe("getAnnouncements — authorDisplayName enrichment", () => {
+describe("getAnnouncements + enrichAnnouncements — authorDisplayName", () => {
   it("populates authorDisplayName from memberUserMap when created_by matches", async () => {
     const rows = makeAnnouncementsRows([{ created_by: "user-uuid-1" }]);
     const supabase = makeSupabaseMock(rows);
     const memberUserMap = new Map([["user-uuid-1", "Alice"]]);
 
-    const results = await getAnnouncements(
+    const fetched = await getAnnouncements(
       supabase as unknown as Parameters<typeof getAnnouncements>[0],
-      "trip-001",
-      memberUserMap
+      "trip-001"
     );
+    const results = enrichAnnouncements(fetched, memberUserMap);
 
     expect(results).toHaveLength(1);
     expect(results[0].authorDisplayName).toBe("Alice");
@@ -118,37 +121,37 @@ describe("getAnnouncements — authorDisplayName enrichment", () => {
     const supabase = makeSupabaseMock(rows);
     const memberUserMap = new Map<string, string | null>(); // empty
 
-    const results = await getAnnouncements(
+    const fetched = await getAnnouncements(
       supabase as unknown as Parameters<typeof getAnnouncements>[0],
-      "trip-001",
-      memberUserMap
+      "trip-001"
     );
+    const results = enrichAnnouncements(fetched, memberUserMap);
 
     expect(results[0].authorDisplayName).toBeNull();
   });
 
-  it("sets authorDisplayName to null when created_by is null and map is provided", async () => {
+  it("sets authorDisplayName to null when created_by is null", async () => {
     const rows = makeAnnouncementsRows([{ created_by: null }]);
     const supabase = makeSupabaseMock(rows);
     const memberUserMap = new Map([["user-uuid-1", "Alice"]]);
 
-    const results = await getAnnouncements(
+    const fetched = await getAnnouncements(
       supabase as unknown as Parameters<typeof getAnnouncements>[0],
-      "trip-001",
-      memberUserMap
+      "trip-001"
     );
+    const results = enrichAnnouncements(fetched, memberUserMap);
 
     expect(results[0].authorDisplayName).toBeNull();
   });
 
-  it("leaves authorDisplayName undefined when no memberUserMap is passed", async () => {
+  it("leaves authorDisplayName undefined on un-enriched getAnnouncements rows", async () => {
     const rows = makeAnnouncementsRows([{ created_by: "user-uuid-1" }]);
     const supabase = makeSupabaseMock(rows);
 
     const results = await getAnnouncements(
       supabase as unknown as Parameters<typeof getAnnouncements>[0],
       "trip-001"
-      // no memberUserMap
+      // no enrichment — flat rows
     );
 
     expect(results[0].authorDisplayName).toBeUndefined();

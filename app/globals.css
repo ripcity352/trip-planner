@@ -51,41 +51,51 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* #188 — shadcn's light-mode token defaults, scoped so they apply ONLY when
+   no theme is active. Unscoped, any token absent from a theme block silently
+   inherited these (the leak class behind #297's pomegranate Revoke). The
+   nested &:not() form keeps the ":root {" literal that
+   components/ui/__tests__/focus-ring.test.tsx slices on. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  &:not([data-theme]) {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+  }
 }
 
+/* Dead shadcn boilerplate: nothing ever sets class="dark" (no next-themes,
+   no toggle — app/layout.tsx hardcodes data-theme="bachelor"). Left unscoped
+   because it can never match; remove if a real dark/light switch ever ships. */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -157,7 +167,9 @@
   /* Focus ring — WCAG 2.2 SC 2.4.11 compliant */
   --focus-ring: #ff8a65;
 
-  /* Apply directly to html so getComputedStyle resolves without body intermediary */
+  /* Apply directly to html so getComputedStyle resolves without body
+     intermediary — load-bearing for e2e/theme-smoke.spec.ts:19; keep even
+     though #188's :not([data-theme]) scoping closed the token-leak class */
   background-color: var(--surface-base);
   color: var(--ink-primary);
 
@@ -170,6 +182,14 @@
   --popover-foreground: #f3e9d2;
   --primary: #ff6a3d;
   --primary-foreground: #100c0f;
+  /* #188: was leaking shadcn's near-white — secondary surfaces follow the --muted/--card elevated mapping */
+  --secondary: var(--surface-elevated);
+  --secondary-foreground: var(--ink-primary);
+  /* #188: shadcn "accent" = hover/focus wash; spec binds hover ambient to --accent-heat-soft (§Accent) */
+  --accent: var(--accent-heat-soft);
+  --accent-foreground: var(--ink-primary);
+  /* #297 / #210 destructive-action contract: desaturated persimmon (~40% from --accent-heat), never shadcn's red. 4.6:1 on card, 5.0:1 on base. --destructive-foreground deliberately unbound — no functioning solid-fill consumer (see design-system.md drift table). */
+  --destructive: oklch(0.62 0.12 35);
   --muted: #1a1517;
   --muted-foreground: #a89e89;
   --border: rgb(243 233 210 / 10%);
@@ -183,7 +203,9 @@
 /* Wonk axis on at hero/display sizes (≥40px) only */
 [data-theme="bachelor"] h1,
 [data-theme="bachelor"] .hero-type {
-  font-variation-settings: "WONK" 1, "SOFT" 50;
+  font-variation-settings:
+    "WONK" 1,
+    "SOFT" 50;
   font-optical-sizing: auto;
 }
 

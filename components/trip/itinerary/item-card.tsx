@@ -11,6 +11,8 @@
  */
 
 import { format } from "date-fns";
+import { Hotel, PartyPopper, Plane, UtensilsCrossed, Zap } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { MapsLink } from "./maps-link";
@@ -25,13 +27,16 @@ import type {
   TripMember,
 } from "@/lib/db/types";
 
-// Kind → emoji icon mapping. No dep — just a lookup.
-const KIND_ICON: Record<ItineraryItem["kind"], string> = {
-  event: "🎉",
-  lodging: "🏨",
-  transport: "✈️",
-  meal: "🍽️",
-  activity: "⚡",
+// Kind → SVG icon (lucide-react). Replaces emoji icons per design-system
+// §Iconography: emoji reserved for reactions / user-generated copy, app
+// icons are lucide SVG at 1.75px stroke. Plane mirrors travel-leg-card's
+// flight icon for the overlapping transport kind.
+const KIND_ICON: Record<ItineraryItem["kind"], LucideIcon> = {
+  event: PartyPopper,
+  lodging: Hotel,
+  transport: Plane,
+  meal: UtensilsCrossed,
+  activity: Zap,
 };
 
 export interface ItemCardProps {
@@ -74,14 +79,17 @@ export function ItemCard({
   }
 
   const timeLabel = formatTimeRange(item.start_time, item.end_time);
+  const KindIcon = KIND_ICON[item.kind];
 
   return (
     <article className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3">
       {/* Header row: kind icon + title + time + edit affordance (organizer) */}
       <div className="flex items-start gap-2">
-        <span aria-hidden className="mt-0.5 text-base leading-none">
-          {KIND_ICON[item.kind]}
-        </span>
+        <KindIcon
+          aria-hidden
+          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+          strokeWidth={1.75}
+        />
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold leading-snug">{item.title}</h3>
           {timeLabel ? (
