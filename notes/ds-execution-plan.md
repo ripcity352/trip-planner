@@ -409,7 +409,7 @@ Two axes per Override E. `[v]` ticked at closure only.
 - [x]d [x]v #210 destructive-action contract — `*_confirm` keys (PR 1-B) — landed on main
 
 **Wave 2 — Primitives**
-- [x]d [~]v #215 `<Identifier>` (PR #283) — 40 tests incl. injection vectors; security+code reviewed; **375px smoke verified on local dev** (render + raw-value-verbatim clipboard read-back + aria-live + zero console errors). `[v]` PARTIAL: no prod surface (`/dev/smoke` 404s in prod; `invite-list` not rewired) → **prod-consumer walk carries forward** (see #288)
+- [x]d [x]v #215 `<Identifier>` (PR #283) — 40 tests incl. injection vectors; security+code reviewed; **375px smoke verified on local dev** (render + raw-value-verbatim clipboard read-back + aria-live + zero console errors). `[v]` COMPLETE 2026-06-09: prod-consumer walk on `travelston.com` invites surface (post-#288/#291 wiring) — `<Identifier>` renders the token mono/truncated/display-only, Copy-link yields the full raw-token URL. Walk done in desktop-width Safari; the 375px layout half was already covered by the local-dev smoke. Walk also surfaced the unbound-`--destructive` / red-Revoke #210 drift (filed separately).
 - [x]d [x]v #216 `useDisplayName` (PR #284) — wraps `resolveMemberName`; 10 tests; no-local-part grep returns zero hits
 
 **Wave 3 — CI / infra**
