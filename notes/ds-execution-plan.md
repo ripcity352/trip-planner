@@ -323,6 +323,8 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 grep -rEn "describe\(|test\(|it\(" app/ || echo "OK: no tests in app/"
 # #216 no-local-part audit (must return nothing):
 grep -rn '\.split("@")\[0\]' lib/ components/ app/ || echo "OK: no email-local-part display derivation"
+# ^ promoted to a pnpm-test target post-ds (tests/unit/no-local-part-audit.test.ts)
+#   — runs on every PR; the manual grep is now redundant.
 # #215 single clipboard impl (no fork): clipboard.writeText should appear
 # only in copy-link-button.tsx and identifier.tsx (which reuses the path):
 grep -rln "clipboard.writeText" components/ lib/
