@@ -24,9 +24,25 @@ const mockUpdateUser = vi.fn();
 const mockSignOut = vi.fn();
 const mockVerifyOtp = vi.fn();
 
-// Profiles update chain — stubbed to succeed by default so existing tests
-// that don't care about has_password behaviour remain unaffected. Individual
-// tests in has-password-writes.test.ts verify the chain calls explicitly.
+// has_password shadow-column chain — DEFAULT-PASS mock (#245; carryback
+// from PR #243 / trip-readiness W0).
+//
+// W0 made the password setters follow every successful auth mutation with a
+// `.from("profiles").update({ has_password: true }).eq("id", …).select()
+// .single()` write. The chain below stubs that write to SUCCEED
+// unconditionally, so the pre-existing tests in this file — which predate
+// the shadow column and assert only on auth behaviour — keep passing with
+// zero per-test setup.
+//
+// Consequence of the default-pass: no test in THIS file asserts that the
+// chain is called, called with the right args, or handles a chain failure.
+// A regression that drops, reorders, or breaks the has_password write will
+// NOT fail here. The real coverage — happy path (chain called with the
+// authed user's id) and failure path (chain NOT called when the auth
+// mutation fails) — lives in tests/unit/has-password-writes.test.ts.
+//
+// If you change has_password write behaviour, re-verify against
+// has-password-writes.test.ts; green in this file proves nothing about it.
 const mockHpSingle = vi.fn().mockResolvedValue({ data: { has_password: true }, error: null });
 const mockHpSelect = vi.fn(() => ({ single: mockHpSingle }));
 const mockHpEq = vi.fn(() => ({ select: mockHpSelect }));
