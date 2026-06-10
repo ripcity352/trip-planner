@@ -338,13 +338,17 @@ describe("<LoginForm /> — code-verify mode", () => {
     await advanceToPasswordMode();
     // emailMeCodeLink uses startTransition but causes a mode change that
     // unmounts the button — cannot use clickAndSettle (settle = re-enable).
-    // userEvent.click drains the microtask queue; the waitFor below settles
-    // the transition by asserting on the resulting DOM state.
+    // userEvent.click drains the microtask queue; findByRole below retries
+    // until the Verify button's accessible name is "Verify" (not the spinner),
+    // which only happens after isPending=false — i.e. the full transition has
+    // completed. waitFor(codeFieldLabel) alone is not sufficient because the
+    // mode-change setMode("code-verify") fires INSIDE startTransition while
+    // isPending is still true, so the Verify button appears with aria-busy and
+    // a spinner accessible name before the transition fully resolves.
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: AUTH_COPY.emailMeCodeLink }));
-    await waitFor(() => {
-      expect(screen.getByLabelText(AUTH_COPY.codeFieldLabel)).toBeInTheDocument();
-    });
+    // findByRole retries (RTL default 1 s timeout) until name === verifyCodeButton.
+    await screen.findByRole("button", { name: AUTH_COPY.verifyCodeButton });
   }
 
   it("transitions to code-verify mode after clicking 'Email me a code instead'", async () => {
