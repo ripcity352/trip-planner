@@ -314,8 +314,6 @@ milestone closed" ADR.
 **Next:** real-trip retrospective still gates M6 — same bright line as
 M4/M5. **No infra wave lifts the gate.** Open carry-backs / follow-ups:
 - **#232** — OAuth-existing-user alert detection wiring
-- **#244** — DRY: extract `markPasswordSet` from 4 atomic setters
-- **#248** — travel-leg `kind != flight` cross-field guard
 - **#254** — React #418 hydration on `/arrivals`
 - **#255** — fresh OTP-only walk for #233 State B `[v]` (needs Carl)
 - **#301** — error-surface text wears persimmon where #209 specs
