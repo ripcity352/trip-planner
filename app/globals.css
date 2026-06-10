@@ -170,6 +170,8 @@
   --popover-foreground: #f3e9d2;
   --primary: #ff6a3d;
   --primary-foreground: #100c0f;
+  /* #297 / #210 destructive-action contract: desaturated persimmon (~40% from --accent-heat), never shadcn's red. 4.6:1 on card, 5.0:1 on base. --destructive-foreground deliberately unbound — no functioning solid-fill consumer (see design-system.md drift table). */
+  --destructive: oklch(0.62 0.12 35);
   --muted: #1a1517;
   --muted-foreground: #a89e89;
   --border: rgb(243 233 210 / 10%);
