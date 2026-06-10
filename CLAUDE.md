@@ -295,27 +295,36 @@ baselines #217). A between-milestones **pre-gate infra wave** — shipped
 ZERO schema, ZERO server actions, ZERO feature surface. **Does NOT lift
 the M6 gate — M6 features remain gated.** See `notes/retros/ds-retro.md`
 and `notes/decisions.md` "ds — design-system hardening — milestone
-closed" ADR. DS carry-forwards:
-- **#288** — wire `<Identifier>` into `invite-list.tsx` + prod 375px walk
-  → tick deferred #215 prod-consumer `[v]` (primitive shipped ahead of
-  consumer; don't let it become dead code)
-- radius-scale drift fix (`--radius-xs` 2px + reconcile shadcn calc scale
-  to the polar spec) — M6 Wave-0 infra
-- self-host Fraunces/Switzer/JetBrains for the home visual fixture before
-  it gates required CI; trim `webkit` install from `visual.yml`
-- move the `useDisplayName` no-local-part grep into a `pnpm test` target
+closed" ADR. All four DS carry-forwards have since landed (#288 via
+#291/#296; the others via #292–#295 and the CARRY wave below).
 
-**Next:** real-trip retrospective still gates M6 — same bright line
-as M4/M5. **Trip-readiness and the DS wave made the app safer / the design
-system enforceable, but neither lifts the M6 gate.** M5 + trip-readiness
-carry-backs:
-- **#230** — chronic flake in `rsvp-toggle.test.tsx:192` (gate on M6 Wave 0)
+**CARRY — CI-trust & token-drift — Closed (2026-06-10).** 10 issues
+(#230 #207 #297 #188 #289 #155 #156 #157 #245 #250) across 3 waves /
+10 PRs (#300, #302–#303, #305–#310) + 8 dependabot merges + closure PR.
+Another between-milestones pre-gate wave: ZERO feature surface, ZERO
+server actions, ONE RLS-only migration (#155 — invites SELECT tightened
+to organizers, live in prod). The async-submit flake class is fixed at
+the pattern level (`clickAndSettle`, deterministic RED proof, 60×4
+stress twice); the bachelor token cascade is leak-proof
+(`--destructive` bound, `:root` scoped, 4 near-white leakers fixed);
+#289 closed re-scoped behind the radius audit. **Does NOT lift the M6
+gate.** See `notes/retros/carry-retro.md` and the decisions.md "CARRY —
+milestone closed" ADR.
+
+**Next:** real-trip retrospective still gates M6 — same bright line as
+M4/M5. **No infra wave lifts the gate.** Open carry-backs / follow-ups:
 - **#232** — OAuth-existing-user alert detection wiring
-- **#244** — DRY: extract `markPasswordSet` from 4 atomic setters
-- **#248** — travel-leg `kind != flight` cross-field guard
-- **#250** — consolidate announcements author-enrichment (SQL view vs unused param)
 - **#254** — React #418 hydration on `/arrivals`
-- **#255** — fresh OTP-only walk for #233 State B `[v]`
+- **#255** — fresh OTP-only walk for #233 State B `[v]` (needs Carl)
+- **#301** — error-surface text wears persimmon where #209 specs
+  ink+hairline (~34 sites; from the #297 audit)
+- **#304** — radius reconcile: bind polar scale + re-point 46 call
+  sites (gated on §Radius spec ratifications; pairs well with #301)
+- **#298** — eslint 9→10 major (deferred; must pass the #182
+  rule-fires-on-fixture test under eslint 10 first)
+- `notes/database-workflow.md` is stale on deployment reality — the
+  lone Supabase project serves travelston.com and CI pushes migrations
+  to it on merge (no soak step exists); update the doc
 
 When you complete a milestone, update `/notes/roadmap.md` to mark it done
 and add any deviations or follow-ups to `/notes/decisions.md`.
