@@ -25,13 +25,18 @@ when those components are built:
 - `for-your-eyes-only.html` (celebrant drawer)
 - `hairline-card.html` (brutalist card variant)
 
-> **Cross-OS webfont caveat (#217).** `home.html` pulls Fraunces / Switzer /
-> JetBrains Mono over CDN. The committed baseline was generated on macOS;
-> CI runs on `ubuntu-latest`. It passes today within the 2% tolerance, but
-> CDN webfonts are not a fully deterministic pixel-diff target across OS /
-> runner. **Follow-up: self-host the fonts before this fixture gates
-> required CI**, or regenerate its baseline on the CI runner. Until then,
-> the deterministic `_placeholder` fixture is the reliable guard.
+> **Cross-OS webfont caveat (#217) — RESOLVED.** `home.html` now
+> self-hosts all three faces via `@font-face`: Fraunces + JetBrains Mono
+> (OFL latin subsets, committed in `notes/mockups/fonts/`) and Switzer
+> (reuses the app's own `public/fonts/switzer/Switzer-Variable.woff2`,
+> the `next/font/local` source — no new Fontshare-licensed file in the
+> repo). `font-display: block` + a `document.fonts.ready` wait in the
+> spec mean the snapshot never captures a fallback-font frame, and the
+> render needs no network. Residual macOS-vs-ubuntu rasterization
+> (CoreText vs FreeType anti-aliasing) must stay within the 2% tolerance
+> — first verified by the ubuntu visual job on the PR that landed this;
+> if it ever drifts, regenerate from the CI `actual` artifact rather
+> than a local macOS run.
 
 ## How baselines work
 
@@ -75,8 +80,9 @@ artifact on failure.
 ## Cross-OS baseline note
 
 Baselines are committed from the machine that runs `--update-snapshots`.
-The deterministic `_placeholder` fixture renders the same across OSes; the
-`home.html` webfont fixture can drift (see the caveat above). If CI's
+Both fixtures now render without network (`_placeholder` is solid-color;
+`home.html` self-hosts its fonts), so cross-OS drift is limited to
+rasterization differences within tolerance. If CI's
 `playwright pixel-diff` fails on a baseline you didn't intend to change,
 Playwright writes the actual + diff PNGs into `test/visual-fixtures/
 test-results/` and CI uploads that folder as an artifact — pull it to see

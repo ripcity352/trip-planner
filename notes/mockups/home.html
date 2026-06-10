@@ -4,8 +4,9 @@
   NOT app code: no JSX, no route, no data wiring. Static reference only,
   to ratify the three-block home anatomy (hero → Up Next → Who's-In)
   before the deferred home-refactor feat. Tokens mirror app/globals.css
-  (bachelor theme). Type stack via Fontshare CDN (Fraunces + Switzer +
-  JetBrains Mono), matching design-system.md §Typography.
+  (bachelor theme). Type stack self-hosted (Fraunces + Switzer + JetBrains
+  Mono via @font-face below), matching design-system.md §Typography —
+  CDN webfonts made the #217 pixel-diff baseline OS/network-fragile.
 -->
 <html lang="en">
   <head>
@@ -13,20 +14,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>Home tab anatomy — mockup</title>
-    <link rel="preconnect" href="https://api.fontshare.com" crossorigin />
-    <link
-      href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600&display=swap"
-      rel="stylesheet"
-    />
-    <!-- Fraunces (display) + JetBrains Mono (numerics) via Google Fonts CDN;
-         Fontshare does not host Fraunces. Both are OFL, matching the spec. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=JetBrains+Mono:wght@500&display=swap"
-      rel="stylesheet"
-    />
     <style>
+      /* Self-hosted fonts (#217 determinism follow-up). Fraunces + JetBrains
+         Mono are OFL (latin variable subsets from Google Fonts, committed in
+         ./fonts/); Switzer reuses the app's own committed variable file
+         (public/fonts/switzer/ — the next/font/local source), so no new
+         Fontshare-licensed file enters the repo. font-display: block so the
+         pixel-diff never snapshots a fallback-font frame. */
+      @font-face {
+        font-family: "Fraunces";
+        src: url("./fonts/Fraunces-latin-var.woff2") format("woff2");
+        font-weight: 500 600;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("./fonts/JetBrainsMono-latin-500.woff2") format("woff2");
+        font-weight: 500;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Switzer";
+        src: url("../../public/fonts/switzer/Switzer-Variable.woff2")
+          format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: block;
+      }
+
       :root {
         /* bachelor theme tokens — mirror app/globals.css */
         --surface-base: #100c0f;
