@@ -5,6 +5,83 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-10 — CARRY — CI-trust & token-drift — milestone closed
+
+**Decision:** The CARRY wave (GitHub milestone #8) shipped all 10 issues
+across 3 waves / 10 PRs (#300, #302–#303, #305–#310) + 8 dependabot
+merges + this closure PR, in one day (2026-06-09 → 06-10). It is a
+**between-milestones, pre-gate carry-back wave** — NOT a feature
+milestone. No roadmap section exists; this ADR + the `CLAUDE.md`
+"Current phase" update are the closure record, per the DS precedent.
+
+> **The real-trip retro gate is STILL IN PLACE.** CARRY made the test
+> suite trustworthy and the bachelor theme drift-proof; it lifts
+> nothing. **M6 features remain gated.** ZERO feature surface, ZERO
+> server actions, ONE RLS-only migration shipped.
+
+**What shipped:** Wave 0 — #230/#207 async-submit flake class fixed at
+the pattern level (`userEvent` + `clickAndSettle` + injected-delay
+deterministic RED proof; 60×4 stress twice independently; no retry/skip
+anywhere). Wave 1 — #297 `--destructive` bound to desaturated persimmon
+`oklch(0.62 0.12 35)` (prod-verified by computed-style equality);
+#188 `:root` scoped `:not([data-theme])` + 4 live near-white leakers
+bound (`--secondary/-fg` → surface-elevated/ink, `--accent/-fg` →
+accent-heat-soft/ink); #289 radius audit → **closed re-scoped** (46
+visually-changing call sites > the N=6 trigger; audit doc + #304 carry
+the reconcile). Wave 2 — #157 dead code, #250 enrichment settled
+(post-fetch map, no SQL view, `enrichAnnouncements`), #245 default-pass
+docs, #156 emoji→lucide (strokeWidth 1.75), #155 invites SELECT RLS
+member→organizer (3-persona walk: attendee 0 rows / organizer +
+co_organizer 1 row; policy confirmed live via `pg_policy`).
+
+**Load-bearing in-execution decisions:**
+1. **`@testing-library/user-event` devDependency added (user-approved).**
+   The plan self-contradicted (mandated `userEvent.setup()` AND declared
+   zero new deps); the hard-stop fired pre-PR and Carl approved. The
+   planner contradiction is recorded as a Phase-4-audit gap.
+2. **#289 closed re-scoped, not reconciled.** The mandated audit
+   (`notes/radius-audit.md`) found token rebase and call-site rewrite
+   inseparable (`rounded-lg` = numeric no-op at 8px today, named spec
+   value 16px). Reconcile = #304, gated on ratifying pill-CTA-button and
+   error-banner-radius spec gaps first.
+3. **`--destructive-foreground` deliberately unbound** — no functioning
+   solid-fill consumer (`edit-item-form.tsx:339` references it but it
+   resolves nowhere; pre-existing, routed to #301).
+4. **#301 filed from the #297 audit:** ~34 error-text call sites wear
+   persimmon where the #209 contract specs ink+hairline. Destructive
+   *verbs* (11 sites) correctly keep persimmon; the restyle is a
+   deliberate separate pass.
+5. **eslint 9→10 major deferred** (was #271; dependabot superseded it
+   with #298, which carries the deferral) — must pass the #182
+   rule-fires-on-fixture test under eslint 10 before merging.
+6. **Deployment reality surfaced:** the lone Supabase project
+   (`bonvqazcqwkrowtkdmuq`, nominally "staging") serves travelston.com,
+   and CI pushes migrations to it on every main merge — so #155 went
+   live in production at merge time. `notes/database-workflow.md`'s
+   staging→soak→manual-prod-push process has no real referent today;
+   docs follow-up recommended in the retro.
+7. **`app/page.tsx` kept as-is (Override G):** CARRY added zero feature
+   surface; the landing page reflects current reality unchanged.
+
+**Process slip recorded (see retro §learnings):** all ten PRs merged
+without a submitted human GitHub review — including #310, which the plan
+marked "NOT self-merge." Mitigated by parallel agent security+code
+reviews + the 3-persona RLS walk, but the next wave must either make
+human review blocking or declare agent-review-merge the explicit norm.
+
+**Verification:** see `notes/retros/carry-retro.md` and the `[v]` ticks
+in `notes/carry-execution-plan.md` (committed with this PR). Closure
+walk on travelston.com 2026-06-10: Revoke = persimmon token equality,
+body bg `rgb(16,12,15)`, lucide icons live, zero console errors.
+
+**Alternatives considered:** shipping the 46-site radius reconcile in
+1c (rejected — unreviewable ripple, exactly what the re-scope trigger
+exists for); a SQL view for #250 (rejected — migration + RLS surface for
+a Map lookup at bachelor-party scale); binding `--destructive-foreground`
+speculatively (rejected — dead token until a solid-fill consumer exists).
+
+---
+
 ## 2026-06-10 — #250 — announcements author-enrichment: keep post-fetch map, no SQL view
 
 **Decision:** `authorDisplayName` resolution stays a **post-fetch map
