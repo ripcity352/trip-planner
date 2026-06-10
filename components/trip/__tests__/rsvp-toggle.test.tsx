@@ -13,11 +13,17 @@
  * The server action is mocked. We assert calls and shape, not the
  * action's own behavior (covered separately in
  * `lib/actions/__tests__/rsvp.test.ts`).
+ *
+ * Submit-clicks use `clickAndSettle` (tests/fixtures/dom.ts) to drain
+ * React's transition queue before making assertions — fixes the
+ * async-submit flake class (#230, #207).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
+
+import { clickAndSettle } from "@/tests/fixtures/dom";
 
 // Stable crypto.randomUUID for assertion on the idempotency_key arg.
 beforeEach(() => {
@@ -42,6 +48,10 @@ import { RsvpToggle } from "@/components/trip/rsvp-toggle";
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 
 const TRIP_ID = "11111111-1111-4111-8111-111111111111";
+
+// Delay injected into action mocks to widen the race window deterministically.
+// Per-test local constant — not a shared seam.
+const MOCK_DELAY_MS = 30;
 
 describe("<RsvpToggle />", () => {
   beforeEach(() => {
@@ -87,16 +97,23 @@ describe("<RsvpToggle />", () => {
   });
 
   it("optimistically activates the clicked chip and calls setRsvpAction with a fresh idempotency_key", async () => {
-    setRsvpActionMock.mockResolvedValue({ ok: true, status: "going" });
+    setRsvpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true, status: "going" };
+    });
 
     render(<RsvpToggle tripId={TRIP_ID} initialStatus="pending" />);
     const goingChip = screen.getByRole("button", {
       name: M2_UI_STRINGS.rsvp_chip_going,
     });
 
-    fireEvent.click(goingChip);
-
     // Optimistic update should land before the action resolves.
+    await waitFor(() => {
+      expect(goingChip).toHaveAttribute("aria-pressed", "false");
+    });
+
+    await clickAndSettle(goingChip);
+
     await waitFor(() => {
       expect(goingChip).toHaveAttribute("aria-pressed", "true");
     });
@@ -109,9 +126,9 @@ describe("<RsvpToggle />", () => {
   });
 
   it("rolls back the local state when the server action returns an error", async () => {
-    setRsvpActionMock.mockResolvedValue({
-      ok: false,
-      errorKey: "rsvp_save_failed",
+    setRsvpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "rsvp_save_failed" };
     });
 
     render(<RsvpToggle tripId={TRIP_ID} initialStatus="maybe" />);
@@ -122,7 +139,7 @@ describe("<RsvpToggle />", () => {
       name: M2_UI_STRINGS.rsvp_chip_maybe,
     });
 
-    fireEvent.click(goingChip);
+    await clickAndSettle(goingChip);
 
     // Eventually rolls back to maybe (the prior state).
     await waitFor(() => {
@@ -162,10 +179,17 @@ describe("<RsvpToggle />", () => {
       }),
     });
 
-    // First call (maybe) fails; second call (going) succeeds.
+    // First call (maybe) fails — delay widens the race window deterministically.
+    // Second call (going) succeeds.
     setRsvpActionMock
-      .mockResolvedValueOnce({ ok: false, errorKey: "rsvp_save_failed" })
-      .mockResolvedValueOnce({ ok: true, status: "going" });
+      .mockImplementationOnce(async () => {
+        await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+        return { ok: false, errorKey: "rsvp_save_failed" };
+      })
+      .mockImplementationOnce(async () => {
+        await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+        return { ok: true, status: "going" };
+      });
 
     render(<RsvpToggle tripId={TRIP_ID} initialStatus="going" />);
     const goingChip = screen.getByRole("button", {
@@ -175,8 +199,12 @@ describe("<RsvpToggle />", () => {
       name: M2_UI_STRINGS.rsvp_chip_maybe,
     });
 
-    fireEvent.click(maybeChip);
-    // Wait for rollback to land — going is pressed again after failure.
+    // First click: maybe — fails and rolls back to going.
+    // clickAndSettle waits for the full transition (isPending→false),
+    // guaranteeing both setStatus(rollback) and setErrorKey("rsvp_save_failed")
+    // are committed before we proceed.
+    await clickAndSettle(maybeChip);
+
     await waitFor(() => {
       expect(goingChip).toHaveAttribute("aria-pressed", "true");
       expect(maybeChip).toHaveAttribute("aria-pressed", "false");
@@ -185,8 +213,9 @@ describe("<RsvpToggle />", () => {
 
     // Now click going — this must NOT be short-circuited even though
     // the optimistic state already shows "going". The user is retrying
-    // after a failed write.
-    fireEvent.click(goingChip);
+    // after a failed write. clickAndSettle ensures the second transition
+    // fully completes before we assert.
+    await clickAndSettle(goingChip);
 
     await waitFor(() => {
       expect(setRsvpActionMock).toHaveBeenCalledTimes(2);
