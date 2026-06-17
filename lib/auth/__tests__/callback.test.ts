@@ -295,6 +295,57 @@ describe("resolveCallbackResult()", () => {
     });
   });
 
+  // ── thrown errors (defense against the /auth/callback 500 → blank page) ───
+
+  describe("thrown errors never propagate (white-page guard, #316 follow-up)", () => {
+    // Root cause of the reported blank page: on mobile a magic/OTP link
+    // opens in a different browser than the one that requested it, so the
+    // PKCE code_verifier cookie is absent and exchangeCodeForSession THROWS
+    // (not a returned {error}). The route handler has no try/catch and there
+    // is no error boundary, so the throw became a 500 with an empty body.
+    // resolveCallbackResult must swallow the throw and report ok:false so the
+    // route can redirect to /login?error=auth instead of dead-ending blank.
+    it("returns ok:false when exchangeCodeForSession throws (missing code_verifier)", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      exchangeCodeForSessionSpy.mockRejectedValue(
+        new Error("invalid request: both auth code and code verifier should be non-empty"),
+      );
+
+      const result = await resolveCallbackResult({
+        type: null,
+        token: null,
+        email: null,
+        code: "code-from-foreign-browser",
+        next: "/trips",
+      });
+
+      expect(result).toEqual({ ok: false });
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("returns ok:false when verifyOtp throws", async () => {
+      const consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      verifyOtpSpy.mockRejectedValue(new Error("network blip mid-verify"));
+
+      const result = await resolveCallbackResult({
+        type: "email",
+        token: "123456",
+        email: "user@example.com",
+        code: null,
+        next: "/trips",
+      });
+
+      expect(result).toEqual({ ok: false });
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
   // ── precedence: token wins over code ─────────────────────────────────────
 
   describe("precedence: token wins over code", () => {

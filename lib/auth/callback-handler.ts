@@ -85,33 +85,60 @@ export async function resolveCallbackResult(
       console.error("[auth] callback got unknown OTP type", { type });
       return { ok: false };
     }
-    const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({ email, token, type });
-    if (!error) {
-      return { ok: true, next };
+    // try/catch is load-bearing: verifyOtp / exchangeCodeForSession can
+    // THROW (not just return {error}) — most notably exchangeCodeForSession
+    // when the PKCE code_verifier cookie is absent, which is the norm when an
+    // emailed link opens in a different browser than the one that requested
+    // it. The route handler has no boundary, so an uncaught throw renders a
+    // 500 with an empty body — the blank "/auth/callback" page from the prod
+    // walk. Collapsing the throw to ok:false lets the route redirect to
+    // /login?error=auth instead of dead-ending. (#316 follow-up.)
+    try {
+      const supabase = await createClient();
+      const { error } = await supabase.auth.verifyOtp({ email, token, type });
+      if (!error) {
+        return { ok: true, next };
+      }
+      console.error("[auth] verifyOtp failed", {
+        status: error.status,
+        name: error.name,
+        message: error.message,
+      });
+      return { ok: false };
+    } catch (err) {
+      // Covers both createClient() and verifyOtp() throwing — either way the
+      // OTP verify path failed and we fail closed.
+      console.error("[auth] OTP verify path threw", {
+        name: err instanceof Error ? err.name : "unknown",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return { ok: false };
     }
-    console.error("[auth] verifyOtp failed", {
-      status: error.status,
-      name: error.name,
-      message: error.message,
-    });
-    return { ok: false };
   }
 
   // ── PKCE code path (OAuth callbacks) ───────────────────────────────────
   if (code) {
-    const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return { ok: true, next };
+    try {
+      const supabase = await createClient();
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (!error) {
+        return { ok: true, next };
+      }
+      console.error("[auth] exchangeCodeForSession failed", {
+        status: error.status,
+        code: (error as { code?: string }).code,
+        name: error.name,
+        message: error.message,
+      });
+      return { ok: false };
+    } catch (err) {
+      // Covers both createClient() and exchangeCodeForSession() throwing.
+      console.error("[auth] PKCE exchange path threw", {
+        name: err instanceof Error ? err.name : "unknown",
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return { ok: false };
     }
-    console.error("[auth] exchangeCodeForSession failed", {
-      status: error.status,
-      code: (error as { code?: string }).code,
-      name: error.name,
-      message: error.message,
-    });
-    return { ok: false };
   }
 
   // ── nothing usable in the URL ───────────────────────────────────────────

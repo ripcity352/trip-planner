@@ -40,6 +40,22 @@ describe("ERRORS — M5 auth voice locks (Phase 4 audit H7)", () => {
     );
   });
 
+  it("auth_no_account is voice-locked", () => {
+    // Returned on 422 otp_disabled — no account for that email yet. Points
+    // the user at the password sign-up path. Blame-free, casual, actionable.
+    expect(ERRORS.auth_no_account).toBe(
+      "No account on that email yet. Add a password to create one."
+    );
+  });
+
+  it("auth_no_account does not contain corporate SaaS language", () => {
+    const v = ERRORS.auth_no_account.toLowerCase();
+    expect(v).not.toContain("an error occurred");
+    expect(v).not.toContain("authentication failed");
+    expect(v).not.toContain("invalid");
+    expect(v.length).toBeLessThanOrEqual(120);
+  });
+
   it("auth_wrong_password does not contain corporate SaaS language", () => {
     const v = ERRORS.auth_wrong_password.toLowerCase();
     expect(v).not.toContain("an error occurred");

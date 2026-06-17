@@ -151,6 +151,12 @@ export function LoginForm({ next }: LoginFormProps) {
         return;
       }
       setServerError(result.errorKey);
+      // No account for that email — codes don't create users. Reveal the
+      // "Create account instead" affordance so the error message is
+      // actionable (sign-up is password-first per the M5 invite decision).
+      if (result.errorKey === "auth_no_account") {
+        setShowCreateAccount(true);
+      }
     });
   };
 

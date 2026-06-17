@@ -432,6 +432,20 @@ describe("requestEmailCode (renamed from requestMagicLink)", () => {
     expect(result).toEqual({ ok: false, errorKey: "network" });
   });
 
+  it("returns auth_no_account for a Supabase 422 otp_disabled (no account yet)", async () => {
+    // shouldCreateUser:false means an email-code request for an address with
+    // no account returns 422 otp_disabled ("Signups not allowed for otp").
+    // This is the new-invitee dead-end from the prod walk: it must surface a
+    // clear "create an account" message, NOT the misleading generic network
+    // error it fell through to before.
+    mockSignInWithOtp.mockResolvedValue({
+      data: {},
+      error: { status: 422, code: "otp_disabled", message: "Signups not allowed for otp" },
+    });
+    const result = await requestEmailCode("new-invitee@example.com");
+    expect(result).toEqual({ ok: false, errorKey: "auth_no_account" });
+  });
+
   it("uses AUTH_OTP_VERIFY scope for rate-limiting", async () => {
     mockSignInWithOtp.mockResolvedValue({ data: {}, error: null });
     await requestEmailCode("dave@example.com");
