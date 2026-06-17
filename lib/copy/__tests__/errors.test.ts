@@ -14,6 +14,7 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "idempotency_replayed",
   "auth_failed",
   "auth_link_sent",
+  "auth_no_account",
   "invite_expired",
   "invite_exhausted",
   "invite_not_found",

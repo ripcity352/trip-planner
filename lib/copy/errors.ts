@@ -64,6 +64,12 @@ export type ErrorKey =
   | "auth_wrong_password"
   | "auth_code_invalid"
   | "auth_code_expired"
+  // Returned when "email me a code" hits a 422 otp_disabled — i.e. no
+  // account exists for that email yet (shouldCreateUser:false). New
+  // invitees must create an account with a password first (the prod-walk
+  // dead-end fix). Replaces the misleading generic `network` it used to
+  // fall through to.
+  | "auth_no_account"
   // Placeholder for PR5 (OAuth). Not yet wired to any action — kept
   // here so the type union is complete and TypeScript enforces
   // exhaustiveness in the ERRORS record below.
@@ -130,6 +136,9 @@ export const ERRORS: Record<ErrorKey, string> = {
   auth_code_invalid:
     "That code didn't take. Double-check or get a fresh one.",
   auth_code_expired: "Code's stale. Get a fresh one.",
+  // No account yet for that email — point them at the password path (sign-up
+  // is explicit; codes don't create accounts). Voice: blame-free, casual.
+  auth_no_account: "No account on that email yet. Add a password to create one.",
   // PR5 placeholder — not wired yet. Copy ready so the error is
   // user-visible the moment OAuth lands without a follow-up copy sprint.
   auth_email_taken_oauth:

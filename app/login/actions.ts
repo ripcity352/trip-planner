@@ -99,6 +99,11 @@ function mapAuthErrorToKey(
   if (!error) return null;
   // Supabase surfaces rate-limit responses as HTTP 429.
   if (error.status === 429) return "rate_limit";
+  // 422 otp_disabled — "email me a code" for an address with no account.
+  // shouldCreateUser:false (anti-phantom-account) means codes never create
+  // users, so a new invitee dead-ends here. Surface a clear "create an
+  // account" message instead of the generic network fallthrough below.
+  if (error.code === "otp_disabled") return "auth_no_account";
   // Wrong password / invalid credentials — HTTP 400 with invalid_credentials code.
   if (
     error.status === 400 &&
