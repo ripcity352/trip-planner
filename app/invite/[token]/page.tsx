@@ -38,6 +38,7 @@ import {
   M2_UI_STRINGS,
 } from "@/lib/copy/empty-states";
 import { getInvitePreview } from "@/lib/db/invites";
+import { invitePreviewPath, inviteAcceptPath } from "@/lib/invites/paths";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type { InvitePreview } from "@/lib/db/types";
 import { LoginForm } from "@/app/login/_form";
@@ -142,21 +143,23 @@ export default async function InvitePreviewPage({
           {isSignedIn ? (
             // Authenticated viewer — submit the accept handler directly.
             // The POST route does the actual mutation and redirects.
-            <form action={`/invite/${token}/accept`} method="post">
+            <form action={inviteAcceptPath(token)} method="post">
               <Button type="submit" size="lg" className="w-full">
                 {M2_UI_STRINGS.invitePreview_cta_authed}
               </Button>
             </form>
           ) : (
             // Anonymous viewer — render the LoginForm inline so they
-            // never leave the invite page. On successful sign-in the
-            // form redirects to the accept route.
+            // never leave the invite page. On successful sign-in the form
+            // redirects (GET) back to THIS preview, which then renders the
+            // one-tap Accept POST form above. `next` must be the preview,
+            // never the POST-only accept route (#316).
             // M5/PR2: replaces the old /login?next= bounce link.
             <div className="flex flex-col gap-2">
               <p className="text-sm text-muted-foreground">
                 {M2_UI_STRINGS.invitePreview_cta_anon}
               </p>
-              <LoginForm next={`/invite/${token}/accept`} />
+              <LoginForm next={invitePreviewPath(token)} />
             </div>
           )}
         </CardContent>
