@@ -8,10 +8,14 @@
  * the preview without JS can still complete the flow.
  *
  * Only POST is exported. The GET handler was removed in W0c (M4, #106):
- * the `/login?next=...` bounce path issues a redirect back to the accept
- * URL after sign-in, and that redirect is now a POST (the preview page
- * submits a real `<form method="post">`). Keeping GET open is a CSRF
- * surface — a crafted link could trigger acceptance without user intent.
+ * keeping GET open is a CSRF surface — a crafted link could trigger
+ * acceptance without user intent.
+ *
+ * Because of that, this route is NEVER a redirect / `next=` target: a
+ * post-sign-in redirect is a GET, and a GET here lands a 405 blank page
+ * (#316). The not-authed bounce below sends the user to the GET-navigable
+ * preview page (`invitePreviewPath`); once signed in, the preview renders
+ * the one-tap Accept POST form.
  *
  * Idempotency: we derive the idempotency key DETERMINISTICALLY from
  * `(userId, token)` — both fixed strings the server can read at call
@@ -25,6 +29,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import crypto from "node:crypto";
 
 import { acceptInviteAction } from "@/lib/actions/invites";
+import { invitePreviewPath } from "@/lib/invites/paths";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -55,11 +60,12 @@ async function handle(
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   if (!authData?.user) {
-    // Bounce through login with the original accept URL as `next`.
-    const url = new URL(
-      `/login?next=/invite/${token}/accept`,
-      request.nextUrl.origin
-    );
+    // Bounce through login. `next` must be GET-navigable — the preview
+    // page, NOT this POST-only route (#316). After sign-in the preview
+    // renders the one-tap Accept POST form.
+    const url = new URL(request.nextUrl.origin);
+    url.pathname = "/login";
+    url.searchParams.set("next", invitePreviewPath(token));
     return NextResponse.redirect(url, { status: 303 });
   }
 

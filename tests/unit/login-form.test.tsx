@@ -436,8 +436,10 @@ describe("<LoginForm /> — next prop", () => {
   });
 
   it("accepts a next prop without error", () => {
+    // The invite page hands the GET-navigable preview path as `next`
+    // (never the POST-only accept route — #316).
     expect(() =>
-      render(<LoginForm next="/invite/abc123/accept" />)
+      render(<LoginForm next="/invite/abc123" />)
     ).not.toThrow();
   });
 });
