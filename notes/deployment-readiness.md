@@ -58,8 +58,9 @@ stale local override. See ADR 2026-05-19 (late PM) in
 
 | Setting | Path | What breaks without it | Last verified |
 |---|---|---|---|
-| **Redirect URL allowlist** includes production domain | Authentication → URL Configuration → Redirect URLs | Magic-link callbacks fail; Supabase rejects the redirect after `verifyOtp` / `exchangeCodeForSession`. Must include `https://travelston.com/auth/callback` + Vercel preview wildcard `https://*.vercel.app/auth/callback`. | 2026-05-19 |
-| **Site URL** matches production | Authentication → URL Configuration → Site URL | Email-template `{{ .SiteURL }}` interpolates wrong → links 404 on click. Currently `https://travelston.com`. | 2026-05-19 |
+| **Redirect URL allowlist** includes production domain | Authentication → URL Configuration → Redirect URLs | Magic-link callbacks fail; Supabase rejects the redirect after `verifyOtp` / `exchangeCodeForSession`. Must include `https://travelston.com/auth/callback` + Vercel preview wildcard `https://*.vercel.app/auth/callback`. | **2026-06-17 (AUTH #128 — operator-confirmed live)** |
+| **Site URL** matches production | Authentication → URL Configuration → Site URL | Email-template `{{ .SiteURL }}` interpolates wrong → links 404 on click. Currently `https://travelston.com`. | **2026-06-17 (AUTH #128 — operator-confirmed)** |
+| **Email OTP Length = 6** | Authentication → Sign In / Providers → Email → OTP Length | The `/login` form + `verifyEmailCodeAction` zod schema hardcode `length(6)`. A dashboard mismatch (e.g. 8) silently fails OTP validation on chars 7–8 — the first post-flip user hits a dead form. **This drift was discovered mid-walk in M5 (set to 8, fixed to 6).** Pre-walk eyeball, not a discovery. | **2026-06-17 (AUTH #128 — prod OTP delivers + verifies at length 6)** |
 | **Google OAuth provider enabled** with Client ID + Secret | Authentication → Sign In / Providers → Google | `signInWithOAuthAction` returns `oauth_redirect_failed`; the "Continue with Google" button is broken. Credentials are pasted directly into Supabase (Supabase holds them server-side; the Next.js app does NOT read `GOOGLE_OAUTH_CLIENT_*` env vars — they belong in the Supabase Dashboard only). See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider". | **Not yet verified — Phase 6 closure step (M5 #225).** |
 | **Custom SMTP (Resend)** wired | Project Settings → Auth → SMTP Settings | Without it: Supabase's free-tier project-wide email cap (3/hr) bricks magic-link sign-ins past the third attempt. The 2026-05-19 retro caught this within minutes of going live. | 2026-05-19 |
 | **Email Templates → Magic Link** uses the cross-device-safe variant | Authentication → Email Templates → Magic Link | If template emits `{{ .ConfirmationURL }}` (PKCE-bound), cross-device clicks fail with `pkce_code_verifier_not_found` (#137). Template must emit a `token_hash` link consumable by `verifyOtp`. **Wave 0c (M3) flips this.** | 2026-05-20 (Wave 0c #137) |
@@ -175,6 +176,27 @@ blockers.
 
 See `notes/runbooks/auth-setup.md` "Enable Google OAuth provider" for the
 full click-path with screenshots.
+
+---
+
+## AUTH wave — pre-walk auth-config snapshot (2026-06-17)
+
+Closure-walk **step 0** (`notes/auth-execution-plan.md`) reads this as a
+glance, not a discovery (the m5-retro recommendation-5 lesson — OTP-length
+drift was caught only mid-walk). Operator-confirmed live as of 2026-06-17:
+
+- **Redirect allowlist** — `https://travelston.com/auth/callback` +
+  `https://*.vercel.app/auth/callback` ✓
+- **Site URL** — `https://travelston.com` ✓
+- **Email OTP Length** — 6 (matches the `length(6)` form schema) ✓
+- **Email template** — emits `{{ .Token }}` (6-digit code, not
+  `{{ .ConfirmationURL }}`) ✓
+- **Resend custom SMTP** — wired; prod OTP delivers to a real inbox ✓
+- **Google OAuth provider** — **NOT enabled** ✗ → the OAuth round-trip
+  walk + #232 producer/consumer wiring stay deferred (carry-forward).
+
+Re-verify this snapshot after any domain change, provider enablement, or
+email-template edit.
 
 ---
 
