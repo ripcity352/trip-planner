@@ -65,12 +65,14 @@ test.describe("M2 golden path — anonymous invite preview", () => {
       page.getByText(new RegExp(`${datesUnsetCopy}|${datesAnyDate.source}`, "i"))
     ).toBeVisible();
 
-    // Host display name renders. We seeded the user with a stable
-    // email and the app derives a display name from it; both
-    // possibilities are matched so we don't pin to the formatter.
+    // The warm invite hook renders (magazine layout, #219). The H1 is
+    // "{Host} wants you on this one." — host-derived but the trailing
+    // phrase is stable, so we assert on it rather than pinning the
+    // display-name formatter. (`.toBeVisible()`, not the old no-op
+    // `.toBeTruthy()` on a locator, which always passed.)
     await expect(
-      page.locator("body").filter({ hasText: /host|inviting|from /i })
-    ).toBeTruthy();
+      page.getByText(/wants you on this one/i)
+    ).toBeVisible();
 
     // Bucket label renders. On a fresh seed (1 organizer member, no
     // accepted invites yet), the bucket is `just-getting-started`.

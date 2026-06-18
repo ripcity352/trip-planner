@@ -18,19 +18,18 @@
  *     for expired / exhausted / not-found, so a hostile prober can't
  *     distinguish "this token never existed" from "this token was
  *     used."
+ *
+ * Anti-pattern guard (auth-execution-plan.md §#219 / CLAUDE.md hard-banned):
+ *   ZERO completion-count, RSVP-speed, leaderboard, progress-bar, or
+ *   "X of N going / responded" affordance. A bucketed count is fine;
+ *   a bar, score, or ordering is banned. The invite is not a project
+ *   with a done state.
  */
 
 import Link from "next/link";
 import { format } from "date-fns";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import {
@@ -42,6 +41,7 @@ import { invitePreviewPath, inviteAcceptPath } from "@/lib/invites/paths";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import type { InvitePreview } from "@/lib/db/types";
 import { LoginForm } from "@/app/login/_form";
+import { buildInviteH1 } from "@/lib/og/invite-card";
 
 type PageProps = {
   params: Promise<{ token: string }>;
@@ -112,18 +112,37 @@ export default async function InvitePreviewPage({
   } = await sessionClient.auth.getUser();
   const isSignedIn = Boolean(user);
 
+  // The H1 hook: "{Host} wants you on this one." — sourced from W0 D1 keys.
+  // buildInviteH1 sanitizes, clamps, and falls back to inviteH1Fallback.
+  const h1Text = buildInviteH1(preview.host_display_name);
+  const dateText = formatPreviewDates(preview);
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-4 py-10">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>
-            <h1 className="text-xl font-medium">{preview.trip_name}</h1>
-          </CardTitle>
-          <CardDescription>
-            {formatPreviewDates(preview)} · with {preview.host_display_name}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+      {/* Magazine hero card */}
+      <article className="w-full overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+        {/* Warm editorial hook — the "magazine" treatment */}
+        <header className="px-6 pb-4 pt-6">
+          <h1 className="text-2xl font-semibold leading-tight tracking-tight">
+            {h1Text}
+          </h1>
+        </header>
+
+        {/* Trip identity block */}
+        <div className="px-6 pb-4">
+          <p className="text-lg font-medium">{preview.trip_name}</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{dateText}</p>
+          {/* Bucketed count — plain aggregate, no bar / score / ordering */}
+          <p className="mt-3 text-sm text-muted-foreground">
+            {ATTENDEE_COUNT_BUCKET_LABELS[preview.attendee_count_bucket]}
+          </p>
+        </div>
+
+        {/* Divider */}
+        <div className="mx-6 border-t border-border" />
+
+        {/* CTA block */}
+        <div className="px-6 pb-6 pt-4">
           {/* Error band from a previous /accept attempt. Renders only
               for keys that can actually originate from that path; all
               user-visible distinctions between expired / exhausted /
@@ -132,14 +151,12 @@ export default async function InvitePreviewPage({
           {errorKey ? (
             <p
               role="alert"
-              className="text-destructive border-destructive/30 rounded-md border p-2 text-sm"
+              className="mb-3 rounded-md border border-destructive/30 p-2 text-sm text-destructive"
             >
               {ERRORS[errorKey]}
             </p>
           ) : null}
-          <p className="text-muted-foreground text-sm">
-            {ATTENDEE_COUNT_BUCKET_LABELS[preview.attendee_count_bucket]}
-          </p>
+
           {isSignedIn ? (
             // Authenticated viewer — submit the accept handler directly.
             // The POST route does the actual mutation and redirects.
@@ -162,8 +179,8 @@ export default async function InvitePreviewPage({
               <LoginForm next={invitePreviewPath(token)} />
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </article>
     </main>
   );
 }
@@ -176,18 +193,16 @@ export default async function InvitePreviewPage({
 function InviteMissing() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-4 py-10 text-center">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>
-            <h1 className="text-xl font-medium">{ERRORS.invite_not_found}</h1>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <article className="w-full overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+        <header className="px-6 py-6">
+          <h1 className="text-xl font-medium">{ERRORS.invite_not_found}</h1>
+        </header>
+        <div className="px-6 pb-6">
           <Link href="/" className={buttonVariants({ variant: "outline" })}>
             {M2_UI_STRINGS.invitePreview_back_link}
           </Link>
-        </CardContent>
-      </Card>
+        </div>
+      </article>
     </main>
   );
 }
@@ -202,5 +217,8 @@ function formatPreviewDates(preview: InvitePreview): string {
   if (preview.starts_at) {
     return format(new Date(preview.starts_at), "MMM d");
   }
+  // Dates not yet set — show the "Dates TBD" affordance (behavior preserved
+  // from the pre-magazine layout; an undecided-dates invite still tells the
+  // reader dates are coming rather than silently dropping the line).
   return M2_UI_STRINGS.invitePreview_dates_unset;
 }
