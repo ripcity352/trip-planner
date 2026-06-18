@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AUTH_COPY } from "@/lib/copy/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function Home() {
@@ -33,6 +34,10 @@ export default async function Home() {
       >
         Sign in to your trip
       </Link>
+
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        {AUTH_COPY.landingInviteAffordance}
+      </p>
 
       <footer className="mt-auto flex gap-4 text-sm text-zinc-500 dark:text-zinc-500">
         <Link href="/legal/terms" className="underline-offset-2 hover:underline">
