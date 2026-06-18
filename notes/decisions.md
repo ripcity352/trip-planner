@@ -5,62 +5,69 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
-## 2026-06-17 — Invite/OTP reconciliation: `/auth/callback` must fail safe; new invitees are password-first
+## 2026-06-17 — Invite/OTP: white page was #316 (fixed by #317); #319 hardens callback + fixes the no-account dead-end
 
-**Context.** A post-#135 prod walk on `travelston.com` surfaced a dead blank
-page after the auth step, then a "won't send a code / rate-limited" wall on
-retry. Root-caused from Supabase auth logs (all failing events were *after*
-the #317 deploy, so this is a distinct bug from the one #316/#317 fixed):
+> **Correction (same day).** An earlier draft of this ADR (shipped in PR #319)
+> attributed the reported white page to an unhandled throw at `/auth/callback`.
+> That was wrong, and this entry supersedes it. Two facts disproved the
+> callback theory after #319 merged: (a) the OTP email is **code-only**
+> (`{{ .Token }}`, no `{{ .ConfirmationURL }}` link), so there is no link to
+> click into `/auth/callback`; (b) the auth logs show **no OAuth/PKCE** events
+> (`/authorize`, `provider`, `grant_type=pkce`) at all. The
+> `referer=/auth/callback?next=/trips` I leaned on was just the
+> `emailRedirectTo` string echoed in GoTrue's logs — not a browser location.
 
-1. **White page = unhandled throw at `/auth/callback`.** The route handler had
-   no try/catch and the app had no error boundary. `exchangeCodeForSession`
-   *throws* (not returns `{error}`) when the PKCE `code_verifier` cookie is
-   absent — the norm when an emailed link opens in a different browser than the
-   one that requested it (mobile Gmail in-app webview vs. Safari). The throw
-   became a 500 with an empty body. Logs: every failing request's referer was
-   `/auth/callback?next=/trips` (the `emailRedirectTo`), confirming the
-   email-link path, not the typed-code path.
-2. **`otp_disabled` (422) dead-end.** `requestEmailCode` uses
-   `shouldCreateUser:false` (anti-phantom-account, correct for plain login).
-   For an email with no account, GoTrue returns 422 `otp_disabled` and sends
-   nothing. `mapAuthErrorToKey` didn't handle 422 → it fell through to the
-   misleading generic `network` toast.
+**Context.** A post-#135 prod walk on `travelston.com` reported: submit the
+6-digit code → **blank page, can't accept the invite**; then "won't send a code
+/ rate-limited" on retry.
+
+**Actual root causes.**
+1. **White page = #316, already fixed by #317.** The invitee submits the code →
+   `verifyEmailCodeAction` succeeds → the client runs `window.location.href =
+   next`. **Pre-#317** the invite page set `next = /invite/[token]/accept` — the
+   **POST-only** accept route (#106 CSRF). `window.location.href` is a **GET**,
+   so it hit the route with no GET handler → **405 → blank page** → the invitee
+   never joined. #317 changed `next` to the GET-navigable preview page. Log
+   proof: the only successful `/verify` (code submit) was at 02:49 UTC, ~30 min
+   **before** the #317 deploy (03:19 UTC); there is no code submit after it. So
+   the walk exercised pre-#317 code. See [[project_invite_redirect_contract]].
+2. **`otp_disabled` (422) dead-end ("won't send a code").** `requestEmailCode`
+   uses `shouldCreateUser:false` (anti-phantom-account). For an email with no
+   account, GoTrue returns 422 `otp_disabled` and sends nothing.
+   `mapAuthErrorToKey` didn't handle 422 → misleading generic `network` toast.
+   *This is the one observed defect #319 actually fixes.*
 3. **429 `over_email_send_rate_limit`** — Supabase per-email frequency cap,
-   tripped by the rapid retries the above two defects forced.
+   tripped by rapid retries after the above.
 
-**The spec gap.** The M5 redesign demoted magic links to a verification
-primitive and made the typed 6-digit code primary, but never reconciled the
-**invite-acceptance** flow with it: the OTP email still funnels users into the
-fragile PKCE `/auth/callback` link path, `shouldCreateUser:false` makes the
-code path impossible for new users, and `emailRedirectTo` carries no invite
-context.
+**The spec gap.** The M5 redesign made the typed 6-digit code primary but never
+reconciled the **invite-acceptance** flow with it: the invite redirect contract
+(#316) and the new-user code path (`shouldCreateUser:false` blocks new invitees)
+were both unhandled corners of the same milestone.
 
-**Decisions.**
-- **`/auth/callback` fails safe, always.** `resolveCallbackResult` wraps both
-  `verifyOtp` and `exchangeCodeForSession` in try/catch → any throw becomes
-  `{ok:false}` → redirect to `/login?error=auth`. Plus `app/error.tsx` +
-  `app/global-error.tsx` boundaries (defense in depth) so no route ever renders
-  a truly blank page.
-- **New invitees are password-first** (Carl's call). We keep
-  `shouldCreateUser:false`; the "email me a code" path stays existing-users-only.
-  The 422 now maps to a new `auth_no_account` error key that points the user at
-  the password sign-up path, and the login form reveals "Create account
-  instead" when it fires.
+**Decisions / what #319 shipped.**
+- **`auth_no_account` error key** — 422 `otp_disabled` now maps to a clear
+  "no account yet — add a password" message; the login form reveals "Create
+  account instead" when it fires. *(The real fix for the walk's "won't send a
+  code" symptom.)*
+- **`/auth/callback` fail-safe + `app/error.tsx` / `app/global-error.tsx`** —
+  kept as **defense in depth**, NOT as the white-page fix. `verifyOtp` /
+  `exchangeCodeForSession` *can* throw (e.g. missing PKCE `code_verifier`); an
+  unguarded throw in a route handler renders a blank 500. This is a real latent
+  risk on the OAuth path even though it was not the observed bug. Cheap, correct,
+  no downside.
+- **New invitees are password-first** (Carl's call). Keep `shouldCreateUser:false`;
+  "email me a code" stays existing-users-only.
 
 **Alternatives considered.**
 - *Relax `shouldCreateUser` for the invite path* (code-alone creates + joins) —
-  rejected: reintroduces the phantom-account vector M5 PR2 closed, and Carl
-  chose password-first.
-- *Thread invite `next` into `emailRedirectTo`* so a clicked link returns to the
-  invite — deferred: with email-confirmation off in prod (no `user_signedup` /
-  `user_confirmation_requested` events in the walk logs) the password-first path
-  doesn't traverse the link path. Follow-up only if confirmations are enabled.
+  rejected: reintroduces the phantom-account vector M5 PR2 closed; Carl chose
+  password-first.
+- *Thread invite `next` into `emailRedirectTo`* — deferred: email-confirmation is
+  off in prod (no `user_signedup` / `user_confirmation_requested` events), so the
+  password-first path doesn't traverse the link path. Revisit only if enabled.
 
-**Follow-ups (not in this PR).**
-- **Email template (dashboard action):** strip the clickable link from the OTP
-  email so it's code-only — removes the fragile `/auth/callback` link path at
-  the source. The callback try/catch makes it safe regardless.
-- Invite-context `emailRedirectTo` if email-confirmation is ever turned on.
+**Non-follow-up:** an earlier draft suggested "strip the link from the OTP email."
+**Moot** — the template is already code-only (verified in the Supabase dashboard).
 
 ## 2026-06-10 — CARRY — CI-trust & token-drift — milestone closed
 
