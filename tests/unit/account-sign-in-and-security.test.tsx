@@ -3,7 +3,7 @@
  * action wiring (M5/PR4).
  *
  * Covers:
- *   - `deriveIdentityState`: identity-state detection from User.identities
+ *   - `deriveStateFromHasPassword`: identity-state detection from has_password + OAuth presence
  *   - `deriveFormInlineError`: inline error derivation per form state
  *   - Form rendering (State A, A+, stub for !hasPassword)
  *   - State C state transitions (C-request → C-verify → C-set → success)

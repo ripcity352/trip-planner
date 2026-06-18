@@ -73,8 +73,8 @@ describe("provider-based check — documents why it was wrong for #233", () => {
   it("DOCUMENTS THE BUG: identities.some(provider==='email') returns true for OTP users", () => {
     // OTP-signup users get provider="email" from Supabase. The old check
     // treated this as "has a password identity" — which is WRONG.
-    // This test documents the bug without fixing deriveIdentityState (which
-    // is dead code on the fixed page.tsx path). Do NOT change this to a
+    // This test documents the bug that the now-deleted provider-only
+    // derivation exhibited (#233). Do NOT change this to a
     // passing assertion about the correct behavior — the point is to
     // document what the old check did wrong.
     const otpUserIdentities = [{ provider: "email" as const, id: "id-1" }];
