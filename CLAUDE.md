@@ -311,11 +311,30 @@ stress twice); the bachelor token cascade is leak-proof
 gate.** See `notes/retros/carry-retro.md` and the decisions.md "CARRY —
 milestone closed" ADR.
 
+**AUTH — login/invite chain closure — Closed (2026-06-18).** 7 buildable
+issues across 4 waves / 7 PRs (#322 W0, #323 W0b, #324, #325, #326, #327,
+#328) + closure PR. Closes #106, #122, #128, #139, #141, #219, #263.
+Another between-milestones pre-gate wave: ZERO migrations, ZERO new
+server-action mutations. Hardened the M5 auth/invite chain — `AUTH_OTP_VERIFY`
+10/15m budget + shim-OPEN fail-closed assert (#141/#139), landing invite
+affordance (#263), login voice (#122), invite magazine layout + net-new OG
+`ImageResponse` with an anon-RPC-only injection guard (#219), non-vacuous
+POST-only accept lock (#106), live auth-config snapshot incl. OTP=6 (#128).
+The #233 State-B lock was made genuinely load-bearing (W0b extracted
+`deriveStateFromHasPassword`, deleted the buggy `deriveIdentityState`).
+**The `[v]` prod-walk axis is operator-gated** — closure smokes ran on
+Vercel preview, not travelston.com. **Does NOT lift the M6 gate.** See
+`notes/retros/auth-retro.md` and the decisions.md "AUTH — milestone closed"
+ADR.
+
 **Next:** real-trip retrospective still gates M6 — same bright line as
 M4/M5. **No infra wave lifts the gate.** Open carry-backs / follow-ups:
-- **#232** — OAuth-existing-user alert detection wiring
+- **#232** — OAuth-existing-user detection — blocked on a human step
+  (enable Google provider in Supabase); producer+consumer in ONE PR
 - **#254** — React #418 hydration on `/arrivals`
-- **#255** — fresh OTP-only walk for #233 State B `[v]` (needs Carl)
+- **#255** — fresh OTP-only State-B `[v]` walk (needs Carl); bundle with
+  the #263/#122/#219 prod `[v]` walks + #232's OAuth round-trip once the
+  Google provider is enabled
 - **#301** — error-surface text wears persimmon where #209 specs
   ink+hairline (~34 sites; from the #297 audit)
 - **#304** — radius reconcile: bind polar scale + re-point 46 call

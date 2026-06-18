@@ -5,6 +5,72 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-18 — AUTH — login/invite chain closure — milestone closed
+
+**Decision:** The AUTH wave is closed. It production-hardened and
+voice-polished the auth/invite chain M5 shipped, across 4 waves / 7 PRs
+(#322 W0, #323 W0b, #324, #325, #326, #327, #328) + this closure. Like DS
+and CARRY, it is a **between-milestones pre-gate wave** — the `§AUTH`
+roadmap section is the scope record and this ADR is the outcome record.
+**AUTH shipped WITH the real-trip retro gate STILL in place. M6 features
+remain gated — same bright line as M4/M5/DS/CARRY. No infra wave lifts it.**
+
+**Load-bearing decisions made during execution:**
+
+1. **#232 deferred, not built (anti-phantom-wiring).** The four-lens audit
+   ruled that building the OAuth-existing-user detection RPC while the
+   Google provider is OFF would re-ship the M5 PR5 dead-code-green *and*
+   add an email-enumeration surface. #232 stays OPEN, gated
+   `(human-step: enable Google provider)`; when built, producer
+   (`auth_email_taken_oauth` from `signInWithPasswordAction`) + consumer
+   (the stripped `_form.tsx` OAuth alert) land in **ONE** PR. Carry-forward.
+
+2. **#139 re-scoped to assert-only** (shim stays OPEN for AUTH — see the
+   dedicated ADR below).
+
+3. **#141 budget = 10 req / 15 min per email — NOT 5/hr.** Tuned to blunt
+   6-digit OTP brute-force while surviving a drunk user re-requesting after
+   a slow inbox (CLAUDE.md #9). Stale "ratchet to ~5/hr" comment deleted.
+
+4. **#233 lock made genuinely load-bearing (D6 → W0b).** W0's identity lock
+   tested a *local mirror* — theater. #323 deleted the buggy provider-only
+   `deriveIdentityState`, extracted a pure `deriveStateFromHasPassword`
+   that the page AND the test consume, so a regression of the #233 fix now
+   fails CI. The trap function no longer exists.
+
+5. **#219 OG card sources anon-RPC-only + generic fallback.** The net-new
+   `opengraph-image.tsx` (`next/og`, no new dep) sources ONLY the bucketed
+   anon `invite_preview` RPC (never request headers), sanitizes trip/host
+   (C0/C1 + U+2028/U+2029 stripped via a `RegExp` constructor, clamped
+   40/30), generic-card fallback on RPC error OR null field. The magazine
+   layout ships ZERO completion-count / leaderboard / progress affordance.
+
+6. **#106 reframed to a non-vacuous lock** — asserts `POST` is a callable
+   export AND `GET` is undefined (a bare GET→405 check passes vacuously on
+   a deleted route).
+
+7. **#128 broadened to the full pre-walk eyeball set** — bumped the
+   allowlist + Site URL rows to the 2026-06-17 operator confirmation and
+   added the missing **OTP-length=6** row (the M5-drift gap).
+
+8. **`app/page.tsx` (Override G):** already reflects AUTH reality (the #263
+   affordance shipped in #324). Kept as-updated; no separate closure edit.
+
+**Deviations / honesty:**
+- **The `[v]` axis is preview-not-prod for the surface issues.** Closure
+  smokes ran on Vercel **preview** URLs, not travelston.com; the anonymous
+  cold landing, the invite hero with a real token, and #255's fresh-OTP-only
+  State-B walk were NOT walked on prod. `[v]` is earned only for the
+  CI/assert-based items (#141/#139/#106/#128); #263/#122/#219/#255 `[v]`
+  carry to an operator prod walk. See `notes/retros/auth-retro.md`.
+- **Override-K keyword slip recurred:** #122/#219/#263 PRs lacked
+  `Closes #X` and were closed manually. Recommend a CI/template gate.
+
+See `notes/auth-execution-plan.md` (DoD `[d]`/`[v]` state) and
+`notes/retros/auth-retro.md` (two-lens retro).
+
+---
+
 ## 2026-06-18 — AUTH — #139 fail-closed posture (shim-OPEN for AUTH scopes)
 
 AUTH scopes (`AUTH_OTP_VERIFY`, `ACCEPT_INVITE`) stay **OUT** of `FAIL_CLOSED_ON_SHIM` — lockout-on-outage > brute-force-during-bootstrap; the email-OTP factor still needs inbox access; a bootstrapping deploy with no Upstash configured must not be bricked. The shim-OPEN posture is load-bearing, pinned by the D2 assert in `lib/rate-limit/__tests__/index.test.ts`. Adding either scope to `FAIL_CLOSED_ON_SHIM` is a hard-stop. `AUTH_OTP_VERIFY` budget set to 10 req / 15 min (#141) in `SCOPE_BUDGETS` — tighter than the 30/60s default but not fail-closed.

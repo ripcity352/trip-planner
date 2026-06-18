@@ -513,29 +513,37 @@ gh issue view 232 --json state,labels,body | grep -i "human-step: enable Google 
 Two axes per Override E. `[v]` ticked at closure only. `[v]` definitions
 per issue are recorded inline.
 
+> **Closure honesty (2026-06-18):** `[v]` means "exercised on
+> travelston.com at 375px" (Override E). The closure smokes ran on Vercel
+> **preview** URLs, NOT the prod domain — so surface `[v]`s (#263/#122/#219)
+> are **deferred to the operator prod walk**, ticked `[d]` only here. `[v]`
+> is earned only for the CI/assert-based items whose `[v]` definition is a
+> green test / present artifact (#141/#139/#106/#128).
+
 **Wave 0 — shared infra**
-- [ ]d [ ]v #141 `AUTH_OTP_VERIFY` budget = **10 / 15 min per email**; stale "ratchet to 5/hr" comment (`index.ts:73-77`) deleted (PR 0a) — `[v]` = **budget assert green in CI + grep proof**
-- [ ]d [ ]v #139 assert-only: `AUTH_OTP_VERIFY` + `ACCEPT_INVITE` **NOT** in `FAIL_CLOSED_ON_SHIM`; ADR line landed (PR 0a) — `[v]` = **assert green in CI + ADR present (no surface walk)**
+- [x]d [x]v #141 `AUTH_OTP_VERIFY` budget = **10 / 15 min per email**; stale "5/hr" comment deleted (PR #322) — `[v]` = budget assert green in CI ✓
+- [x]d [x]v #139 assert-only: `AUTH_OTP_VERIFY` + `ACCEPT_INVITE` **NOT** in `FAIL_CLOSED_ON_SHIM`; ADR landed (PR #322) — `[v]` = assert green in CI + ADR present ✓
+- [x]d [x]v **W0b (#323)** #233 lock made load-bearing: `deriveStateFromHasPassword` extracted, buggy `deriveIdentityState` deleted, test imports production — `[v]` = regression test imports real helper, green in CI ✓
 
 **Wave 1 — login / landing**
-- [ ]d [ ]v #263 landing new-account affordance — occasion-framed, **NO account language** (PR 1a) — `[v]` = **375px landing screenshot (affordance present, no anti-tells)**
-- [ ]d [ ]v #122 login voice pass — stragglers pulled to `lib/copy/auth.ts`, voice-reviewed (PR 1b) — `[v]` = **375px login screenshot + D5 voice-lock green**
+- [x]d [ ]v #263 landing invite affordance (PR #324) — `[v]` DEFERRED: verified anonymous on **preview** only; prod anonymous cold-landing not walked (session redirected to /trips). Operator prod walk pending.
+- [x]d [ ]v #122 login voice pass → `AUTH_COPY.loginPageTitle` (PR #325) — `[v]` DEFERRED: D5 voice-lock green ✓ + **preview** smoke; prod walk pending.
 
 **Wave 2 — invite**
-- [ ]d [ ]v #219 `/invite/[token]` magazine layout + net-new `opengraph-image.tsx` (D3 clamp/sanitize, RPC-only, generic fallback) (PR 2a) — `[v]` = **375px invite-preview screenshot + OG injection test green** (C2)
-- [ ]d [ ]v #106 GET → 405/gone regression test (route already POST-only; **no behavior change**) (PR 2b) — `[v]` = **regression test green in CI (no surface walk)**
+- [x]d [ ]v #219 magazine layout + net-new `opengraph-image.tsx` (PR #326) — `[v]` PARTIAL: OG injection test green ✓ (47 assertions) + **preview** InviteMissing + OG-fallback smoked; the magazine **hero + OG card with a real token** not walked (operator-gated).
+- [x]d [x]v #106 non-vacuous POST-only lock — POST exported + GET undefined (PR #327) — `[v]` = regression test green in CI ✓
 
 **Wave 3 — docs / walk / deferred**
-- [ ]d [ ]v #128 redirect-allowlist last-verified snapshot + runbook note (PR 3a) — `[v]` = **snapshot row present + dated**
-- [ ]d [ ]v #255 fresh OTP-only **REAL** account (no password ever set), State-B renders on `/account/sign-in-and-security` (**walk-only**) — `[v]` = **operator-driven prod walk (Carl); the State-B `[v]`** (C3)
-- [ ]d **#232 DEFERRED** — producer + consumer land in ONE future PR, gated on Google provider enablement; kept **OPEN** with `(human-step: enable Google provider)` — `[v]` = **CARRY-FORWARD (provider OFF; cannot verify this wave)** (C1 / Override K)
+- [x]d [x]v #128 auth-config snapshot + **OTP-length=6 row** in `deployment-readiness.md` (PR #328) — `[v]` = snapshot rows present + dated ✓
+- [ ]d [ ]v #255 fresh OTP-only **REAL** account State-B walk — **OPERATOR-GATED (Carl); not done.** Carry-forward.
+- [ ]d **#232 DEFERRED** — producer + consumer in ONE future PR, gated on enabling the Google provider; kept **OPEN** with the blocker note ✓ — `[v]` = CARRY-FORWARD (provider OFF).
 
 **Process / closure**
-- [ ]d [ ]v `app/page.tsx` — reflects AUTH reality (the #263 affordance shipped in W1, Override G); recorded in closure ADR
-- [ ]d [ ]v `notes/retros/auth-retro.md` authored (two-lens per pattern)
-- [ ]d [ ]v `notes/decisions.md` "AUTH — milestone closed" ADR appended (incl. shim-OPEN posture, #232 phantom-wiring gate, #106 verify-only outcome)
-- [ ]d [ ]v `CLAUDE.md` "Current phase" + carry-forwards list updated; gate STILL in place
-- [ ]d [ ]v #255 + #232 flagged to Carl at closure (walk + provider human-step — out of scope here)
+- [x]d [x]v `app/page.tsx` — already reflects AUTH reality (#263 affordance shipped in #324, Override G); recorded in closure ADR ✓
+- [x]d [x]v `notes/retros/auth-retro.md` authored (two-lens) ✓
+- [x]d [x]v `notes/decisions.md` "AUTH — milestone closed" ADR appended ✓
+- [x]d [x]v `CLAUDE.md` "Current phase" + carry-forwards updated; gate STILL in place ✓
+- [x]d [x]v #255 + #232 flagged (Carl walk + Google-provider human-step) — surfaced in closure PR body + #232 issue comment ✓
 
 ---
 
