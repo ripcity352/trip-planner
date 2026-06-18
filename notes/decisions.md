@@ -5,6 +5,13 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-18 — AUTH — #139 fail-closed posture (shim-OPEN for AUTH scopes)
+
+AUTH scopes (`AUTH_OTP_VERIFY`, `ACCEPT_INVITE`) stay **OUT** of `FAIL_CLOSED_ON_SHIM` — lockout-on-outage > brute-force-during-bootstrap; the email-OTP factor still needs inbox access; a bootstrapping deploy with no Upstash configured must not be bricked. The shim-OPEN posture is load-bearing, pinned by the D2 assert in `lib/rate-limit/__tests__/index.test.ts`. Adding either scope to `FAIL_CLOSED_ON_SHIM` is a hard-stop. `AUTH_OTP_VERIFY` budget set to 10 req / 15 min (#141) in `SCOPE_BUDGETS` — tighter than the 30/60s default but not fail-closed.
+
+
+---
+
 ## 2026-06-17 — Invite/OTP: white page was #316 (fixed by #317); #319 hardens callback + fixes the no-account dead-end
 
 > **Correction (same day).** An earlier draft of this ADR (shipped in PR #319)
