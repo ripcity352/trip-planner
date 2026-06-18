@@ -254,6 +254,12 @@ list):
 
 ## AUTH — login/invite chain closure
 
+**Status (2026-06-18): Closed.** 7 buildable issues / 4 waves / 7 PRs
+(#322–#328) + closure. Closes #106, #122, #128, #139, #141, #219, #263.
+`[v]` prod-walk is operator-gated (closure smokes ran on preview); #255 +
+#232 carry forward. See `notes/retros/auth-retro.md` and the decisions.md
+"AUTH — milestone closed" ADR. **Did NOT lift the M6 gate.**
+
 A **between-milestones pre-gate wave** (the DS / CARRY pattern — a named
 non-`M` milestone, not a feature milestone). It production-hardens and
 end-to-end **verifies** the auth/invite chain that M5 shipped. It does
