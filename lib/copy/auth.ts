@@ -141,6 +141,19 @@ export const AUTH_COPY = {
   accountSecurity_stateB_setButton: "Set password",
 
   // ---------------------------------------------------------------------------
+  // Login page — W1b D1 (#122 login keys)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * H1 heading on the /login page card.
+   * "Sign in" — plain, action-oriented, passes the pre-trip dinner test.
+   * Matches the existing signInButton string for visual unity.
+   * NOT "Welcome back" (sycophantic), NOT "Log in" (less idiomatic), NOT
+   * "Get started" (SaaS-coded).
+   */
+  loginPageTitle: "Sign in",
+
+  // ---------------------------------------------------------------------------
   // Landing / invite keys — W0 D1 (#263 / #219 pre-seed; consumed by W1 / W2)
   // ---------------------------------------------------------------------------
 

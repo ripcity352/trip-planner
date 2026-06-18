@@ -16,6 +16,7 @@
 import type { Metadata } from "next";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AUTH_COPY } from "@/lib/copy/auth";
 import { ERRORS } from "@/lib/copy/errors";
 import { safeNext } from "@/lib/auth/safe-next";
 import { LoginForm } from "@/app/login/_form";
@@ -47,7 +48,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <Card>
           <CardHeader>
             <CardTitle>
-              <h1 className="text-lg font-medium">Sign in</h1>
+              <h1 className="text-lg font-medium">{AUTH_COPY.loginPageTitle}</h1>
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
