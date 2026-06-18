@@ -66,9 +66,11 @@ export default async function OgImage({ params }: Props) {
       cardText = buildOgCardText({ tripName, dates });
       tripDisplay = tripName;
     }
-  } catch {
-    // RPC error — generic fallback card. No crash, no leak.
-    // Log level: debug — this path fires for expired/invalid tokens too.
+  } catch (err) {
+    // RPC error — generic fallback card. No crash, no leak. We still log so
+    // a real outage surfaces in Sentry (mirrors page.tsx); the user-facing
+    // card is unchanged either way, preserving anti-enumeration.
+    console.error("[invite-og] getInvitePreview failed:", err);
   }
 
   return new ImageResponse(

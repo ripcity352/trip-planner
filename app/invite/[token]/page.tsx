@@ -131,9 +131,7 @@ export default async function InvitePreviewPage({
         {/* Trip identity block */}
         <div className="px-6 pb-4">
           <p className="text-lg font-medium">{preview.trip_name}</p>
-          {dateText ? (
-            <p className="mt-0.5 text-sm text-muted-foreground">{dateText}</p>
-          ) : null}
+          <p className="mt-0.5 text-sm text-muted-foreground">{dateText}</p>
           {/* Bucketed count — plain aggregate, no bar / score / ordering */}
           <p className="mt-3 text-sm text-muted-foreground">
             {ATTENDEE_COUNT_BUCKET_LABELS[preview.attendee_count_bucket]}
@@ -209,7 +207,7 @@ function InviteMissing() {
   );
 }
 
-function formatPreviewDates(preview: InvitePreview): string | null {
+function formatPreviewDates(preview: InvitePreview): string {
   if (preview.starts_at && preview.ends_at) {
     return `${format(new Date(preview.starts_at), "MMM d")} – ${format(
       new Date(preview.ends_at),
@@ -219,5 +217,8 @@ function formatPreviewDates(preview: InvitePreview): string | null {
   if (preview.starts_at) {
     return format(new Date(preview.starts_at), "MMM d");
   }
-  return null;
+  // Dates not yet set — show the "Dates TBD" affordance (behavior preserved
+  // from the pre-magazine layout; an undecided-dates invite still tells the
+  // reader dates are coming rather than silently dropping the line).
+  return M2_UI_STRINGS.invitePreview_dates_unset;
 }
