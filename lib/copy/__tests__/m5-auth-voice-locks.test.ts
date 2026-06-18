@@ -229,6 +229,36 @@ describe("AUTH_COPY — PR5 voice locks (Google OAuth + State B)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// AUTH W1b — login page key voice locks (#122)
+// ---------------------------------------------------------------------------
+//
+// Anti-tell denylist is scoped to loginPageTitle ONLY — NOT the full AUTH_COPY
+// object — because signUpButton / createAccountLink are legitimate explicit
+// sign-up affordances on the /login form and must not be failed.
+
+describe("AUTH_COPY — W1b login page voice locks (#122)", () => {
+  it("loginPageTitle is voice-locked to the spec-mandated string", () => {
+    // Plain action heading. Matches signInButton for visual unity.
+    // "Sign in" — not "Welcome back" (sycophantic), not "Get started" (SaaS).
+    expect(AUTH_COPY.loginPageTitle).toBe("Sign in");
+  });
+
+  it("loginPageTitle does not contain banned anti-tell substrings", () => {
+    const v = AUTH_COPY.loginPageTitle.toLowerCase();
+    expect(v).not.toContain("welcome back");
+    expect(v).not.toContain("get started");
+    expect(v).not.toContain("sign up");
+    expect(v).not.toContain("create account");
+    expect(v).not.toContain("let's make memories");
+    expect(v).not.toContain("get pumped");
+  });
+
+  it("loginPageTitle is under 40 chars (fits a mobile card header)", () => {
+    expect(AUTH_COPY.loginPageTitle.length).toBeLessThanOrEqual(40);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // AUTH W0 D5 — landing/invite key voice locks (#263 / #219 / #141 / #139)
 // ---------------------------------------------------------------------------
 //
