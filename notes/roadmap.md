@@ -252,6 +252,63 @@ list):
 
 ---
 
+## AUTH — login/invite chain closure
+
+A **between-milestones pre-gate wave** (the DS / CARRY pattern — a named
+non-`M` milestone, not a feature milestone). It production-hardens and
+end-to-end **verifies** the auth/invite chain that M5 shipped. It does
+**NOT** lift the M6 real-trip gate — same bright line as M4/M5.
+
+**Why now:** the human-config blockers that deferred the M5 auth
+follow-ups are cleared. Confirmed live (operator, 2026-06-17):
+- Resend sender domain verified — real OTP/invite email delivers
+- Prod 6-digit OTP delivers to a real external inbox on travelston.com
+- Supabase Auth redirect URL allowlist set for prod + preview origins
+
+**Still outstanding (operator):** Google OAuth provider is **not yet
+enabled** in the Supabase Dashboard. Therefore #232's detection *wiring*
+is buildable + unit-testable this wave, but its OAuth **round-trip prod
+walk** stays deferred (carries to the next pre-flight, tracked on #232).
+
+Run with `/goal auth`. Drives the standard six-phase plan-audit-execute
+loop against the `AUTH — login/invite chain closure` GitHub milestone.
+
+**Definition of done** (GitHub `AUTH — login/invite chain closure`
+milestone — 9 issues):
+- **Landing sign-up affordance** — anonymous landing CTA offers a
+  new-account path, not sign-in only (#263, P-high)
+- **OAuth-existing-user detection** — server-side wiring for the
+  `auth_email_taken_oauth` alert built + unit-tested; round-trip prod
+  walk deferred until the Google provider is enabled (#232)
+- **OTP-only State-B walk** — fresh OTP-only signup walk verifies State B
+  renders on `/account/sign-in-and-security` (the #233 fix shipped; this
+  ticks its `[v]` axis, now possible since prod OTP delivers) (#255)
+- **Login-form voice** — inline literals pulled to `lib/copy/*`; "Sign
+  in" surface passes the pre-trip-dinner voice test (#122)
+- **Drop GET on accept** — `/invite/[token]/accept` is POST-only; the
+  GET handler is removed (preview-redirect contract already lands the new
+  invitee on the GET-navigable preview, #317) (#106)
+- **Invite magazine treatment** — `/invite/[token]` magazine layout + OG
+  `ImageResponse` parity (#219, P-high)
+- **Rate-limit fail-closed** — per-scope fail-closed when the rate-limit
+  shim is active in prod (#139)
+- **Rate-limit ratchet** — tighten per-scope budgets, especially
+  `AUTH_MAGIC_LINK` (#141)
+- **Redirect-allowlist doc** — document the now-live Supabase Auth
+  redirect URL allowlist (#128)
+
+**Closure walk (375px, travelston.com):** new-account from landing →
+OTP signup → State-B set-password → password sign-in → invite preview →
+accept. Tick `[v]` only for steps the walk exercises; the OAuth
+round-trip step carries forward.
+
+**Out of scope:** the net-new invite *alternatives* — email-direct
+invites (#258) and join-by-trip-code with an approval queue (#264) — stay
+in M5. This wave closes the chain that exists; it does not re-architect
+how people enter a trip.
+
+---
+
 ## Cross-cutting (apply at every milestone)
 
 - **Voice test:** every UI string passes *"would you say this at a
