@@ -70,13 +70,9 @@ const ANON_CLIENT_ID = "anon";
  * silently typo a new bucket into existence.
  *
  * `AUTH_OTP_VERIFY` (#102 fix-up, renamed M5/PR1) covers the `/login`
- * server action and shares the default budget (30 / 60s). The default
- * is generous for an auth-issuance endpoint; before production we
- * should ratchet this down to ~5 / hour by introducing a per-scope
- * budget map. Tracking as a follow-up: the surgical fix here keeps the
- * seam in place without rebuilding the limiter config surface.
- * AUTH_OTP_VERIFY covers both magic-link URLs and 6-digit codes — both
- * call verifyOtp.
+ * server action. Per-scope budget (10 / 15 min per email) is set in
+ * `SCOPE_BUDGETS` — see #141. AUTH_OTP_VERIFY covers both magic-link
+ * URLs and 6-digit codes — both call verifyOtp.
  */
 export const RATE_LIMIT_SCOPES = {
   CREATE_TRIP: "createTrip",
@@ -137,6 +133,12 @@ export type RateLimitScope =
 export const SCOPE_BUDGETS: Readonly<
   Partial<Record<RateLimitScope, { limit: number; window: string }>>
 > = {
+  // OTP verify: 10 attempts per 15 minutes per email (#141). Tight enough
+  // to blunt online brute-force of OTP codes; loose enough that a real
+  // user checking their inbox a few times doesn't hit the cap.
+  // NOT in FAIL_CLOSED_ON_SHIM — the email-OTP factor still needs inbox
+  // access, so a bootstrapping deploy must not be bricked (#139).
+  [RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY]: { limit: 10, window: "15 m" },
   [RATE_LIMIT_SCOPES.MINT_INVITE]: { limit: 10, window: "1 h" },
   [RATE_LIMIT_SCOPES.PLACES_AUTOCOMPLETE]: { limit: 30, window: "60 s" },
   // Password auth: 5 attempts per 15 minutes per email. Tight enough

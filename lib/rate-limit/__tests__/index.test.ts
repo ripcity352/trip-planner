@@ -4,8 +4,10 @@ import { NextRequest } from "next/server";
 // Import after we've confirmed the module is safe to import with no env set.
 // We DO NOT pre-set Upstash env vars; the in-memory fallback should kick in.
 import {
+  FAIL_CLOSED_ON_SHIM,
   RATE_LIMIT_SCOPES,
   RateLimitError,
+  SCOPE_BUDGETS,
   __resolveUpstashCreds,
   __setLimiterForTest,
   getClientId,
@@ -124,6 +126,35 @@ describe("__resolveUpstashCreds (env-var precedence, #124)", () => {
         UPSTASH_REDIS_REST_TOKEN: "up-tok",
       }),
     ).toEqual({ url: "https://up.upstash.io", token: "up-tok" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W0 D2 — AUTH_OTP_VERIFY budget + #139 fail-closed posture assert
+// ---------------------------------------------------------------------------
+
+describe("SCOPE_BUDGETS — AUTH_OTP_VERIFY explicit budget (#141)", () => {
+  it("AUTH_OTP_VERIFY has an explicit budget of limit 10 / window '15 m'", () => {
+    const budget = SCOPE_BUDGETS[RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY];
+    expect(budget).toBeDefined();
+    expect(budget?.limit).toBe(10);
+    expect(budget?.window).toBe("15 m");
+  });
+});
+
+describe("FAIL_CLOSED_ON_SHIM — #139 fail-closed posture assert (shim-OPEN for auth)", () => {
+  // AUTH scopes MUST stay OUT of FAIL_CLOSED_ON_SHIM.
+  // Rationale: lockout-on-outage > brute-force-during-bootstrap;
+  // the email-OTP factor still needs inbox access. Shim-OPEN is load-bearing.
+  // Adding these scopes to the fail-closed set would brick login / invite
+  // acceptance on a bootstrapping deployment with no Upstash configured.
+
+  it("AUTH_OTP_VERIFY is NOT in FAIL_CLOSED_ON_SHIM (shim stays OPEN for auth, #139)", () => {
+    expect(FAIL_CLOSED_ON_SHIM.has(RATE_LIMIT_SCOPES.AUTH_OTP_VERIFY)).toBe(false);
+  });
+
+  it("ACCEPT_INVITE is NOT in FAIL_CLOSED_ON_SHIM (shim stays OPEN for invite accept, #139)", () => {
+    expect(FAIL_CLOSED_ON_SHIM.has(RATE_LIMIT_SCOPES.ACCEPT_INVITE)).toBe(false);
   });
 });
 
@@ -405,7 +436,12 @@ describe("production-mode in-memory shim (#130)", () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it("warns only once across repeated calls (warned-flag latches)", async () => {
+  it("warns only once per scope-limiter across repeated calls (warned-flag latches per shim)", async () => {
+    // Since D2 (#141), AUTH_OTP_VERIFY has its own SCOPE_BUDGETS entry and
+    // therefore its own per-scope shim instance. CREATE_TRIP has no budget
+    // entry and shares the default-keyed shim. Two distinct shim instances
+    // each warn once — so 3 calls across 2 shims produce exactly 2 warnings
+    // (one per shim instance), not 3. The warned-flag latches per instance.
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -413,11 +449,18 @@ describe("production-mode in-memory shim (#130)", () => {
       await import("@/lib/rate-limit");
     const fn = vi.fn().mockResolvedValue("ok");
 
+    // Two calls on the AUTH_OTP_VERIFY scope → its shim warns once.
     await fresh(SCOPES.AUTH_OTP_VERIFY, "user-1", fn);
     await fresh(SCOPES.AUTH_OTP_VERIFY, "user-1", fn);
+    // One call on CREATE_TRIP (default-keyed shim) → that shim warns once.
     await fresh(SCOPES.CREATE_TRIP, "user-1", fn);
 
-    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    // AUTH_OTP_VERIFY shim (1 warn) + default shim (1 warn) = 2 total.
+    // Each shim's warned-flag latches — further calls on either produce 0 more.
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(2);
+    // A fourth call on AUTH_OTP_VERIFY must NOT trigger a third warning.
+    await fresh(SCOPES.AUTH_OTP_VERIFY, "user-2", fn);
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(2);
     consoleErrorSpy.mockRestore();
   });
 

@@ -227,3 +227,125 @@ describe("AUTH_COPY — PR5 voice locks (Google OAuth + State B)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// AUTH W0 D5 — landing/invite key voice locks (#263 / #219 / #141 / #139)
+// ---------------------------------------------------------------------------
+//
+// Pin the four new D1 strings exactly. Changing a value requires updating
+// this test intentionally (Override H).
+//
+// Anti-tell denylist runs ONLY on the landing/invite keys — NOT the full
+// AUTH_COPY object — because signUpButton / createAccountLink are legitimate
+// explicit sign-up affordances on the login surface and must not be failed.
+
+describe("AUTH_COPY — W0 D1 landing/invite voice locks", () => {
+  // -------------------------------------------------------------------------
+  // Exact-match pins
+  // -------------------------------------------------------------------------
+
+  it("landingInviteAffordance is voice-locked to the spec-mandated string", () => {
+    expect(AUTH_COPY.landingInviteAffordance).toBe(
+      "Got a link from a friend? Tap it — that's your way in.",
+    );
+  });
+
+  it("ogCard is voice-locked to the spec-mandated string (literal placeholders)", () => {
+    // Consumers interpolate {Trip} and {dates} — the template itself is pinned.
+    expect(AUTH_COPY.ogCard).toBe("You're invited — {Trip} · {dates}.");
+  });
+
+  it("inviteH1 is voice-locked to the spec-mandated string (literal {Host} placeholder)", () => {
+    expect(AUTH_COPY.inviteH1).toBe("{Host} wants you on this one.");
+  });
+
+  it("inviteH1Fallback is voice-locked to the spec-mandated string", () => {
+    expect(AUTH_COPY.inviteH1Fallback).toBe("You're on the list.");
+  });
+
+  // -------------------------------------------------------------------------
+  // Anti-tell denylist — surface-specific tells ONLY on landing/invite keys
+  // -------------------------------------------------------------------------
+  //
+  // Rationale for the key whitelist: signUpButton ("Create account") and
+  // createAccountLink ("Create account instead") are deliberate explicit
+  // sign-up affordances on the /login form — they must NOT be flagged.
+  // We test only the keys this wave authors.
+
+  const LANDING_INVITE_KEYS = [
+    "landingInviteAffordance",
+    "ogCard",
+    "inviteH1",
+    "inviteH1Fallback",
+  ] as const;
+
+  const BANNED_SUBSTRINGS = [
+    "welcome back",
+    "get started",
+    "sign up",
+    "create account",
+    "don't miss out",
+    "join now",
+    "join the trip",
+    "rsvp now",
+    "claim your spot",
+    "complete your profile",
+    "you're almost there",
+    "let's make memories",
+    "get pumped",
+    "spots left",
+    "top responders",
+    "first to rsvp",
+    "crew",
+    "% responded",
+    "of 8",
+    "x of y going",
+  ] as const;
+
+  it("landing/invite keys contain no banned anti-tell substrings", () => {
+    for (const key of LANDING_INVITE_KEYS) {
+      const val = (AUTH_COPY[key] as string).toLowerCase();
+      for (const banned of BANNED_SUBSTRINGS) {
+        expect(
+          val,
+          `AUTH_COPY.${key} must not contain "${banned}"`,
+        ).not.toContain(banned);
+      }
+    }
+  });
+
+  it("landing/invite keys contain no progress/completion-score patterns", () => {
+    // Regex guards: "% responded", "of <digit>" (e.g. "of 8"), "X of Y going"
+    const progressPatterns = [
+      /\d+\s*%\s*responded/i,
+      /\bof\s+\d+\b/i,
+      /\bx\s+of\s+y\b/i,
+    ];
+    for (const key of LANDING_INVITE_KEYS) {
+      const val = AUTH_COPY[key] as string;
+      for (const pattern of progressPatterns) {
+        expect(
+          pattern.test(val),
+          `AUTH_COPY.${key} must not match progress pattern ${pattern}`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("landing/invite keys contain no required-field asterisk", () => {
+    for (const key of LANDING_INVITE_KEYS) {
+      const val = AUTH_COPY[key] as string;
+      expect(val, `AUTH_COPY.${key} must not contain an asterisk`).not.toContain("*");
+    }
+  });
+
+  it("all landing/invite keys are under 200 chars", () => {
+    for (const key of LANDING_INVITE_KEYS) {
+      const val = AUTH_COPY[key] as string;
+      expect(
+        val.length,
+        `AUTH_COPY.${key} must be under 200 chars, got ${val.length}`,
+      ).toBeLessThanOrEqual(200);
+    }
+  });
+});

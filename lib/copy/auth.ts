@@ -139,6 +139,40 @@ export const AUTH_COPY = {
 
   /** Primary CTA button for State B: save the first-ever password */
   accountSecurity_stateB_setButton: "Set password",
+
+  // ---------------------------------------------------------------------------
+  // Landing / invite keys — W0 D1 (#263 / #219 pre-seed; consumed by W1 / W2)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Occasion-framed affordance on the landing page for a fresh invitee
+   * arriving cold. NO account language ("sign up" / "create account").
+   * Consumers: app/page.tsx (W1, #263).
+   */
+  landingInviteAffordance: "Got a link from a friend? Tap it — that's your way in.",
+
+  /**
+   * OG card description template for the invite preview image.
+   * Consumers interpolate {Trip} and {dates} — literal placeholders here.
+   * Falls back to a generic card when either field is null/empty.
+   * Consumers: app/invite/[token]/opengraph-image.tsx (W2, #219).
+   */
+  ogCard: "You're invited — {Trip} · {dates}.",
+
+  /**
+   * Primary H1 for the invite preview page.
+   * Consumer interpolates {Host} (~30-char clamp + ellipsis).
+   * Used when host is non-null and host !== trip celebrant name.
+   * Consumers: app/invite/[token]/page.tsx (W2, #219).
+   */
+  inviteH1: "{Host} wants you on this one.",
+
+  /**
+   * Fallback H1 when host is null/empty OR host === celebrant name
+   * (avoids "Dave wants you on Dave's Bender" self-reference).
+   * Consumers: app/invite/[token]/page.tsx (W2, #219).
+   */
+  inviteH1Fallback: "You're on the list.",
 } as const;
 
 export type AuthCopyKey = keyof typeof AUTH_COPY;
