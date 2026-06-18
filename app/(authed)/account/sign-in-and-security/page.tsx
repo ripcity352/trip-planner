@@ -26,6 +26,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/db/profiles";
 import { SecurityForm } from "./_form";
+import { deriveStateFromHasPassword } from "./_form-state";
 import type { IdentityState } from "./_form-state";
 
 export const metadata = {
@@ -55,11 +56,7 @@ export default async function SignInAndSecurityPage() {
   const hasOAuth = identities.some((id) => id.provider !== "email");
 
   // Derive identity state from has_password (not from identities array).
-  const identityState: IdentityState = hasPassword
-    ? hasOAuth
-      ? "A+"
-      : "A"
-    : "no-password";
+  const identityState: IdentityState = deriveStateFromHasPassword(hasPassword, hasOAuth);
 
   const userEmail = user.email ?? "";
 

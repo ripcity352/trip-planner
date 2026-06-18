@@ -3,7 +3,7 @@
  * action wiring (M5/PR4).
  *
  * Covers:
- *   - `deriveIdentityState`: identity-state detection from User.identities
+ *   - `deriveStateFromHasPassword`: identity-state detection from has_password + OAuth presence
  *   - `deriveFormInlineError`: inline error derivation per form state
  *   - Form rendering (State A, A+, stub for !hasPassword)
  *   - State C state transitions (C-request → C-verify → C-set → success)
@@ -51,7 +51,7 @@ vi.mock("@/app/login/actions", () => ({
 
 // Import AFTER mocks
 import {
-  deriveIdentityState,
+  deriveStateFromHasPassword,
   type IdentityState,
 } from "@/app/(authed)/account/sign-in-and-security/_form-state";
 import { SecurityForm } from "@/app/(authed)/account/sign-in-and-security/_form";
@@ -76,48 +76,27 @@ async function waitForEnabled(el: HTMLElement): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// deriveIdentityState
+// deriveStateFromHasPassword
 // ---------------------------------------------------------------------------
 
-describe("deriveIdentityState", () => {
-  it("returns 'A' when user has email identity only", () => {
-    const user = {
-      identities: [{ provider: "email", id: "1" }],
-    };
-    expect(deriveIdentityState(user as Parameters<typeof deriveIdentityState>[0])).toBe("A");
+describe("deriveStateFromHasPassword", () => {
+  it("returns 'A' when has_password=true and no OAuth", () => {
+    expect(deriveStateFromHasPassword(true, false)).toBe("A");
   });
 
-  it("returns 'A+' when user has both email and OAuth identity", () => {
-    const user = {
-      identities: [
-        { provider: "email", id: "1" },
-        { provider: "google", id: "2" },
-      ],
-    };
-    expect(deriveIdentityState(user as Parameters<typeof deriveIdentityState>[0])).toBe("A+");
+  it("returns 'A+' when has_password=true and hasOAuth=true", () => {
+    expect(deriveStateFromHasPassword(true, true)).toBe("A+");
   });
 
-  it("returns 'no-password' when user has OAuth identity only (no email)", () => {
-    const user = {
-      identities: [{ provider: "google", id: "1" }],
-    };
-    expect(deriveIdentityState(user as Parameters<typeof deriveIdentityState>[0])).toBe(
-      "no-password"
-    );
+  it("returns 'no-password' when has_password=false and no OAuth (OTP-only, #233 case)", () => {
+    // This is the exact regression scenario: OTP-only user has no password.
+    // The old provider-based check returned "A" here — this locks State B.
+    expect(deriveStateFromHasPassword(false, false)).toBe("no-password");
   });
 
-  it("returns 'no-password' when identities is empty", () => {
-    const user = { identities: [] };
-    expect(deriveIdentityState(user as Parameters<typeof deriveIdentityState>[0])).toBe(
-      "no-password"
-    );
-  });
-
-  it("returns 'no-password' when identities is undefined", () => {
-    const user = { identities: undefined };
-    expect(deriveIdentityState(user as Parameters<typeof deriveIdentityState>[0])).toBe(
-      "no-password"
-    );
+  it("returns 'no-password' when has_password=false and hasOAuth=true (OAuth-only)", () => {
+    // OAuth-only user also has no password — must render State B, not State A.
+    expect(deriveStateFromHasPassword(false, true)).toBe("no-password");
   });
 });
 

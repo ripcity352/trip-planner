@@ -50,23 +50,16 @@ vi.mock("@/app/login/actions", () => ({
 
 // Import AFTER mocks
 import { SecurityForm } from "@/app/(authed)/account/sign-in-and-security/_form";
-import type { IdentityState } from "@/app/(authed)/account/sign-in-and-security/_form-state";
+import { deriveStateFromHasPassword } from "@/app/(authed)/account/sign-in-and-security/_form-state";
 
 // ---------------------------------------------------------------------------
-// Helper: derive the identityState the way the fixed page.tsx will compute it.
-// This mirrors the new page logic:
-//   has_password=true  → "A" (or "A+" if also OAuth)
-//   has_password=false → "no-password"
+// Helper alias: tests call deriveStateFromHasPassword (the real production
+// helper from _form-state.ts) to derive the identityState the page passes
+// to <SecurityForm>. No local mirror needed — we test the real helper.
 // ---------------------------------------------------------------------------
 
-function deriveStateFromProfile(
-  hasPassword: boolean,
-  hasOAuth: boolean,
-): IdentityState {
-  if (!hasPassword) return "no-password";
-  if (hasOAuth) return "A+";
-  return "A";
-}
+// Re-export as a local alias to keep test call-sites readable.
+const deriveStateFromProfile = deriveStateFromHasPassword;
 
 // ---------------------------------------------------------------------------
 // Scenario: has_password=true + email-only identity → State A

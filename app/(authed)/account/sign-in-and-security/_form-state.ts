@@ -17,25 +17,30 @@
  */
 
 import { z } from "zod";
-import type { User } from "@supabase/supabase-js";
 import { ERRORS } from "@/lib/copy/errors";
 
 // ---------------------------------------------------------------------------
-// Identity state (derived from User.identities on the server, passed as prop)
+// Identity state (derived from has_password shadow column + OAuth presence)
 // ---------------------------------------------------------------------------
 
 /** Whether the user has a password identity, OAuth only, or both. */
 export type IdentityState = "A" | "A+" | "no-password";
 
 /**
- * Derives the identity state from a Supabase User object.
- * Exported for use in the server component and in unit tests.
+ * Derives the account-security identity state from the has_password
+ * shadow column (the #233 source of truth) + OAuth presence.
+ *
+ * Replaces the deleted `deriveIdentityState(user)` which checked
+ * `identities.some(id => id.provider === "email")` — that heuristic was
+ * wrong because Supabase assigns provider="email" to OTP-signup users too,
+ * causing them to be mis-classified as State A.
+ *
+ * Locks #233: OTP-only user → hasPassword=false → "no-password" (State B).
  */
-export function deriveIdentityState(user: Pick<User, "identities">): IdentityState {
-  const identities = user.identities ?? [];
-  const hasPassword = identities.some((id) => id.provider === "email");
-  const hasOAuth = identities.some((id) => id.provider !== "email");
-
+export function deriveStateFromHasPassword(
+  hasPassword: boolean,
+  hasOAuth: boolean,
+): IdentityState {
   if (hasPassword && hasOAuth) return "A+";
   if (hasPassword) return "A";
   return "no-password";

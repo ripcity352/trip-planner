@@ -7,57 +7,17 @@
  * This caused OTP-only users (no password) to render State A — the
  * current-password form — which they can't complete.
  *
- * Fix (shipped in trip-readiness sweep, W2c): the page now reads
- * `profiles.has_password` (a shadow column written by every
- * password-setting server action) and derives identity state from that,
- * NOT from the `identities` array.
- *
- * This test suite:
- *   1. Asserts the page-level derivation (has_password → State A/B) is
- *      correct at the logic seam (a local mirror of the page's inline
- *      derivation, isolated from Supabase calls).
- *   2. Documents the bug the OLD provider-based check had, so future
- *      refactors can't silently regress to it.
- *   3. Asserts FAIL_CLOSED_ON_SHIM posture (#139) via the rate-limit
- *      export — AUTH_OTP_VERIFY + ACCEPT_INVITE must NOT be in the set.
- *
- * NOTE on `deriveIdentityState` in _form-state.ts:
- *   That function still uses the OLD provider-based heuristic (it is not
- *   called by the fixed page.tsx — the page does its own has_password
- *   derivation inline). `deriveIdentityState` is effectively dead code on
- *   the page path. If it is ever called again, the regression lock in
- *   `tests/unit/account-sign-in-and-security.test.tsx` will flag the
- *   provider-vs-has_password discrepancy. This file focuses on the
- *   has_password-based derivation logic the page actually uses.
+ * Fix (W0b): `deriveStateFromHasPassword(hasPassword, hasOAuth)` is now
+ * the canonical exported helper in _form-state.ts. Both the page and this
+ * test file import it directly — no local mirrors. If production regresses
+ * (e.g. someone re-introduces the provider heuristic), these tests will
+ * fail immediately.
  *
  * Override C: tests live under tests/unit/ only.
  */
 
 import { describe, expect, it } from "vitest";
-import type { IdentityState } from "@/app/(authed)/account/sign-in-and-security/_form-state";
-
-// ---------------------------------------------------------------------------
-// Local mirror of page.tsx's has_password-based identity-state derivation.
-//
-// This is NOT a copy of _form-state.ts's `deriveIdentityState` (which still
-// uses the old provider heuristic). It mirrors the FIXED page.tsx logic:
-//
-//   const identityState: IdentityState = hasPassword
-//     ? hasOAuth ? "A+" : "A"
-//     : "no-password";
-//
-// By testing this function in isolation we lock in the correct derivation
-// contract without needing to spin up the Supabase/DB layer.
-// ---------------------------------------------------------------------------
-
-function deriveStateFromHasPassword(
-  hasPassword: boolean,
-  hasOAuth: boolean,
-): IdentityState {
-  if (hasPassword && hasOAuth) return "A+";
-  if (hasPassword) return "A";
-  return "no-password";
-}
+import { deriveStateFromHasPassword } from "@/app/(authed)/account/sign-in-and-security/_form-state";
 
 // ---------------------------------------------------------------------------
 // Core regression: OTP-only user (email identity, no password) → State B
@@ -113,8 +73,8 @@ describe("provider-based check — documents why it was wrong for #233", () => {
   it("DOCUMENTS THE BUG: identities.some(provider==='email') returns true for OTP users", () => {
     // OTP-signup users get provider="email" from Supabase. The old check
     // treated this as "has a password identity" — which is WRONG.
-    // This test documents the bug without fixing deriveIdentityState (which
-    // is dead code on the fixed page.tsx path). Do NOT change this to a
+    // This test documents the bug that the now-deleted provider-only
+    // derivation exhibited (#233). Do NOT change this to a
     // passing assertion about the correct behavior — the point is to
     // document what the old check did wrong.
     const otpUserIdentities = [{ provider: "email" as const, id: "id-1" }];
