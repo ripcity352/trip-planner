@@ -44,6 +44,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg()}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Southwest")).toBeInTheDocument();
@@ -55,6 +56,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg()}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("ABC123")).toBeInTheDocument();
@@ -66,6 +68,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg()}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Window seat please")).toBeInTheDocument();
@@ -77,6 +80,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ kind: "flight" })}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Flight")).toBeInTheDocument();
@@ -88,6 +92,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ kind: "train" })}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Train")).toBeInTheDocument();
@@ -99,6 +104,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ kind: "drive" })}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Drive")).toBeInTheDocument();
@@ -110,6 +116,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ kind: "other" })}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Other")).toBeInTheDocument();
@@ -121,6 +128,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg()}
         myTripMemberId="member-99"
         ownerName="Charlie"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Charlie")).toBeInTheDocument();
@@ -132,6 +140,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ trip_member_id: "member-1" })}
         myTripMemberId="member-1"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByTestId("edit-leg-sheet")).toBeInTheDocument();
@@ -143,6 +152,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ trip_member_id: "member-1" })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.queryByTestId("edit-leg-sheet")).not.toBeInTheDocument();
@@ -154,10 +164,10 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ depart_at: "2026-08-14T06:00:00Z" })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
-    // date-fns formats — just check something time-like is rendered
-    // We assert the "Leave" label is visible
+    // Just check the "Leave" label is visible (time format verified by util tests)
     expect(screen.getByText("Leave")).toBeInTheDocument();
   });
 
@@ -167,6 +177,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ arrive_at: "2026-08-14T10:30:00Z" })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByText("Arrive")).toBeInTheDocument();
@@ -178,6 +189,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ depart_at: null })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.queryByText("Leave")).not.toBeInTheDocument();
@@ -189,6 +201,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ arrive_at: null })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.queryByText("Arrive")).not.toBeInTheDocument();
@@ -200,6 +213,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ carrier: null })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.queryByText("Southwest")).not.toBeInTheDocument();
@@ -211,6 +225,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ confirmation_code: null })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.queryByText("ABC123")).not.toBeInTheDocument();
@@ -222,6 +237,7 @@ describe("TravelLegCard", () => {
         leg={makeLeg({ notes: null })}
         myTripMemberId="member-99"
         ownerName="Dave"
+        tripTimezone="UTC"
       />
     );
     expect(screen.queryByText("Window seat please")).not.toBeInTheDocument();
