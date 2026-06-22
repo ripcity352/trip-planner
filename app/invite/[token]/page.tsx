@@ -36,6 +36,11 @@ import {
   ATTENDEE_COUNT_BUCKET_LABELS,
   M2_UI_STRINGS,
 } from "@/lib/copy/empty-states";
+import {
+  ERROR_SURFACE_CLASS,
+  ERROR_SURFACE_BORDER_STYLE,
+} from "@/lib/ui/error-surface";
+import { cn } from "@/lib/utils";
 import { getInvitePreview } from "@/lib/db/invites";
 import { invitePreviewPath, inviteAcceptPath } from "@/lib/invites/paths";
 import { createClient as createServerClient } from "@/lib/supabase/server";
@@ -151,7 +156,8 @@ export default async function InvitePreviewPage({
           {errorKey ? (
             <p
               role="alert"
-              className="mb-3 rounded-md border border-destructive/30 p-2 text-sm text-destructive"
+              className={cn(ERROR_SURFACE_CLASS, "mb-3 p-2 text-sm")}
+              style={ERROR_SURFACE_BORDER_STYLE}
             >
               {ERRORS[errorKey]}
             </p>

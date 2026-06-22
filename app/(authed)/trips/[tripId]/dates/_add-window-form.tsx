@@ -18,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { proposeDateCandidatesAction } from "@/lib/actions/date-poll";
+import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 
 interface AddWindowFormProps {
   tripId: string;
@@ -34,7 +36,7 @@ export function AddWindowForm({ tripId, atCap }: AddWindowFormProps) {
 
   if (atCap) {
     return (
-      <p className="text-muted-foreground text-sm" role="status">
+      <p className={cn(ERROR_LINE_CLASS, "text-sm")} role="status">
         {M2_UI_STRINGS.datePoll_max_windows_reached}
       </p>
     );
@@ -146,7 +148,7 @@ export function AddWindowForm({ tripId, atCap }: AddWindowFormProps) {
         </Button>
       </div>
       {errorKey ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
           {ERRORS[errorKey]}
         </p>
       ) : null}

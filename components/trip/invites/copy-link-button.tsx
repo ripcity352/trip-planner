@@ -11,6 +11,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
 
@@ -69,7 +71,7 @@ export function CopyLinkButton({ token }: CopyLinkButtonProps) {
           id="copy-link-error"
           role="status"
           aria-live="polite"
-          className="text-destructive text-xs"
+          className={cn(ERROR_LINE_CLASS, "text-xs")}
         >
           {errorMessage}
         </span>
