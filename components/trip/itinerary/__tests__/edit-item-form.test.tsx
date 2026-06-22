@@ -148,4 +148,30 @@ describe("EditItemForm", () => {
       expect(onDeleted).toHaveBeenCalled();
     });
   });
+
+  // #301 regression guard: the #210 delete-confirm button must NOT escalate to
+  // a solid `bg-destructive` fill with `text-destructive-foreground` —
+  // `--destructive-foreground` is deliberately unbound (globals.css), so that
+  // pairing renders undefined text color over a persimmon flood the #210
+  // contract bans. Confirm state escalates the persimmon *outline* instead.
+  it("delete-confirm button escalates the outline, never a solid persimmon fill", async () => {
+    render(<EditItemForm {...defaultProps} />);
+
+    const deleteButton = screen.getByRole("button", { name: /delete/i });
+    expect(deleteButton.className).not.toMatch(/text-destructive-foreground/);
+
+    fireEvent.click(deleteButton);
+    await waitFor(() => {
+      expect(
+        screen.getByText(/delete this item\? can't undo\./i)
+      ).toBeInTheDocument();
+    });
+
+    // In confirm state: still no unbound-foreground / solid-fill pairing.
+    expect(deleteButton.className).not.toMatch(/text-destructive-foreground/);
+    expect(deleteButton.className).not.toMatch(/(?:^| )bg-destructive(?:$| )/);
+    // The escalation it DOES use: full-strength persimmon border + text.
+    expect(deleteButton.className).toMatch(/border-destructive(?:$| )/);
+    expect(deleteButton.className).toMatch(/text-destructive(?:$| )/);
+  });
 });

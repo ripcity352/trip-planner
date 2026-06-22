@@ -336,8 +336,13 @@ export function EditItemForm({
             "focus-visible:ring-ring rounded-full border px-5 py-2 text-sm font-medium",
             "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60",
+            // #210 two-step: confirm state escalates the persimmon outline
+            // (border 40%→full + a persistent wash). NOT a solid bg-destructive
+            // fill — --destructive-foreground is deliberately unbound
+            // (globals.css §destructive), so the solid-fill text color was a
+            // no-op; the contract bans the persimmon flood regardless.
             deleteConfirm
-              ? "border-destructive bg-destructive text-destructive-foreground"
+              ? "border-destructive bg-destructive/10 text-destructive"
               : "border-destructive/40 text-destructive hover:bg-destructive/10"
           )}
         >
