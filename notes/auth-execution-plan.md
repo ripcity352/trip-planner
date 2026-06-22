@@ -526,16 +526,16 @@ per issue are recorded inline.
 - [x]d [x]v **W0b (#323)** #233 lock made load-bearing: `deriveStateFromHasPassword` extracted, buggy `deriveIdentityState` deleted, test imports production — `[v]` = regression test imports real helper, green in CI ✓
 
 **Wave 1 — login / landing**
-- [x]d [ ]v #263 landing invite affordance (PR #324) — `[v]` DEFERRED: verified anonymous on **preview** only; prod anonymous cold-landing not walked (session redirected to /trips). Operator prod walk pending.
-- [x]d [ ]v #122 login voice pass → `AUTH_COPY.loginPageTitle` (PR #325) — `[v]` DEFERRED: D5 voice-lock green ✓ + **preview** smoke; prod walk pending.
+- [x]d [x]v #263 landing invite affordance (PR #324) — `[v]` **EARNED 2026-06-21**: operator prod walk on travelston.com (anonymous/incognito) confirmed the affordance renders below the sign-in CTA.
+- [x]d [x]v #122 login voice pass → `AUTH_COPY.loginPageTitle` (PR #325) — `[v]` **EARNED 2026-06-21**: operator prod walk confirmed the `/login` "Sign in" surface.
 
 **Wave 2 — invite**
-- [x]d [ ]v #219 magazine layout + net-new `opengraph-image.tsx` (PR #326) — `[v]` PARTIAL: OG injection test green ✓ (47 assertions) + **preview** InviteMissing + OG-fallback smoked; the magazine **hero + OG card with a real token** not walked (operator-gated).
+- [x]d [x]v #219 magazine layout + net-new `opengraph-image.tsx` (PR #326) — `[v]` **EARNED 2026-06-21**: operator prod walk opened a real `/invite/[token]` (magazine hero rendered) and confirmed the OG card unfurls when the link is pasted into a chat. (OG injection test green ✓, 47 assertions.)
 - [x]d [x]v #106 non-vacuous POST-only lock — POST exported + GET undefined (PR #327) — `[v]` = regression test green in CI ✓
 
 **Wave 3 — docs / walk / deferred**
 - [x]d [x]v #128 auth-config snapshot + **OTP-length=6 row** in `deployment-readiness.md` (PR #328) — `[v]` = snapshot rows present + dated ✓
-- [ ]d [ ]v #255 fresh OTP-only **REAL** account State-B walk — **OPERATOR-GATED (Carl); not done.** Carry-forward.
+- [ ]d [ ]v #255 fresh OTP-only **REAL** account State-B walk — **NOT exercised; carry-forward.** Walk attempt 2026-06-21 used an account that turned out to **have a password** (created 2026-05-20; signed in via OTP, which is valid for existing accounts) → State A rendered **correctly** (NOT a #233 regression — confirmed via a scoped DB read: `encrypted_password` set, `has_password=true`). **Finding:** State B is currently unreachable through the app UI — every signup path sets a password (`signUpAction`), OTP won't create (`shouldCreateUser:false`), and Google OAuth is off; a genuinely passwordless account requires **Google OAuth** or a **Supabase admin passwordless invite** on a never-used email. #255 bundles with #232 once the Google provider is enabled.
 - [ ]d **#232 DEFERRED** — producer + consumer in ONE future PR, gated on enabling the Google provider; kept **OPEN** with the blocker note ✓ — `[v]` = CARRY-FORWARD (provider OFF).
 
 **Process / closure**
