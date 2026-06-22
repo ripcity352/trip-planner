@@ -27,6 +27,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { postAnnouncement } from "@/lib/actions/announcements";
+import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { ERRORS } from "@/lib/copy/errors";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { TripVisibility } from "@/lib/db/types";
@@ -145,7 +147,7 @@ function ComposerForm({ tripId }: { tripId: string }) {
       </div>
 
       {errorMessage && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
           {errorMessage}
         </p>
       )}

@@ -11,6 +11,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
 import { revokeInviteAction } from "@/lib/actions/invites";
@@ -59,7 +61,7 @@ export function RevokeButton({ token, onRevoked }: RevokeButtonProps) {
         {M3_UI_STRINGS.invitesPage_revoke_cta}
       </Button>
       {error && (
-        <p role="alert" className="text-xs text-destructive mt-1">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-xs mt-1")}>
           {error}
         </p>
       )}

@@ -17,6 +17,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { AIRLINES } from "@/lib/data/airlines";
 import { M4_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
@@ -332,7 +333,7 @@ export function AirlinePicker({
           autoComplete="off"
         />
         {(flightNumberError || externalFlightNumberInvalid) ? (
-          <p role="alert" className="mt-1 text-xs text-destructive">
+          <p role="alert" className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>
             {ERRORS.validation_failed}
           </p>
         ) : null}

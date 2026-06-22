@@ -142,9 +142,12 @@ export async function getOrganizerDeclinedCount(
   supabase: SupabaseClient,
   tripId: string
 ): Promise<number> {
-  const { data, error } = await supabase
+  // head: true skips the row payload entirely; count: "exact" returns the
+  // precise count from PostgreSQL. This avoids transferring full rows over
+  // the wire when we only need the number.
+  const { count, error } = await supabase
     .from("trip_members")
-    .select("rsvp_status")
+    .select("id", { count: "exact", head: true })
     .eq("trip_id", tripId)
     .eq("rsvp_status", "declined");
 
@@ -152,5 +155,6 @@ export async function getOrganizerDeclinedCount(
     throw new Error(`getOrganizerDeclinedCount failed: ${error.message}`);
   }
 
-  return (data ?? []).length;
+  // Supabase returns null when the head query matches zero rows.
+  return count ?? 0;
 }

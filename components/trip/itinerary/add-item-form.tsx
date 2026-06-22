@@ -18,6 +18,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { addItineraryItem } from "@/lib/actions/itinerary";
@@ -149,7 +150,7 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
           className={inputClass}
         />
         {errors.title ? (
-          <p className="text-destructive mt-1 text-xs">{errors.title.message}</p>
+          <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.title.message}</p>
         ) : null}
       </div>
 
@@ -185,7 +186,7 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
           className={inputClass}
         />
         {errors.day ? (
-          <p className="text-destructive mt-1 text-xs">{errors.day.message}</p>
+          <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.day.message}</p>
         ) : null}
       </div>
 
@@ -254,7 +255,7 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
 
       {/* Server error */}
       {serverErrorKey ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
           {ERRORS[serverErrorKey]}
         </p>
       ) : null}

@@ -35,6 +35,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AUTH_COPY } from "@/lib/copy/auth";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import { cn } from "@/lib/utils";
+import {
+  ERROR_SURFACE_CLASS,
+  ERROR_SURFACE_BORDER_STYLE,
+} from "@/lib/ui/error-surface";
 import { changePasswordAction, setPasswordViaRecoveryAction, setPasswordAction } from "./actions";
 import { requestEmailCode } from "@/app/login/actions";
 import {
@@ -490,7 +495,12 @@ function PasswordFieldGroup({ id, testId, label, invalid, disabled, helper, ...i
 function ErrorNote({ id, message }: { id: string; message: string | null }) {
   if (!message) return null;
   return (
-    <p id={id} role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+    <p
+      id={id}
+      role="alert"
+      className={cn(ERROR_SURFACE_CLASS, "px-3 py-2 text-xs")}
+      style={ERROR_SURFACE_BORDER_STYLE}
+    >
       {message}
     </p>
   );

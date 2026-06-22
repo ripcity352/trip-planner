@@ -42,6 +42,11 @@ import {
   signInWithOAuthAction,
 } from "@/app/login/actions";
 import {
+  ERROR_SURFACE_CLASS,
+  ERROR_SURFACE_BORDER_STYLE,
+} from "@/lib/ui/error-surface";
+import { cn } from "@/lib/utils";
+import {
   type Mode,
   type EmailOnlyValues,
   type PasswordValues,
@@ -376,7 +381,8 @@ function ErrorNote({ id, message }: { id: string; message: string | null }) {
     <p
       id={id}
       role="alert"
-      className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-xs"
+      className={cn(ERROR_SURFACE_CLASS, "px-3 py-2 text-xs")}
+      style={ERROR_SURFACE_BORDER_STYLE}
     >
       {message}
     </p>

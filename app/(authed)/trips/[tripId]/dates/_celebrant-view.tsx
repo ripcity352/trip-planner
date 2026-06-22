@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { setCelebrantMarkAction } from "@/lib/actions/date-poll";
 import type {
   DatePollCandidateView,
@@ -124,11 +125,19 @@ function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
                 className={cn(
                   "focus-visible:ring-ring inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
                   isActive
-                    ? chip.mark === "no-go"
-                      ? "border-destructive bg-destructive/10 text-destructive"
+                    ? // no-go is a state signal, not an error: §State signals
+                      // specs `declined` = --ink-tertiary on a calm surface,
+                      // never persimmon (#301).
+                      chip.mark === "no-go"
+                      ? "border-border bg-card"
                       : "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-muted text-muted-foreground hover:bg-muted/80"
                 )}
+                style={
+                  isActive && chip.mark === "no-go"
+                    ? { color: "var(--ink-tertiary)" }
+                    : undefined
+                }
               >
                 {chip.label}
               </button>
@@ -143,7 +152,7 @@ function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
             .replace("{no}", String(row.no_votes))}
         </p>
         {errorKey ? (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
             {ERRORS[errorKey]}
           </p>
         ) : null}
