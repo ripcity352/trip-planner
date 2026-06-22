@@ -27,6 +27,7 @@ vi.mock("../travel-leg-card", () => ({
     leg: TravelLeg;
     myTripMemberId: string;
     ownerName: string;
+    tripTimezone: string;
   }) => (
     <div data-testid="travel-leg-card" data-leg-id={leg.id}>
       {ownerName}
@@ -96,6 +97,7 @@ describe("ArrivalsManifest", () => {
         legs={[]}
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
+        tripTimezone="UTC"
       />
     );
     fireEvent.click(screen.getByTestId("add-leg-sheet"));
@@ -109,6 +111,7 @@ describe("ArrivalsManifest", () => {
         legs={[]}
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
+        tripTimezone="UTC"
       />
     );
     expect(
@@ -134,6 +137,7 @@ describe("ArrivalsManifest", () => {
         legs={legs}
         myTripMemberId="member-1"
         tripMembers={members}
+        tripTimezone="UTC"
       />
     );
 
@@ -148,6 +152,7 @@ describe("ArrivalsManifest", () => {
         legs={[]}
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
+        tripTimezone="UTC"
       />
     );
     expect(screen.getByTestId("add-leg-sheet")).toBeInTheDocument();
@@ -163,6 +168,7 @@ describe("ArrivalsManifest", () => {
         legs={legs}
         myTripMemberId="member-1"
         tripMembers={members}
+        tripTimezone="UTC"
       />
     );
 
@@ -187,6 +193,7 @@ describe("ArrivalsManifest", () => {
         legs={legs}
         myTripMemberId="member-1"
         tripMembers={members}
+        tripTimezone="UTC"
       />
     );
 
@@ -209,6 +216,7 @@ describe("ArrivalsManifest", () => {
         legs={legs}
         myTripMemberId="member-1"
         tripMembers={members}
+        tripTimezone="UTC"
       />
     );
 
@@ -227,6 +235,7 @@ describe("ArrivalsManifest", () => {
         legs={legs}
         myTripMemberId="member-1"
         tripMembers={members}
+        tripTimezone="UTC"
       />
     );
 
@@ -242,6 +251,7 @@ describe("ArrivalsManifest", () => {
         legs={[makeLeg()]}
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
+        tripTimezone="UTC"
       />
     );
 
