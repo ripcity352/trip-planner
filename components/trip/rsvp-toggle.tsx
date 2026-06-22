@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { setRsvpAction } from "@/lib/actions/rsvp";
@@ -152,9 +153,9 @@ export function RsvpToggle({ tripId, initialStatus }: RsvpToggleProps) {
       {errorKey ? (
         <p
           role="alert"
-          // text-destructive is a Tailwind/shadcn token — surfaces
-          // the failure without inventing a new color rule.
-          className="text-destructive text-sm"
+          // #209 error-surface contract: calm ink (--ink-secondary via
+          // ERROR_LINE_CLASS), never persimmon. "Never a red flood."
+          className={cn(ERROR_LINE_CLASS, "text-sm")}
         >
           {ERRORS[errorKey]}
         </p>

@@ -20,6 +20,11 @@ import { AUTH_COPY } from "@/lib/copy/auth";
 import { ERRORS } from "@/lib/copy/errors";
 import { safeNext } from "@/lib/auth/safe-next";
 import { LoginForm } from "@/app/login/_form";
+import {
+  ERROR_SURFACE_CLASS,
+  ERROR_SURFACE_BORDER_STYLE,
+} from "@/lib/ui/error-surface";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Sign in — Bachelor Party Planner",
@@ -55,7 +60,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             {hasAuthError ? (
               <p
                 role="alert"
-                className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-xs"
+                className={cn(ERROR_SURFACE_CLASS, "px-3 py-2 text-xs")}
+                style={ERROR_SURFACE_BORDER_STYLE}
               >
                 {ERRORS.auth_failed}
               </p>

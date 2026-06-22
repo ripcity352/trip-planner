@@ -24,6 +24,8 @@ import { Label } from "@/components/ui/label";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
 import { createInviteAction } from "@/lib/actions/invites";
+import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { fromDatetimeLocal } from "@/lib/utils/datetime";
 import type { Invite } from "@/lib/db/types";
 
@@ -119,7 +121,7 @@ export function CreateInviteForm({ tripId, onCreated }: CreateInviteFormProps) {
       </div>
 
       {errorMsg && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
           {errorMsg}
         </p>
       )}

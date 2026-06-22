@@ -16,6 +16,7 @@
  */
 
 import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { toLocalInputValue, fromLocalInputValue } from "@/lib/utils/format-trip-tz";
 
 export interface DateTimeLocalFieldImplProps {
@@ -70,7 +71,7 @@ export function DateTimeLocalFieldImpl({
         className={inputClass}
       />
       {error ? (
-        <p role="alert" className="text-destructive mt-1 text-xs">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>
           {error}
         </p>
       ) : null}

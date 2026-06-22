@@ -31,6 +31,8 @@ import { Label } from "@/components/ui/label";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import { createTripAction } from "@/lib/actions/trips";
+import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 
 const schema = z.object({
   name: z
@@ -116,7 +118,7 @@ export function TripForm() {
           <p
             id="trip-name-error"
             role="alert"
-            className="text-destructive text-sm"
+            className={cn(ERROR_LINE_CLASS, "text-sm")}
           >
             {errors.name.message}
           </p>
@@ -153,7 +155,7 @@ export function TripForm() {
       </div>
 
       {errorKey ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
           {ERRORS[errorKey]}
         </p>
       ) : null}
