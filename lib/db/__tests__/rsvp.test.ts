@@ -12,7 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getMyRsvp, getRsvpCountsForTrip } from "../rsvp";
+import { getMyRsvp, getRsvpCountsForTrip, getOrganizerDeclinedCount } from "../rsvp";
 
 /**
  * Builds an introspectable Supabase client double. Each chained method
@@ -41,6 +41,95 @@ function makeBuilder(rows: unknown, error: unknown = null) {
   const proxy: Record<string, unknown> = new Proxy({}, handler);
 
   return { calls, client: { from: vi.fn(() => proxy) } };
+}
+
+/**
+ * Builds a client double whose terminal promise resolves to
+ * `{ data: null, count, error }` — the shape Supabase returns when
+ * `{ head: true, count: "exact" }` is used. Used to test the head-only
+ * count path without needing real row payloads.
+ */
+function makeCountBuilder(count: number | null, error: unknown = null) {
+  const calls: Array<{ method: string; args: unknown[] }> = [];
+
+  const thenable: PromiseLike<{
+    data: null;
+    count: number | null;
+    error: unknown;
+  }> = {
+    then(onfulfilled) {
+      return Promise.resolve({ data: null, count, error }).then(onfulfilled);
+    },
+  };
+
+  const handler: ProxyHandler<Record<string, unknown>> = {
+    get(_target, prop: string) {
+      if (prop === "then") return thenable.then.bind(thenable);
+      return (...args: unknown[]) => {
+        calls.push({ method: prop, args });
+        return proxy;
+      };
+    },
+  };
+
+  const proxy: Record<string, unknown> = new Proxy({}, handler);
+
+  return { calls, client: { from: vi.fn(() => proxy) } };
+}
+
+/**
+ * Builds a client double over a FIXED dataset whose terminal
+ * `.maybeSingle()` APPLIES the recorded `.eq(col, val)` filters against
+ * that dataset — mirroring real PostgREST semantics. This makes a test a
+ * genuine behavioral guard: if the implementation drops an `.eq()`
+ * narrowing, the predicate matches more than one row and `.maybeSingle()`
+ * rejects with a PGRST116-shaped error (exactly as Supabase does on a
+ * multi-row return), so the test fails behaviorally rather than only via
+ * a call-chain assertion.
+ */
+function makeFilteringBuilder(rows: ReadonlyArray<Record<string, unknown>>) {
+  const filters: Array<{ column: string; value: unknown }> = [];
+
+  const matchRow = (row: Record<string, unknown>) =>
+    filters.every((f) => row[f.column] === f.value);
+
+  const maybeSingle = async (): Promise<{
+    data: unknown;
+    error: unknown;
+  }> => {
+    const matched = rows.filter(matchRow);
+    if (matched.length > 1) {
+      // Real Supabase raises PGRST116 ("multiple/no rows returned") when
+      // .maybeSingle() sees >1 row. Surface it the same way.
+      return {
+        data: null,
+        error: {
+          code: "PGRST116",
+          message:
+            "JSON object requested, multiple (or no) rows returned",
+        },
+      };
+    }
+    return { data: matched[0] ?? null, error: null };
+  };
+
+  const handler: ProxyHandler<Record<string, unknown>> = {
+    get(_target, prop: string) {
+      if (prop === "maybeSingle") return maybeSingle;
+      if (prop === "eq") {
+        return (column: string, value: unknown) => {
+          filters.push({ column, value });
+          return proxy;
+        };
+      }
+      // from / select / any other chained call is a no-op pass-through.
+      return () => proxy;
+    },
+  };
+
+  const proxy: Record<string, unknown> = new Proxy({}, handler);
+
+  return { filters, client: { from: vi.fn(() => proxy) } };
 }
 
 describe("lib/db/rsvp.ts", () => {
@@ -159,41 +248,81 @@ describe("lib/db/rsvp.ts", () => {
         getMyRsvp(client as unknown as SupabaseClient, "trip-1", "user-1")
       ).rejects.toThrow(/getMyRsvp/);
     });
+
+    it("returns the CALLER's row when a second member shares the trip_id — behavioral multi-row guard", async () => {
+      // Two members of the SAME trip; the builder applies the recorded
+      // .eq() filters to this dataset on .maybeSingle(). If the
+      // implementation drops the user_id narrowing, the predicate matches
+      // BOTH rows → PGRST116 → getMyRsvp throws. So this fails behaviorally
+      // (not just via a call-chain assertion) if the filter regresses.
+      const { client } = makeFilteringBuilder([
+        { id: "tm-caller", user_id: "user-caller", trip_id: "trip-1", rsvp_status: "going" },
+        { id: "tm-other", user_id: "user-other", trip_id: "trip-1", rsvp_status: "declined" },
+      ]);
+
+      const result = await getMyRsvp(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        "user-caller"
+      );
+
+      // Must resolve to the caller's row, not the other member's.
+      expect(result).toEqual({ tripMemberId: "tm-caller", status: "going" });
+    });
   });
 
   describe("getOrganizerDeclinedCount", () => {
-    it("queries the raw trip_members table filtered to declined for organizer-only count", async () => {
-      // The organizer-visible "X can't make it" parenthetical is the
-      // ONLY place in the read path that touches the raw trip_members
-      // table — gated by the caller being is_trip_organizer (the page
-      // checks that before invoking this fn). RLS still enforces the
-      // gate at the row level.
-      const { calls, client } = makeBuilder([
-        { rsvp_status: "declined" },
-        { rsvp_status: "declined" },
-      ]);
+    it("uses head-only exact-count query (no row payload) for the organizer declined count", async () => {
+      // The new implementation uses { count: "exact", head: true } to avoid
+      // fetching full rows. The mock returns count: 2 — which must be what
+      // the function returns, NOT array length.
+      const { calls, client } = makeCountBuilder(2);
 
-      const { getOrganizerDeclinedCount } = await import("../rsvp");
       const count = await getOrganizerDeclinedCount(
         client as unknown as SupabaseClient,
         "trip-1"
       );
 
       expect(count).toBe(2);
+
+      // Assert the select call uses the head-only count shape.
+      const selectCall = calls.find((c) => c.method === "select");
+      expect(selectCall?.args).toEqual([
+        "id",
+        { count: "exact", head: true },
+      ]);
+
       const eqCalls = calls.filter((c) => c.method === "eq");
-      const filterArgs = eqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
+      const filterArgs = eqCalls.map((c) => `${String(c.args[0])}=${String(c.args[1])}`);
       expect(filterArgs).toContain("trip_id=trip-1");
       expect(filterArgs).toContain("rsvp_status=declined");
     });
 
-    it("returns 0 when there are no declined members", async () => {
-      const { client } = makeBuilder([]);
-      const { getOrganizerDeclinedCount } = await import("../rsvp");
+    it("coalesces null count to 0 (Supabase returns null when head query matches zero rows)", async () => {
+      // When there are no declined members, Supabase may return count: null.
+      // The function must coalesce to 0.
+      const { client } = makeCountBuilder(null);
       const count = await getOrganizerDeclinedCount(
         client as unknown as SupabaseClient,
         "trip-1"
       );
       expect(count).toBe(0);
+    });
+
+    it("returns 0 when count is explicitly 0", async () => {
+      const { client } = makeCountBuilder(0);
+      const count = await getOrganizerDeclinedCount(
+        client as unknown as SupabaseClient,
+        "trip-1"
+      );
+      expect(count).toBe(0);
+    });
+
+    it("throws when Supabase reports an error", async () => {
+      const { client } = makeCountBuilder(null, { message: "boom" });
+      await expect(
+        getOrganizerDeclinedCount(client as unknown as SupabaseClient, "trip-1")
+      ).rejects.toThrow(/getOrganizerDeclinedCount/);
     });
   });
 });
