@@ -38,6 +38,48 @@ export function toLocalInputValue(
 }
 
 /**
+ * Format an ISO-8601 UTC string as a human-readable datetime in the trip's
+ * timezone, suitable for display in the arrivals manifest.
+ *
+ * Output format: `"MMM d, h:mm aaa"` — e.g. `"Aug 14, 10:30 am"`.
+ * The `aaa` token yields lowercase `am`/`pm`, satisfying the design-system
+ * date/time register (§"The five format tiers": absolute-time tier mandates
+ * lowercase am/pm — uppercase is an anti-tell).
+ *
+ * Deterministic across runtimes: `formatInTimeZone` always resolves against
+ * `tripTimezone`, never the process or browser ambient timezone. This is
+ * what eliminates the React #418 hydration mismatch (#254) — SSR (UTC) and
+ * CSR (browser-local) produce identical strings for the same instant.
+ *
+ * On bad input (invalid iso or timezone that throws), logs to console.error
+ * and returns the raw `iso` string so a single malformed timestamp never
+ * blows up the manifest render.
+ */
+export function formatTripDateTime(iso: string, tripTimezone: string): string {
+  const date = parseISO(iso);
+  if (!isValid(date)) {
+    console.error("[arrivals] formatTripDateTime failed:", {
+      iso,
+      tripTimezone,
+      err: new Error("invalid ISO string"),
+    });
+    return iso;
+  }
+
+  try {
+    return formatInTimeZone(date, tripTimezone, "MMM d, h:mm aaa");
+  } catch (err) {
+    // Unlike toLocalInputValue/fromLocalInputValue (which silently return ""/null for bad input), a malformed stored timestamp reaching *display* is surprising — log it so the orchestrator notices. Do not "harmonize" by removing.
+    console.error("[arrivals] formatTripDateTime failed:", {
+      iso,
+      tripTimezone,
+      err,
+    });
+    return iso;
+  }
+}
+
+/**
  * Parse the YYYY-MM-DDTHH:mm value from `<input type="datetime-local">` —
  * which is a wall-clock time in the trip's timezone — and return an
  * ISO-8601 UTC string.

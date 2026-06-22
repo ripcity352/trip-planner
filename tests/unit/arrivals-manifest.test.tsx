@@ -99,6 +99,7 @@ describe("ArrivalsManifest — UUID-leak regression (#240)", () => {
         legs={[makeLeg(KNOWN_MEMBER_ID)]}
         myTripMemberId={KNOWN_MEMBER_ID}
         tripMembers={[knownMember]}
+        tripTimezone="UTC"
       />,
     );
 
@@ -112,6 +113,7 @@ describe("ArrivalsManifest — UUID-leak regression (#240)", () => {
         legs={[makeLeg(UNKNOWN_MEMBER_ID)]}
         myTripMemberId={UNKNOWN_MEMBER_ID}
         tripMembers={[]}
+        tripTimezone="UTC"
       />,
     );
 
@@ -135,6 +137,7 @@ describe("ArrivalsManifest — UUID-leak regression (#240)", () => {
         legs={[makeLeg(KNOWN_MEMBER_ID)]}
         myTripMemberId={KNOWN_MEMBER_ID}
         tripMembers={[noNameMember]}
+        tripTimezone="UTC"
       />,
     );
 
