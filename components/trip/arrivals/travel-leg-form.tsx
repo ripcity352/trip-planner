@@ -21,6 +21,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/utils/datetime";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
@@ -297,7 +298,7 @@ export function TravelLegForm({
 
       {/* Server error */}
       {serverErrorKey ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
           {ERRORS[serverErrorKey]}
         </p>
       ) : null}
