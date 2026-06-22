@@ -13,6 +13,8 @@
  *   - `legs` — pre-fetched by the page Server Component via `getTravelLegsByTrip`
  *   - `myTripMemberId` — resolved by the page to gate edit affordances
  *   - `tripMembers` — for display names on each card
+ *   - `tripTimezone` — IANA tz string threaded to TravelLegCard so all
+ *     departure/arrival times render in trip-local time (#254)
  */
 
 import { useRouter } from "next/navigation";
@@ -27,6 +29,8 @@ export interface ArrivalsManifestProps {
   legs: TravelLeg[];
   myTripMemberId: string;
   tripMembers: TripMember[];
+  /** IANA timezone string for the trip (e.g. `"America/New_York"`). */
+  tripTimezone: string;
 }
 
 export function ArrivalsManifest({
@@ -34,6 +38,7 @@ export function ArrivalsManifest({
   legs,
   myTripMemberId,
   tripMembers,
+  tripTimezone,
 }: ArrivalsManifestProps) {
   const router = useRouter();
 
@@ -60,6 +65,7 @@ export function ArrivalsManifest({
               leg={leg}
               myTripMemberId={myTripMemberId}
               ownerName={resolveMemberName(memberNameMap, leg.trip_member_id)}
+              tripTimezone={tripTimezone}
             />
           ))}
         </div>

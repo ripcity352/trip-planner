@@ -12,10 +12,14 @@
  *   8. DST spring-forward boundary (America/New_York, 2026-03-08)
  *   9. DST fall-back boundary (America/New_York, 2026-11-01)
  *  10. Cross-coast: same UTC renders different local times per TZ
+ *  11. formatTripDateTime — TZ-invariance (the #254 regression lock)
+ *  12. formatTripDateTime — correctness across timezones
+ *  13. formatTripDateTime — lowercase am/pm anti-tell
+ *  14. formatTripDateTime — bad-data fallback
  */
 
-import { describe, it, expect } from "vitest";
-import { toLocalInputValue, fromLocalInputValue } from "../format-trip-tz";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { toLocalInputValue, fromLocalInputValue, formatTripDateTime } from "../format-trip-tz";
 
 // -------------------------------------------------------------------------
 // toLocalInputValue
@@ -127,5 +131,102 @@ describe("fromLocalInputValue", () => {
     const local = toLocalInputValue(originalUtc, "America/New_York");
     const recovered = fromLocalInputValue(local, "America/New_York");
     expect(recovered).toBe(originalUtc);
+  });
+});
+
+// -------------------------------------------------------------------------
+// formatTripDateTime — #254 regression lock
+// -------------------------------------------------------------------------
+
+describe("formatTripDateTime", () => {
+  // Restore any TZ manipulation after each test.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  /**
+   * TZ-invariance (the core #254 property).
+   *
+   * The same ISO instant must produce identical output regardless of what
+   * process.env.TZ is set to. This is what proves the hydration mismatch
+   * is gone: the server (UTC) and the browser (any tz) will render the
+   * same string.
+   *
+   * Strategy: run under two ambient TZs, assert the outputs are identical,
+   * then assert the exact expected string (machine-TZ-independent).
+   */
+  it("TZ-invariance: output is identical regardless of ambient process.env.TZ", () => {
+    // 2026-08-14 at 10:30 am America/New_York = 14:30 UTC
+    const iso = "2026-08-14T14:30:00Z";
+    const tripTimezone = "America/New_York";
+
+    vi.stubEnv("TZ", "UTC");
+    const underUtc = formatTripDateTime(iso, tripTimezone);
+
+    vi.stubEnv("TZ", "America/Los_Angeles");
+    const underPacific = formatTripDateTime(iso, tripTimezone);
+
+    // Same output regardless of ambient TZ.
+    expect(underUtc).toBe(underPacific);
+    // Exact string: 10:30 am in America/New_York.
+    expect(underUtc).toBe("Aug 14, 10:30 am");
+  });
+
+  it("formats an UTC instant correctly in America/New_York (EDT, UTC-4)", () => {
+    // 2026-08-14T14:30:00Z = 10:30 am EDT
+    expect(formatTripDateTime("2026-08-14T14:30:00Z", "America/New_York")).toBe(
+      "Aug 14, 10:30 am"
+    );
+  });
+
+  it("formats the same UTC instant differently in America/Los_Angeles (PDT, UTC-7)", () => {
+    // 2026-08-14T14:30:00Z = 7:30 am PDT
+    expect(
+      formatTripDateTime("2026-08-14T14:30:00Z", "America/Los_Angeles")
+    ).toBe("Aug 14, 7:30 am");
+  });
+
+  it("cross-tz: same instant produces different, offset-correct wall-clock strings", () => {
+    const iso = "2026-08-14T14:30:00Z";
+    const eastern = formatTripDateTime(iso, "America/New_York"); // 10:30 am EDT
+    const pacific = formatTripDateTime(iso, "America/Los_Angeles"); // 7:30 am PDT
+    expect(eastern).not.toBe(pacific);
+    expect(eastern).toBe("Aug 14, 10:30 am");
+    expect(pacific).toBe("Aug 14, 7:30 am");
+  });
+
+  it("renders pm times in lowercase — anti-tell guard", () => {
+    // 2026-08-14T23:45:00Z = 7:45 pm EDT (UTC-4)
+    const result = formatTripDateTime("2026-08-14T23:45:00Z", "America/New_York");
+    expect(result).toContain("pm");
+    expect(result).not.toContain("PM");
+  });
+
+  it("renders am times in lowercase — anti-tell guard", () => {
+    // 2026-08-14T10:00:00Z = 6:00 am EDT (UTC-4)
+    const result = formatTripDateTime("2026-08-14T10:00:00Z", "America/New_York");
+    expect(result).toContain("am");
+    expect(result).not.toContain("AM");
+  });
+
+  it("bad-data: returns raw iso and does not throw for an invalid iso string", () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const raw = "not-a-date";
+    const result = formatTripDateTime(raw, "America/New_York");
+    expect(result).toBe(raw);
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "[arrivals] formatTripDateTime failed:",
+      expect.objectContaining({ iso: raw })
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it("bad-data: does not throw for an invalid timezone, returns raw iso", () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const iso = "2026-08-14T14:30:00Z";
+    const result = formatTripDateTime(iso, "Not/A_Timezone");
+    expect(result).toBe(iso);
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });
