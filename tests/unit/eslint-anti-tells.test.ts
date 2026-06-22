@@ -55,6 +55,9 @@ const FIXTURES = {
   "d-rounded-2xl-button": `const X = () => <button className="rounded-2xl px-4">Go</button>;`,
   "d-rounded-md-Button-shadcn": `const X = () => <Button className="rounded-md w-full">Continue</Button>;`,
   "d-rounded-none-allowed": `const X = () => <button className="rounded-none px-4 py-2">Click</button>;`,
+  // #304: rounded-xs (the 2px hairline token) is the canonical allowed button
+  // radius — lock it positively so a future regex edit can't silently ban it.
+  "d-rounded-xs-allowed": `const X = () => <button className="rounded-xs px-4 py-2">Save</button>;`,
   // #304: pill on an action button is now banned (buttons are the 2px hairline,
   // never pill — radius-full is avatars/chips only).
   "d-rounded-full-button": `const X = () => <button className="rounded-full px-6">Go</button>;`,
@@ -235,6 +238,11 @@ describe("rule (d): non-token button radius", () => {
 
   it("does NOT fire on rounded-none (hairline — allowed)", () => {
     const msgs = antiTellMessages(results["d-rounded-none-allowed"]);
+    expect(msgs).toHaveLength(0);
+  });
+
+  it("does NOT fire on rounded-xs (canonical 2px hairline — allowed)", () => {
+    const msgs = antiTellMessages(results["d-rounded-xs-allowed"]);
     expect(msgs).toHaveLength(0);
   });
 
