@@ -234,8 +234,7 @@ the full voice guide + sample strings.
 - Don't add tests for trivial things; do add them for data-layer functions
   in `/lib/db` and for any non-obvious business logic.
 - Don't commit `.env.local` or anything in `.env*` except `.env.example`.
-- Don't share secrets in chat/email/iMessage — see "Sharing secrets"
-  below for the role-based path.
+- Don't commit secrets. Sharing between devs: Signal or iMessage is fine for one-time bootstrap (see "Sharing secrets" below).
 
 ## Environment variables
 
@@ -250,15 +249,13 @@ caps teams at 1 member, so the collaborator isn't on the Vercel team).
 
 - **Owner (`ripcity352`)**: `pnpm dlx vercel link` once, then
   `pnpm dlx vercel env pull .env.local` to sync.
-- **Collaborator**: copy Supabase URL + anon key + service-role key
-  from the Supabase dashboard → Settings → API into their own
-  `.env.local`. One-time setup; refresh manually when keys rotate.
+- **Collaborator**: owner sends the 3 Supabase vars (URL, anon key,
+  service-role key) over Signal or iMessage. Paste into `.env.local`.
+  One-time setup; refresh manually when keys rotate. (Supabase org
+  invites now require Pro — dashboard access isn't available.)
 
 When you rotate a key, open an Issue with the `security` label so the
-other dev sees it and re-pulls / re-copies. Full details in
-`notes/collaboration.md`. Decision context: `notes/decisions.md` →
-"Secrets sharing: owner uses Vercel env pull, collaborator reads
-Supabase dashboard."
+other dev sees it and re-syncs. Full details in `notes/collaboration.md`.
 
 **Local Supabase:** when running `pnpm dlx supabase start` locally, the
 local URL + anon key go in a separate `.env.local` block — the Supabase
@@ -335,21 +332,25 @@ sites re-pointed in one PR; the 16 pill action-CTAs sharpened to the 2px
 hairline, ESLint rule (d) tightened to ban `rounded-full` on buttons;
 PR #339). ZERO schema / server actions / feature surface — **does NOT lift
 the M6 gate.** See `notes/decisions.md` "#301 + #304 — design-system
-radius / error-surface reconcile" ADR. The authed-surface 375px `[v]` walk
-is operator-gated (carried forward).
+radius / error-surface reconcile" ADR. The authed-surface 375px `[v]` was
+**partially walked 2026-06-22** (trips dashboard — 2px buttons + 8px cards
+confirmed under login); a full authed sweep stays operator-gated.
+
+**Dep + auth housekeeping (2026-06-22).** `@supabase/ssr` 0.10→0.12 +
+`supabase-js` 2.105→2.108 landed (#342, login-walk-verified). **State-B
+finding:** OTP/code sign-in **cannot create accounts** (`shouldCreateUser:
+false` — intentional anti-phantom-account); a passwordless State-B account
+only arises via OAuth or invite-accept. **#255 closed as superseded** (its
+"fresh OTP-only signup" premise was removed by the M5 redesign; State B
+stays unit-verified).
 
 **Next:** real-trip retrospective still gates M6 — same bright line as
 M4/M5. **No infra wave lifts the gate.** Open carry-backs / follow-ups:
-- **#232** — OAuth-existing-user detection — blocked on a human step
-  (enable Google provider in Supabase); producer+consumer in ONE PR
-- **#254** — React #418 hydration on `/arrivals`
-- **#255** — fresh OTP-only State-B `[v]` walk (needs Carl); bundle with
-  the #263/#122/#219 prod `[v]` walks, the **#301/#304 authed-radius
-  `[v]` walk**, + #232's OAuth round-trip once the Google provider is on
+- **#232** — OAuth-existing-user detection — **parked per operator
+  (2026-06-22)**; optional polish, and needs the Google provider enabled
+  in Supabase before it can be built or tested
 - **#298** — eslint 9→10 major (deferred; must pass the #182
   rule-fires-on-fixture test under eslint 10 first)
-- **#299** — supabase-group dependabot bump fails CI (held; runtime dep —
-  needs a look before merge)
 - **#315** — tailwind-group dependabot bump has a merge conflict
   (dependabot to rebase; routine devDep)
 - `notes/database-workflow.md` is stale on deployment reality — the
