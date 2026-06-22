@@ -5,6 +5,54 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-06-22 — #301 + #304 — design-system radius / error-surface reconcile
+
+**Context.** Two CARRY-deferred call-site reconciles, each gated behind an
+audit the CARRY wave produced. Shipped as a between-milestones mini-wave
+(`/goal` scoped to the open #301/#304). **Does NOT lift the M6 gate** —
+real-trip retro still gates; ZERO schema, ZERO server actions, ZERO
+feature surface.
+
+**#301 (error-surface — PR #337 + fix-up).** Error-surface text moved off
+persimmon `text-destructive` to the #209 calm ink+hairline treatment via a
+shared `lib/ui/error-surface.ts` primitive. Load-bearing review catch: the
+delete-confirm **button** used `bg-destructive text-destructive-foreground`,
+but `--destructive-foreground` is deliberately unbound — escalate the
+persimmon **outline** instead (no solid fill). The delete-confirm **text**
+stays persimmon: it is a #210 destructive-confirm, not a #209 error
+(different contract). A regression test locks both.
+
+**#304 (radius reconcile — PR #339).** The shadcn calc radius scale
+collapsed every surface into the poisoned 6.4–11.2px middle. Rebased
+`globals.css` to polar literals (xs 2 / sm 4 / md 8 / lg 16 / xl 24;
+dropped the calc derivatives + unused -2xl/-3xl/-4xl) AND re-pointed 50
+call sites in the **same PR** — inseparable (the "structural trap":
+`rounded-lg` was a no-op at 8px but the named value is 16, so a token-only
+rebase flips current no-ops into regressions). Two Step-0 §Radius
+ratifications:
+- **(E)** the 16 shipped pill action-CTAs sharpen to the 2px hairline
+  (`radius-full` is "never action buttons"); chips / RSVP pills / avatars /
+  badges stay pill (social surfaces). ESLint rule (d) tightened to ban
+  `rounded-full` on `<button>/<Button>` — zero false positives (avatar
+  triggers are Radix `<Trigger>`, not matched).
+- **(F)** error banners take `radius-md` (8px); #209 was silent on radius.
+
+**Verification reality.** The #217 visual baseline renders a STATIC mockup
+(`home.html`), NOT the live app — so it does **not** cover this app-wide
+change. The public-surface 375px smoke (landing) ran clean (0 console
+errors); the **authed-surface 375px `[v]` walk is operator-gated** (needs
+Carl's login) — carried forward, same axis as the AUTH/DS prod walks. The
+audit (`notes/radius-audit.md`, 2026-06-10) was 12 days stale; its 2 deltas
+(the #219 invite magazine `<article>` cards → `rounded-lg`; a new
+`global-error.tsx` retry button) were reconciled inline.
+
+**Alternatives considered.** (E) spec-bless the pills — rejected, pushes
+toward the "stack of pills" iOS tell §Radius bans. Splitting #304 into
+per-surface PRs — rejected, the structural trap forbids it. Re-auditing
+radius from scratch — rejected, the CARRY audit is the spec.
+
+---
+
 ## 2026-06-18 — AUTH — login/invite chain closure — milestone closed
 
 **Decision:** The AUTH wave is closed. It production-hardened and
