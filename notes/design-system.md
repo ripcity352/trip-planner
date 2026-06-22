@@ -368,12 +368,30 @@ middle is poisoned.
 
 | Token | px | Use |
 |---|---|---|
-| `radius-xs` | 2 | **Buttons, chips, inputs.** Hairline-adjacent. Reads as "set type," refuses the iOS-utility look. |
+| `radius-xs` | 2 | **Buttons (incl. action CTAs), inputs.** Hairline-adjacent. Reads as "set type," refuses the iOS-utility look. (Chips are *social surfaces* — see `radius-full`, not here.) |
 | `radius-sm` | 4 | Reserved — generally don't use. Exists for shadcn imports that hardcode this. |
-| `radius-md` | 8 | Standard cards, modals. Cards aren't trying to read pill or hairline — they're objects. |
+| `radius-md` | 8 | Standard cards, modals, popovers, **error banners (#209)**. Cards aren't trying to read pill or hairline — they're objects. |
 | `radius-lg` | 16 | Hero photo cards, sheets, full-bleed content cards. |
 | `radius-xl` | 24 | The Disposable Cam roll, group photo grid (matches polaroid sensibility). |
-| `radius-full` | 9999 | Avatars only — never buttons, never sheets. |
+| `radius-full` | 9999 | Avatars, chips, badges, RSVP/vote pills (#208). **Never action buttons, never cards/sheets.** |
+
+**Ratified 2026-06-22 (#304 reconcile — Step 0).** Two gaps
+`notes/radius-audit.md` flagged are settled here:
+
+- **(E) Action-button CTAs sharpen to the 2px hairline, not pill.** The
+  shipped M3/M4 pattern put 16 primary CTAs (Save / Cancel / Delete /
+  Add / Assign) on `rounded-full` — contradicting "never action buttons"
+  above and trending toward the "every screen is a stack of pills" iOS
+  tell this section bans. They re-point to `rounded-xs`, matching the
+  shadcn `<Button>` base and all inputs: one coherent hairline button
+  language. **Chips / RSVP-vote pills / avatars / badges stay
+  `radius-full`** — they are social surfaces, not actions. Circular
+  avatar *triggers* (header menu) keep `rounded-full` — the roundness is
+  the avatar's, not a button shape.
+- **(F) Error banners take `radius-md` (8px).** #209 specs the
+  error-surface *treatment* (calm surface + hairline) but was silent on
+  radius; banners are surfaces, so they match the card/modal 8px, not
+  the 2px control hairline.
 
 ### Hairline borders — the brutalist move
 

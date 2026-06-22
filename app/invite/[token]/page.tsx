@@ -125,7 +125,7 @@ export default async function InvitePreviewPage({
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-4 py-10">
       {/* Magazine hero card */}
-      <article className="w-full overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+      <article className="w-full overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm">
         {/* Warm editorial hook — the "magazine" treatment */}
         <header className="px-6 pb-4 pt-6">
           <h1 className="text-2xl font-semibold leading-tight tracking-tight">
@@ -199,7 +199,7 @@ export default async function InvitePreviewPage({
 function InviteMissing() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-4 py-10 text-center">
-      <article className="w-full overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+      <article className="w-full overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm">
         <header className="px-6 py-6">
           <h1 className="text-xl font-medium">{ERRORS.invite_not_found}</h1>
         </header>

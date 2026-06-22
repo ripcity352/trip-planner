@@ -41,7 +41,7 @@ export function AnnouncementCard({
       : null;
 
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3">
+    <article className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
       {/* Top row: pinned badge + visibility badge */}
       {(announcement.pinned || visibilityLabel) && (
         <div className="flex flex-wrap items-center gap-1.5">

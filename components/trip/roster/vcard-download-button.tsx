@@ -57,7 +57,7 @@ export function VCardDownloadButton({
       type="button"
       disabled={disabled}
       onClick={handleDownload}
-      className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium min-h-11 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent hover:text-accent-foreground transition-colors"
+      className="inline-flex items-center justify-center rounded-xs border border-input bg-background px-4 py-2 text-sm font-medium min-h-11 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent hover:text-accent-foreground transition-colors"
     >
       {M3_UI_STRINGS.roster_vcard_cta}
     </button>

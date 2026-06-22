@@ -42,7 +42,7 @@ export function EditItemFormSheet({ item, tripTimezone, className }: EditItemFor
 
   if (open) {
     return (
-      <div className={cn("rounded-xl border border-border bg-card p-4 shadow-sm", className)}>
+      <div className={cn("rounded-md border border-border bg-card p-4 shadow-sm", className)}>
         <EditItemForm
           item={item}
           tripTimezone={tripTimezone}
@@ -59,7 +59,7 @@ export function EditItemFormSheet({ item, tripTimezone, className }: EditItemFor
       type="button"
       onClick={() => setOpen(true)}
       className={cn(
-        "focus-visible:ring-ring rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground",
+        "focus-visible:ring-ring rounded-xs border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground",
         "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
         className
       )}

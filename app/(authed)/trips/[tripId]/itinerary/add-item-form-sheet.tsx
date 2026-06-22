@@ -40,14 +40,14 @@ export function AddItemFormSheet({ tripId }: AddItemFormSheetProps) {
           type="button"
           onClick={() => setOpen(true)}
           className={cn(
-            "focus-visible:ring-ring w-full rounded-full border border-dashed border-border bg-muted/40 py-3 text-sm font-medium text-muted-foreground",
+            "focus-visible:ring-ring w-full rounded-xs border border-dashed border-border bg-muted/40 py-3 text-sm font-medium text-muted-foreground",
             "hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           )}
         >
           {M3_UI_STRINGS.itinerary_addItem_cta}
         </button>
       ) : (
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-md border border-border bg-card p-4 shadow-sm">
           <AddItemForm
             tripId={tripId}
             onSuccess={handleSuccess}

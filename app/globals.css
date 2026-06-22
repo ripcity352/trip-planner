@@ -39,16 +39,18 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* Hairline radius is a fixed polar value (design-system.md §Radius), not
-     derived from --radius — buttons are 2px or pill, never the middle. */
-  --radius-xs: 2px;
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Polar radius scale (design-system.md §Radius) — fixed literals, NOT a
+     calc derivation from --radius. The 4–8px "middle" is itself a vibecoded
+     tell, so there is no derived middle: hairline (xs) for controls, 8 for
+     cards, 16/24 for hero surfaces, pill for social. #304 reconcile —
+     the previous shadcn calc scale collapsed everything into the poisoned
+     6.4–11.2px band. --radius (base) is kept but no longer consumed; the
+     -2xl/-3xl/-4xl steps are dropped (sole consumer badge.tsx → rounded-full). */
+  --radius-xs: 2px; /* buttons, inputs */
+  --radius-sm: 4px; /* reserved — shadcn imports that hardcode it */
+  --radius-md: 8px; /* cards, modals, popovers, error banners (#209) */
+  --radius-lg: 16px; /* hero / magazine / full-bleed cards, sheets */
+  --radius-xl: 24px; /* photo roll, group photo grid */
 }
 
 /* #188 — shadcn's light-mode token defaults, scoped so they apply ONLY when

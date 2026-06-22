@@ -111,7 +111,7 @@ export function RosterList({
             return (
               <li
                 key={member.id}
-                className="flex items-center justify-between rounded-lg border border-border px-4 py-3 min-h-11"
+                className="flex items-center justify-between rounded-md border border-border px-4 py-3 min-h-11"
               >
                 <span className="font-medium text-sm">
                   {member.displayName ?? M3_UI_STRINGS.roster_member_fallback_name}

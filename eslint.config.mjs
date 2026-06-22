@@ -69,14 +69,17 @@ const authedAntiTells = {
       },
       // -----------------------------------------------------------------------
       // (d) Non-token border-radius class on <button> / <Button>.
-      // The design system uses polar radii: hairline (rounded-none / rounded-xs /
-      // rounded-[2px]) or pill (rounded-full). The 'middle' range (rounded,
-      // rounded-sm, rounded-md, rounded-lg, rounded-xl, rounded-2xl,
-      // rounded-3xl) is the iOS-utility vibecoded tell.
-      // --radius-xs (2px) exists in globals.css as of #289 slice 1, so
-      // rounded-xs is the canonical hairline class; rounded-[2px] stays
-      // allowed for pre-existing call sites.
-      // Lint structurally — ban the middle classes, allow the polar ones.
+      // Action buttons are the 2px HAIRLINE — never pill (#304 ratified
+      // §Radius "never action buttons" for radius-full; the 16 shipped pill
+      // CTAs sharpened to rounded-xs). So the only legal button radii are
+      // rounded-none / rounded-xs / rounded-[2px]. Both the 'middle' range
+      // (rounded-sm…rounded-3xl, the iOS-utility tell) AND rounded-full (the
+      // 'stack of pills' tell) are banned here.
+      // radius-full stays correct for avatars/chips/badges — those are NOT
+      // <button>/<Button> elements (avatar triggers are Radix <Trigger>, not
+      // matched by this selector), so no false positives.
+      // Lint structurally — ban the middle classes and full, allow the
+      // hairline ones.
       // Limitation: this selector inspects string Literal classNames only; it
       // does NOT see classes passed through cn(...) / template literals (those
       // are CallExpression/TemplateLiteral args, not Literals). Same gap applies
@@ -88,12 +91,13 @@ const authedAntiTells = {
       // -----------------------------------------------------------------------
       {
         selector:
-          "JSXOpeningElement[name.name=/^[Bb]utton$/] > JSXAttribute[name.name='className'] > Literal[value=/(?:^| )rounded(?:-sm|-md|-lg|-xl|-2xl|-3xl)?(?:$| )/]",
+          "JSXOpeningElement[name.name=/^[Bb]utton$/] > JSXAttribute[name.name='className'] > Literal[value=/(?:^| )rounded(?:-sm|-md|-lg|-xl|-2xl|-3xl|-full)?(?:$| )/]",
         message:
-          "Non-token border-radius class on <button>/<Button> is banned. " +
-          "Use rounded-none, rounded-xs (2px hairline token), or rounded-full (pill) only. " +
-          "The 'middle' range (rounded, rounded-sm…rounded-3xl) " +
-          "is the iOS-utility tell the design system rejects. " +
+          "Non-hairline border-radius class on <button>/<Button> is banned. " +
+          "Use rounded-none or rounded-xs (2px hairline token) only — buttons " +
+          "are the 2px hairline, never pill. Both the 'middle' range " +
+          "(rounded, rounded-sm…rounded-3xl) and rounded-full are iOS-utility " +
+          "tells the design system rejects (radius-full is avatars/chips only). " +
           "See design-system.md §Radius — 'Polar radii, not middle radii'.",
       },
     ],

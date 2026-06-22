@@ -61,7 +61,7 @@ export function TravelLegCard({
   const isOwner = leg.trip_member_id === myTripMemberId;
 
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3">
+    <article className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
       {/* Header: kind icon + label + owner name + edit affordance */}
       <div className="flex items-center gap-2">
         {(() => {

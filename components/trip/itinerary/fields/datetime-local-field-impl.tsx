@@ -34,7 +34,7 @@ export interface DateTimeLocalFieldImplProps {
 }
 
 const inputClass = cn(
-  "w-full min-h-[44px] rounded-md border border-border bg-background px-3 py-3 text-sm",
+  "w-full min-h-[44px] rounded-xs border border-border bg-background px-3 py-3 text-sm",
   "placeholder:text-muted-foreground",
   "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
   "disabled:cursor-not-allowed disabled:opacity-60"

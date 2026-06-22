@@ -159,7 +159,7 @@ export function TravelLegForm({
   const kind = watch("kind");
 
   const inputClass = cn(
-    "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
+    "w-full rounded-xs border border-border bg-background px-3 py-2 text-sm",
     "placeholder:text-muted-foreground",
     "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
     "disabled:cursor-not-allowed disabled:opacity-60"
@@ -309,7 +309,7 @@ export function TravelLegForm({
           type="submit"
           disabled={isBusy}
           className={cn(
-            "focus-visible:ring-ring h-11 rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground",
+            "focus-visible:ring-ring h-11 rounded-xs bg-primary px-5 text-sm font-medium text-primary-foreground",
             "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60"
           )}
@@ -322,7 +322,7 @@ export function TravelLegForm({
           onClick={onCancel}
           disabled={isBusy}
           className={cn(
-            "focus-visible:ring-ring h-11 rounded-full border border-border bg-muted px-5 text-sm font-medium text-muted-foreground",
+            "focus-visible:ring-ring h-11 rounded-xs border border-border bg-muted px-5 text-sm font-medium text-muted-foreground",
             "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60"
           )}
@@ -337,7 +337,7 @@ export function TravelLegForm({
             onClick={handleDelete}
             disabled={isBusy}
             className={cn(
-              "focus-visible:ring-ring ml-auto h-11 rounded-full border border-destructive/50 px-5 text-sm font-medium text-destructive",
+              "focus-visible:ring-ring ml-auto h-11 rounded-xs border border-destructive/50 px-5 text-sm font-medium text-destructive",
               "hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
               "disabled:cursor-not-allowed disabled:opacity-60"
             )}
