@@ -15,10 +15,12 @@ Each dev needs:
    (or GitHub web UI → Settings → Collaborators). GitHub Pro is **not**
    required for the collaborator — branch protection gates on the
    owner's tier only.
-2. **Supabase organization membership** — owner invites collaborator
-   from the Supabase dashboard org settings. Free. Gives the
-   collaborator access to staging (and later prod) keys via the
-   dashboard.
+2. **Supabase keys** — Supabase org invites now require a Pro plan;
+   the collaborator does **not** get dashboard access. Owner shares the
+   3 staging env vars (URL, anon key, service-role key) via 1Password
+   shared vault (see "Secrets" below). For day-to-day dev the local
+   Supabase stack is sufficient; staging keys are only needed when
+   pointing at the shared staging project.
 3. **Vercel: owner only.** Vercel Hobby plan limits teams to a single
    member; multi-member teams require Pro ($20/mo) which we don't
    pay for. The collaborator does NOT join the Vercel team; they get
@@ -37,7 +39,7 @@ Each dev uses their own:
 
 | Secret | How owner gets it | How collaborator gets it |
 |---|---|---|
-| Supabase URL + anon + service-role | `pnpm dlx vercel env pull .env.local` | Copy from Supabase dashboard → Settings → API (one-time, then keep in `.env.local`) |
+| Supabase URL + anon + service-role | `pnpm dlx vercel env pull .env.local` | Owner shares directly over Signal or iMessage (one-time; keys rarely rotate) — paste into `.env.local` |
 | Future non-Supabase secrets (Resend, Sentry, Stripe…) | `vercel env pull` | Manual share via 1Password shared vault (preferred) or per-secret bootstrap doc |
 
 When keys rotate (e.g., Supabase service-role compromised), the rotator
@@ -70,23 +72,19 @@ pnpm dlx vercel link            # select the trip-planner project
 pnpm dlx vercel env pull .env.local
 ```
 
-**Collaborator path** (no Vercel team access; reads from Supabase):
+**Collaborator path** (no Vercel or Supabase dashboard access):
 
 ```bash
-# Create .env.local by hand from the Supabase dashboard:
-# https://supabase.com/dashboard/project/bonvqazcqwkrowtkdmuq/settings/api
-#
-# .env.local contents:
+# Owner shares these 3 values via 1Password shared vault.
+# Create .env.local by hand:
 #   NEXT_PUBLIC_SUPABASE_URL=https://bonvqazcqwkrowtkdmuq.supabase.co
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<copy from dashboard>
-#   SUPABASE_SERVICE_ROLE_KEY=<copy from dashboard, click "Reveal">
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<from owner via Signal or iMessage>
+#   SUPABASE_SERVICE_ROLE_KEY=<from owner via Signal or iMessage>
 #   NEXT_PUBLIC_SITE_URL=http://localhost:3000
+#
+# Note: Supabase org invites now require Pro, so collaborators
+# don't get dashboard access. Local Supabase covers day-to-day dev.
 ```
-
-Or, with a Supabase PAT in `SUPABASE_ACCESS_TOKEN`, run the curl
-recipe in [`notes/database-workflow.md`](./database-workflow.md)
-("Re-sync Supabase API keys") writing to `.env.local` instead of
-piping to Vercel.
 
 ### Step 4 — Start local Supabase + run
 
