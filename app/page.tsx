@@ -30,7 +30,7 @@ export default async function Home() {
 
       <Link
         href="/login"
-        className="inline-flex h-11 items-center justify-center rounded-md bg-zinc-900 px-6 text-base font-medium text-white shadow transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:focus-visible:ring-zinc-300"
+        className="inline-flex h-11 items-center justify-center rounded-xs bg-zinc-900 px-6 text-base font-medium text-white shadow transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:focus-visible:ring-zinc-300"
       >
         Sign in to your trip
       </Link>

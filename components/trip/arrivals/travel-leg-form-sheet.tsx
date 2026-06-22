@@ -47,7 +47,7 @@ export function TravelLegFormSheet({
 
   if (isOpen) {
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-4">
+      <div className="rounded-md border border-border bg-card px-4 py-4">
         <TravelLegForm
           tripId={tripId}
           leg={leg}
@@ -64,7 +64,7 @@ export function TravelLegFormSheet({
         type="button"
         onClick={() => setIsOpen(true)}
         className={cn(
-          "focus-visible:ring-ring h-8 rounded-full border border-border bg-muted px-3 text-xs font-medium text-muted-foreground",
+          "focus-visible:ring-ring h-8 rounded-xs border border-border bg-muted px-3 text-xs font-medium text-muted-foreground",
           "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         )}
       >
@@ -78,7 +78,7 @@ export function TravelLegFormSheet({
       type="button"
       onClick={() => setIsOpen(true)}
       className={cn(
-        "focus-visible:ring-ring h-11 w-full rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground",
+        "focus-visible:ring-ring h-11 w-full rounded-xs bg-primary px-5 text-sm font-medium text-primary-foreground",
         "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
         "hover:bg-primary/90"
       )}

@@ -273,7 +273,7 @@ export function SecurityForm({ identityState, userEmail, identitySubtype }: Secu
         <p
           role="status"
           data-testid="success-toast"
-          className="rounded-xl border border-border bg-card p-4 text-sm text-foreground shadow-sm"
+          className="rounded-md border border-border bg-card p-4 text-sm text-foreground shadow-sm"
         >
           {AUTH_COPY.accountSecurity_successToast}
         </p>

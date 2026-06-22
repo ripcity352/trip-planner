@@ -104,7 +104,7 @@ export function DressCodePicker({
         disabled={disabled}
         placeholder={M4_UI_STRINGS.itineraryItem_dressCode_placeholder}
         className={cn(
-          "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
+          "w-full rounded-xs border border-border bg-background px-3 py-2 text-sm",
           "placeholder:text-muted-foreground",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           "disabled:cursor-not-allowed disabled:opacity-50"

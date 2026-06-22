@@ -145,7 +145,7 @@ export function LodgingRoster({
               onChange={(e) => setSelectedMemberId(e.target.value)}
               disabled={isPending}
               className={cn(
-                "rounded-md border border-border bg-background px-3 py-1.5 text-sm",
+                "rounded-xs border border-border bg-background px-3 py-1.5 text-sm",
                 "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               )}
             >
@@ -167,7 +167,7 @@ export function LodgingRoster({
               maxLength={100}
               disabled={isPending}
               className={cn(
-                "rounded-md border border-border bg-background px-3 py-1.5 text-sm",
+                "rounded-xs border border-border bg-background px-3 py-1.5 text-sm",
                 "placeholder:text-muted-foreground",
                 "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               )}
@@ -178,7 +178,7 @@ export function LodgingRoster({
                 onClick={handleAssign}
                 disabled={isPending || !selectedMemberId}
                 className={cn(
-                  "rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground",
+                  "rounded-xs bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground",
                   "disabled:cursor-not-allowed disabled:opacity-60"
                 )}
               >

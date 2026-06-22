@@ -106,7 +106,7 @@ function ComposerForm({ tripId }: { tripId: string }) {
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-4"
+      className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-4"
       noValidate
     >
       <div className="flex flex-col gap-1.5">

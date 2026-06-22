@@ -88,7 +88,7 @@ export function TripNotesEditor({
           <textarea
             {...register("notes")}
             aria-labelledby="trip-notes-heading"
-            className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-y"
+            className="w-full min-h-[120px] rounded-xs border border-input bg-background px-3 py-2 text-sm resize-y"
             placeholder={M3_UI_STRINGS.tripNotes_placeholder}
           />
           {errorMessage ? (
@@ -100,7 +100,7 @@ export function TripNotesEditor({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="h-11 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+              className="h-11 rounded-xs bg-primary px-4 text-sm font-medium text-primary-foreground"
             >
               {M3_UI_STRINGS.tripNotes_save_cta}
             </button>
@@ -108,7 +108,7 @@ export function TripNotesEditor({
               type="button"
               onClick={handleCancel}
               disabled={isSubmitting}
-              className="h-11 rounded-md border border-input px-4 text-sm font-medium"
+              className="h-11 rounded-xs border border-input px-4 text-sm font-medium"
             >
               {M3_UI_STRINGS.tripNotes_cancel_cta}
             </button>
@@ -129,7 +129,7 @@ export function TripNotesEditor({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="mt-2 h-11 rounded-md border border-input px-4 text-sm font-medium"
+              className="mt-2 h-11 rounded-xs border border-input px-4 text-sm font-medium"
             >
               {M3_UI_STRINGS.tripNotes_edit_cta}
             </button>

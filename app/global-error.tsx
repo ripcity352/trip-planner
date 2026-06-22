@@ -39,7 +39,7 @@ export default function GlobalError({
         <button
           type="button"
           onClick={reset}
-          className="bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium"
+          className="bg-primary text-primary-foreground rounded-xs px-4 py-2 text-sm font-medium"
         >
           {ERROR_PAGE_COPY.retry}
         </button>

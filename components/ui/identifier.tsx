@@ -88,7 +88,7 @@ export function Identifier({
                   ? "identifier-copy-error"
                   : undefined
             }
-            className="shrink-0 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            className="shrink-0 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xs"
           >
             {copied
               ? M3_UI_STRINGS.identifier_copied

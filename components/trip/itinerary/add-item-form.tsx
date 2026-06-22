@@ -127,7 +127,7 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
   };
 
   const inputClass = cn(
-    "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
+    "w-full rounded-xs border border-border bg-background px-3 py-2 text-sm",
     "placeholder:text-muted-foreground",
     "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
     "disabled:cursor-not-allowed disabled:opacity-60"
@@ -266,7 +266,7 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
           type="submit"
           disabled={isSubmitting}
           className={cn(
-            "focus-visible:ring-ring rounded-full bg-primary px-5 py-2 text-sm font-medium text-primary-foreground",
+            "focus-visible:ring-ring rounded-xs bg-primary px-5 py-2 text-sm font-medium text-primary-foreground",
             "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60"
           )}
@@ -278,7 +278,7 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
           onClick={onCancel}
           disabled={isSubmitting}
           className={cn(
-            "focus-visible:ring-ring rounded-full border border-border bg-muted px-5 py-2 text-sm font-medium text-muted-foreground",
+            "focus-visible:ring-ring rounded-xs border border-border bg-muted px-5 py-2 text-sm font-medium text-muted-foreground",
             "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60"
           )}

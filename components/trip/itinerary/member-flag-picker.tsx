@@ -214,7 +214,7 @@ export function MemberFlagPicker({
           maxLength={FLAG_MAX}
           disabled={isPending}
           className={cn(
-            "rounded-md border border-border bg-background px-3 py-1.5 text-sm",
+            "rounded-xs border border-border bg-background px-3 py-1.5 text-sm",
             "placeholder:text-muted-foreground",
             "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60"
@@ -241,7 +241,7 @@ export function MemberFlagPicker({
           rows={2}
           disabled={isPending}
           className={cn(
-            "rounded-md border border-border bg-background px-3 py-1.5 text-sm resize-none",
+            "rounded-xs border border-border bg-background px-3 py-1.5 text-sm resize-none",
             "placeholder:text-muted-foreground",
             "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60"
@@ -252,7 +252,7 @@ export function MemberFlagPicker({
           type="submit"
           disabled={isPending || !freeformFlag.trim()}
           className={cn(
-            "focus-visible:ring-ring self-start rounded-full border px-4 py-1.5 text-xs font-medium transition-colors",
+            "focus-visible:ring-ring self-start rounded-xs border px-4 py-1.5 text-xs font-medium transition-colors",
             "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60",
             "border-border bg-muted text-muted-foreground hover:bg-muted/80"

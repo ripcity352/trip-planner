@@ -70,7 +70,7 @@ export function ItemCard({
   // Celebrant sees only the placeholder
   if (isHiddenFromCelebrant && isCelebrant) {
     return (
-      <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
+      <div className="rounded-md border border-border bg-muted/40 px-4 py-3">
         <p className="text-muted-foreground text-sm font-medium italic">
           {M3_UI_STRINGS.itinerary_item_hidden_for_celebrant}
         </p>
@@ -82,7 +82,7 @@ export function ItemCard({
   const KindIcon = KIND_ICON[item.kind];
 
   return (
-    <article className="flex flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3">
+    <article className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3">
       {/* Header row: kind icon + title + time + edit affordance (organizer) */}
       <div className="flex items-start gap-2">
         <KindIcon

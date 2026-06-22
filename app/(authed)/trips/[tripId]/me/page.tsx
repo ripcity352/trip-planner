@@ -66,7 +66,7 @@ export default async function MePage({ params }: PageProps) {
       </header>
 
       <div className="flex flex-col gap-4">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <div className="rounded-md border border-border bg-card p-4 shadow-sm">
           <dl className="flex flex-col gap-3">
             <div>
               <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -88,7 +88,7 @@ export default async function MePage({ params }: PageProps) {
         {/* Sign-in & security navigation link (M5/PR4) */}
         <Link
           href="/account/sign-in-and-security"
-          className="focus-visible:ring-ring flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          className="focus-visible:ring-ring flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <span>{AUTH_COPY.accountSecurity_meNavLink}</span>
           <svg
@@ -110,7 +110,7 @@ export default async function MePage({ params }: PageProps) {
         <form action={signOut}>
           <button
             type="submit"
-            className="focus-visible:ring-ring w-full rounded-full border border-border bg-muted px-5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            className="focus-visible:ring-ring w-full rounded-xs border border-border bg-muted px-5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             {M4_UI_STRINGS.me_sign_out_cta}
           </button>

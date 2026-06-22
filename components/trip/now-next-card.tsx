@@ -38,7 +38,7 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
   // No items at all — show the empty itinerary nudge
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <div className="rounded-md border border-border bg-card px-4 py-3">
         <p className="text-muted-foreground text-sm">
           {M3_UI_STRINGS.nowNext_no_items_yet}
         </p>
@@ -62,7 +62,7 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
       daysSinceEnd === 1 ? "1 day" : `${daysSinceEnd} days`;
 
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-3 space-y-1">
+      <div className="rounded-md border border-border bg-card px-4 py-3 space-y-1">
         <p className="text-sm font-medium">
           {M3_UI_STRINGS.nowNext_posttrip_template.replace("{days}", daysLabel)}
         </p>
@@ -76,7 +76,7 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
 
   // In-trip or pre-trip: show now/next items
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3 space-y-3">
+    <div className="rounded-md border border-border bg-card px-4 py-3 space-y-3">
       {currentItem ? (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

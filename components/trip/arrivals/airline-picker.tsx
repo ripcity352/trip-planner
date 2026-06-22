@@ -154,7 +154,7 @@ export function AirlinePicker({
   // ── classes ───────────────────────────────────────────────────────────────
 
   const inputClass = cn(
-    "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
+    "w-full rounded-xs border border-border bg-background px-3 py-2 text-sm",
     "placeholder:text-muted-foreground",
     "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
     "disabled:cursor-not-allowed disabled:opacity-60",
@@ -216,7 +216,7 @@ export function AirlinePicker({
               onClick={handleClear}
               disabled={disabled}
               className={cn(
-                "absolute right-2 flex h-6 w-6 items-center justify-center rounded-full",
+                "absolute right-2 flex h-6 w-6 items-center justify-center rounded-xs",
                 "text-muted-foreground hover:text-foreground",
                 "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none",
                 "disabled:cursor-not-allowed disabled:opacity-60"
