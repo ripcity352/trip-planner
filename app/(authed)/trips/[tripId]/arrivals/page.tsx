@@ -62,6 +62,7 @@ export default async function ArrivalsPage({ params }: PageProps) {
         legs={legs}
         myTripMemberId={viewer.id}
         tripMembers={tripMembers}
+        tripTimezone={trip.timezone}
       />
     </section>
   );

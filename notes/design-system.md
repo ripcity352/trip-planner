@@ -306,6 +306,24 @@ Cross-reference: §"Component bindings" (#183) maps each primitive to its
 real consumer surfaces; the three-layer ADR (`decisions.md`, 2026-06-08)
 explains the pair-shipping order.
 
+### Timezone axis
+
+Every absolute date/time render resolves in the trip's timezone
+(`trips.timezone`, an IANA string, non-null) via `formatInTimeZone` from
+`date-fns-tz`, never the ambient runtime or browser timezone. Ambient
+resolution is what produced the React #418 SSR/CSR hydration mismatch
+(#254) — the Vercel server ran in UTC while the browser ran in the user's
+local timezone, so the same instant formatted differently on each side.
+Until the deferred `<TimeOfDay>` / `<DateRange>` primitives exist (gated
+feat #214), all absolute time renders must go through
+`lib/utils/format-trip-tz.ts` (`formatTripDateTime`), which wraps
+`formatInTimeZone` and handles bad-data fallback.
+
+Note: the travel leg **form** (`travel-leg-form.tsx`) still uses the older
+`lib/utils/datetime.ts` converters for its `<input type="datetime-local">`
+binding. That is a separate, latent inconsistency — a behavioral change with
+data implications — not addressed here. Tracked as a follow-up to #254.
+
 ---
 
 ## Spacing

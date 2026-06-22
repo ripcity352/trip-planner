@@ -8,12 +8,17 @@
  * Visibility rule: All trip members can read all legs (RLS allows trip-wide
  * SELECT). Edit is owner-only — the UI hides the affordance as a UX detail;
  * the server action enforces it as a security gate.
+ *
+ * Datetimes are rendered via `formatTripDateTime` (lib/utils/format-trip-tz)
+ * which uses `formatInTimeZone` from date-fns-tz. This makes the output
+ * deterministic across runtimes (server UTC vs browser-local) — fixing the
+ * React #418 hydration mismatch (#254).
  */
 
-import { format, parseISO } from "date-fns";
 import { Plane, Train, Car, Luggage } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { formatTripDateTime } from "@/lib/utils/format-trip-tz";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import type { TravelLeg, TravelLegKind } from "@/lib/db/types";
 
@@ -39,12 +44,19 @@ export interface TravelLegCardProps {
   myTripMemberId: string;
   /** Display name of the member who owns this leg. */
   ownerName: string;
+  /**
+   * IANA timezone string for the trip (e.g. `"America/New_York"`).
+   * All departure/arrival times are rendered in this timezone via
+   * `formatInTimeZone` — making output identical on SSR and CSR (#254).
+   */
+  tripTimezone: string;
 }
 
 export function TravelLegCard({
   leg,
   myTripMemberId,
   ownerName,
+  tripTimezone,
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
 
@@ -72,7 +84,7 @@ export function TravelLegCard({
       </div>
 
       {/* Depart + Arrive row */}
-      {(leg.depart_at || leg.arrive_at) ? (
+      {leg.depart_at || leg.arrive_at ? (
         <div className="flex flex-wrap gap-4">
           {leg.depart_at ? (
             <div className="flex flex-col">
@@ -80,7 +92,7 @@ export function TravelLegCard({
                 {M3_UI_STRINGS.arrivals_leg_form_depart_label}
               </span>
               <span className="text-sm">
-                {formatDatetime(leg.depart_at)}
+                {formatTripDateTime(leg.depart_at, tripTimezone)}
               </span>
             </div>
           ) : null}
@@ -90,7 +102,7 @@ export function TravelLegCard({
                 {M3_UI_STRINGS.arrivals_leg_form_arrive_label}
               </span>
               <span className="text-sm">
-                {formatDatetime(leg.arrive_at)}
+                {formatTripDateTime(leg.arrive_at, tripTimezone)}
               </span>
             </div>
           ) : null}
@@ -113,15 +125,4 @@ export function TravelLegCard({
       ) : null}
     </article>
   );
-}
-
-function formatDatetime(iso: string): string {
-  try {
-    return format(parseISO(iso), "MMM d, h:mm a");
-  } catch (err) {
-    // Bad-data fallback — surface to logs so the orchestrator notices, but
-    // don't let a single malformed timestamp blow up the manifest render.
-    console.error("[arrivals] formatDatetime failed:", { iso, err });
-    return iso;
-  }
 }
