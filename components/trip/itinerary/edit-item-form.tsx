@@ -12,6 +12,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { updateItineraryItem, deleteItineraryItem } from "@/lib/actions/itinerary";
@@ -192,7 +193,7 @@ export function EditItemForm({
           className={inputClass}
         />
         {errors.title ? (
-          <p className="text-destructive mt-1 text-xs">{errors.title.message}</p>
+          <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.title.message}</p>
         ) : null}
       </div>
 
@@ -293,7 +294,7 @@ export function EditItemForm({
 
       {/* Server error */}
       {serverErrorKey ? (
-        <p role="alert" className="text-destructive text-sm">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
           {ERRORS[serverErrorKey]}
         </p>
       ) : null}
@@ -335,8 +336,13 @@ export function EditItemForm({
             "focus-visible:ring-ring rounded-full border px-5 py-2 text-sm font-medium",
             "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-60",
+            // #210 two-step: confirm state escalates the persimmon outline
+            // (border 40%→full + a persistent wash). NOT a solid bg-destructive
+            // fill — --destructive-foreground is deliberately unbound
+            // (globals.css §destructive), so the solid-fill text color was a
+            // no-op; the contract bans the persimmon flood regardless.
             deleteConfirm
-              ? "border-destructive bg-destructive text-destructive-foreground"
+              ? "border-destructive bg-destructive/10 text-destructive"
               : "border-destructive/40 text-destructive hover:bg-destructive/10"
           )}
         >

@@ -24,6 +24,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { setTripNotes } from "@/lib/actions/trip-notes";
+import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
 
@@ -90,7 +92,7 @@ export function TripNotesEditor({
             placeholder={M3_UI_STRINGS.tripNotes_placeholder}
           />
           {errorMessage ? (
-            <p className="text-destructive text-sm" role="status" aria-live="polite">
+            <p className={cn(ERROR_LINE_CLASS, "text-sm")} role="status" aria-live="polite">
               {errorMessage}
             </p>
           ) : null}

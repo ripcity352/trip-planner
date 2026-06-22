@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { castDateVoteAction } from "@/lib/actions/date-poll";
 import type { DatePollCandidateView } from "@/lib/db/types";
 
@@ -151,7 +152,7 @@ function CandidateMemberCard({ row }: { row: DatePollCandidateView }) {
             .replace("{no}", String(row.no_votes))}
         </p>
         {errorKey ? (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
             {ERRORS[errorKey]}
           </p>
         ) : null}

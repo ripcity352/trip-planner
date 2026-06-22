@@ -13,6 +13,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import {
@@ -212,7 +213,7 @@ export function LodgingRoster({
       ) : null}
 
       {errorKey ? (
-        <p role="alert" className="text-destructive text-xs">
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-xs")}>
           {ERRORS[errorKey]}
         </p>
       ) : null}
