@@ -54,6 +54,19 @@ function isTimeoutAllow(result: RateLimitResult): boolean {
 // --- config ------------------------------------------------------------
 
 /**
+ * Provider-controlled hosts for the rate-limit Redis. `.upstash.io` covers
+ * both direct Upstash and the Vercel-Marketplace Upstash integration;
+ * `.kv.vercel-storage.com` covers Vercel-KV REST hosts specifically (bare
+ * `.vercel-storage.com` also fronts Blob/Postgres, which we don't want).
+ * An env-var write to any other host is refused so a leaked/hostile env
+ * can't redirect the Bearer token to an attacker (#140).
+ */
+const ALLOWED_UPSTASH_HOST_SUFFIXES = [
+  ".upstash.io",
+  ".kv.vercel-storage.com",
+] as const;
+
+/**
  * Default budget: 30 requests / 60s per identifier per scope. Generous
  * enough that a real user double-tapping in a flaky cell signal never
  * hits it; tight enough that a misbehaving client gets capped fast.
@@ -392,6 +405,45 @@ export function __resolveUpstashCreds(
   const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
   const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
+
+  // Hostname allow-list (#140): refuse any URL whose host is not a known
+  // provider-controlled suffix. These creds are consumed at limiter
+  // CONSTRUCTION (cached in getLimiter), so a hostile env-var write would
+  // otherwise forward the Bearer token to an attacker the moment the
+  // limiter is first built.
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    console.error(
+      "[rate-limit][SECURITY] refusing malformed Upstash URL",
+      { url },
+    );
+    return null;
+  }
+
+  // Require HTTPS: a hostile env writer could downgrade https→http and
+  // expose the Bearer token to a network MITM even on a valid host.
+  if (parsed.protocol !== "https:") {
+    console.error(
+      "[rate-limit][SECURITY] refusing non-HTTPS Upstash URL",
+      { protocol: parsed.protocol },
+    );
+    return null;
+  }
+
+  const hostname = parsed.hostname;
+  const allowed = ALLOWED_UPSTASH_HOST_SUFFIXES.some((suffix) =>
+    hostname.endsWith(suffix),
+  );
+  if (!allowed) {
+    console.error(
+      "[rate-limit][SECURITY] refusing Upstash URL with disallowed host",
+      { hostname },
+    );
+    return null;
+  }
+
   return { url, token };
 }
 

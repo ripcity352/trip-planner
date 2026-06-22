@@ -130,6 +130,145 @@ describe("__resolveUpstashCreds (env-var precedence, #124)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Hostname allow-list — #140 defense-in-depth
+// ---------------------------------------------------------------------------
+
+describe("__resolveUpstashCreds — hostname allow-list (#140)", () => {
+  // A hostile env-var write (KV_REST_API_URL=https://attacker.example.com)
+  // would forward the Bearer token to an attacker when the limiter is first
+  // constructed. The allow-list refuses any URL that isn't HTTPS or whose
+  // hostname does not end with `.upstash.io` or `.kv.vercel-storage.com`.
+
+  it("rejects a non-Upstash hostname and returns null", () => {
+    // Arrange: spy BEFORE the call so we capture the log.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Act
+    const result = __resolveUpstashCreds({
+      KV_REST_API_URL: "https://attacker.example.com",
+      KV_REST_API_TOKEN: "bad-tok",
+    });
+
+    // Assert: creds withheld.
+    expect(result).toBeNull();
+
+    // Assert: loud security log was emitted (Sentry picks this up).
+    expect(errorSpy).toHaveBeenCalled();
+    const msg = errorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/\[rate-limit\]\[SECURITY\]/);
+
+    errorSpy.mockRestore();
+  });
+
+  it("rejects a malformed URL (new URL() throws) and returns null", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = __resolveUpstashCreds({
+      KV_REST_API_URL: "not a url",
+      KV_REST_API_TOKEN: "tok",
+    });
+
+    expect(result).toBeNull();
+    // The parse failure is also logged so it surfaces in Sentry — assert
+    // the [SECURITY] tag like the other rejection paths.
+    expect(errorSpy).toHaveBeenCalled();
+    const msg = errorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/\[rate-limit\]\[SECURITY\]/);
+
+    errorSpy.mockRestore();
+  });
+
+  it("rejects a non-HTTPS (http://) URL on a valid host and returns null", () => {
+    // A hostile env writer could downgrade https→http to expose the Bearer
+    // token to a network MITM even when the hostname is allow-listed.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = __resolveUpstashCreds({
+      KV_REST_API_URL: "http://x.upstash.io",
+      KV_REST_API_TOKEN: "tok",
+    });
+
+    expect(result).toBeNull();
+    expect(errorSpy).toHaveBeenCalled();
+    const msg = errorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/\[rate-limit\]\[SECURITY\]/);
+
+    errorSpy.mockRestore();
+  });
+
+  it("rejects a bare .vercel-storage.com host (Blob/Postgres, not KV)", () => {
+    // The suffix is narrowed to `.kv.vercel-storage.com`; a bare
+    // `foo.vercel-storage.com` (Blob/Postgres front) must NOT pass.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = __resolveUpstashCreds({
+      KV_REST_API_URL: "https://foo.vercel-storage.com",
+      KV_REST_API_TOKEN: "tok",
+    });
+
+    expect(result).toBeNull();
+    expect(errorSpy).toHaveBeenCalled();
+    const msg = errorSpy.mock.calls[0]?.[0] as string;
+    expect(msg).toMatch(/\[rate-limit\]\[SECURITY\]/);
+
+    errorSpy.mockRestore();
+  });
+
+  it("accepts a direct Upstash host (.upstash.io)", () => {
+    const result = __resolveUpstashCreds({
+      KV_REST_API_URL: "https://something.upstash.io",
+      KV_REST_API_TOKEN: "tok",
+    });
+    expect(result).toEqual({ url: "https://something.upstash.io", token: "tok" });
+  });
+
+  it("accepts a Vercel-KV host (.kv.vercel-storage.com)", () => {
+    const result = __resolveUpstashCreds({
+      KV_REST_API_URL: "https://something.kv.vercel-storage.com",
+      KV_REST_API_TOKEN: "kv-tok",
+    });
+    expect(result).toEqual({
+      url: "https://something.kv.vercel-storage.com",
+      token: "kv-tok",
+    });
+  });
+
+  it("does not spoof .upstash.io via a hostname like evil-upstash.io", () => {
+    // The leading dot in the suffix is deliberate: `evil-upstash.io` does NOT
+    // end with `.upstash.io`, so it must be rejected.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = __resolveUpstashCreds({
+      KV_REST_API_URL: "https://evil-upstash.io",
+      KV_REST_API_TOKEN: "evil-tok",
+    });
+
+    expect(result).toBeNull();
+    expect(errorSpy).toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  it("does NOT log the token in any error branch", () => {
+    // Paranoia check: even in an error path we must never emit the token.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    __resolveUpstashCreds({
+      KV_REST_API_URL: "https://attacker.example.com",
+      KV_REST_API_TOKEN: "super-secret-token",
+    });
+
+    // All console.error calls: none should contain the token value.
+    for (const call of errorSpy.mock.calls) {
+      const serialised = JSON.stringify(call);
+      expect(serialised).not.toContain("super-secret-token");
+    }
+
+    errorSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // W0 D2 — AUTH_OTP_VERIFY budget + #139 fail-closed posture assert
 // ---------------------------------------------------------------------------
 
