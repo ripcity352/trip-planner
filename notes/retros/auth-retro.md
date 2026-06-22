@@ -128,3 +128,39 @@ gate).
 **Bright line unchanged:** AUTH shipped WITH the real-trip retro gate
 STILL in place. M6 features remain gated — same line as M4/M5/DS/CARRY.
 No infra wave lifts it.
+
+---
+
+## Addendum — production walk (2026-06-21)
+
+The operator ran the prod walk on travelston.com. Outcome:
+
+- **`[v]` EARNED on prod:** #263 (anonymous landing affordance, incognito),
+  #122 (`/login` surface), #219 (real `/invite/[token]` magazine hero + the
+  OG card unfurling in a chat), #106 (POST-only accept; direct GET refused).
+  These were `[d]`+preview-smoke at closure; the walk upgraded them to `[v]`.
+
+- **#255 NOT exercised — and a debugging lesson.** State B rendered as
+  **State A** during the walk, which *looked* like a #233 regression.
+  Systematic debugging (Iron Law: root-cause before fix) traced it to a
+  **misidentified account**, not a bug: the account walked
+  (`carlston.chang@…`) was created 2026-05-20 and **has a real password**
+  (confirmed via a scoped read: `encrypted_password` set, `has_password=true`),
+  so State A was *correct*. Signing in via an OTP code threw the read — OTP
+  sign-in works for any existing account and does not imply passwordlessness.
+  **No code changed; nearly "fixed" a non-bug.**
+
+- **Real finding (spec, not bug):** **State B is currently unreachable through
+  the app UI.** Every account-creation path sets a password (`signUpAction`),
+  OTP won't create one (`shouldCreateUser:false`, anti-phantom-account), and
+  Google OAuth is off — so a genuinely passwordless account (the only thing
+  that renders State B) is producible only via **Google OAuth** or a
+  **Supabase admin passwordless invite** on a never-used email. State B is
+  effectively dormant until OAuth ships — consistent with its design intent
+  (built for OAuth users). #255's `[v]` therefore bundles with #232's OAuth
+  enablement; it is not independently walkable today.
+
+- **Process note:** the walk re-validated that real-account `[v]` walks catch
+  what preview smokes and unit tests cannot — here, an account-identity
+  confusion that a fixture would never surface — and that the Iron Law
+  prevented a wasted "fix" of correct behavior.
