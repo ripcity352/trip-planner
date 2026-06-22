@@ -327,20 +327,31 @@ Vercel preview, not travelston.com. **Does NOT lift the M6 gate.** See
 `notes/retros/auth-retro.md` and the decisions.md "AUTH — milestone closed"
 ADR.
 
+**DS radius/error-surface reconcile — Closed (2026-06-22).** The two
+CARRY-deferred call-site reconciles, run as a `/goal`-scoped mini-wave:
+**#301** (error-surface text → #209 ink+hairline via `lib/ui/error-surface.ts`;
+PR #337) and **#304** (radius scale rebased to polar literals + 50 call
+sites re-pointed in one PR; the 16 pill action-CTAs sharpened to the 2px
+hairline, ESLint rule (d) tightened to ban `rounded-full` on buttons;
+PR #339). ZERO schema / server actions / feature surface — **does NOT lift
+the M6 gate.** See `notes/decisions.md` "#301 + #304 — design-system
+radius / error-surface reconcile" ADR. The authed-surface 375px `[v]` walk
+is operator-gated (carried forward).
+
 **Next:** real-trip retrospective still gates M6 — same bright line as
 M4/M5. **No infra wave lifts the gate.** Open carry-backs / follow-ups:
 - **#232** — OAuth-existing-user detection — blocked on a human step
   (enable Google provider in Supabase); producer+consumer in ONE PR
 - **#254** — React #418 hydration on `/arrivals`
 - **#255** — fresh OTP-only State-B `[v]` walk (needs Carl); bundle with
-  the #263/#122/#219 prod `[v]` walks + #232's OAuth round-trip once the
-  Google provider is enabled
-- **#301** — error-surface text wears persimmon where #209 specs
-  ink+hairline (~34 sites; from the #297 audit)
-- **#304** — radius reconcile: bind polar scale + re-point 46 call
-  sites (gated on §Radius spec ratifications; pairs well with #301)
+  the #263/#122/#219 prod `[v]` walks, the **#301/#304 authed-radius
+  `[v]` walk**, + #232's OAuth round-trip once the Google provider is on
 - **#298** — eslint 9→10 major (deferred; must pass the #182
   rule-fires-on-fixture test under eslint 10 first)
+- **#299** — supabase-group dependabot bump fails CI (held; runtime dep —
+  needs a look before merge)
+- **#315** — tailwind-group dependabot bump has a merge conflict
+  (dependabot to rebase; routine devDep)
 - `notes/database-workflow.md` is stale on deployment reality — the
   lone Supabase project serves travelston.com and CI pushes migrations
   to it on merge (no soak step exists); update the doc
