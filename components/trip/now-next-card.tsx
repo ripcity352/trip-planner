@@ -24,6 +24,7 @@ import { differenceInCalendarDays } from "date-fns";
 
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { whatsHappeningNow } from "@/lib/utils/whats-happening-now";
+import { parseDateOnly } from "@/lib/utils/date-only";
 import type { ItineraryItem, Trip } from "@/lib/db/types";
 
 interface NowNextCardProps {
@@ -52,7 +53,7 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
   // itself doesn't render "Trip wrapped 0 days ago." — voice-test fail.
   const daysSinceEnd =
     trip.ends_at !== null
-      ? differenceInCalendarDays(now, new Date(trip.ends_at))
+      ? differenceInCalendarDays(now, parseDateOnly(trip.ends_at))
       : -1;
   const isPostTrip =
     currentItem === null && nextItem === null && daysSinceEnd >= 1;

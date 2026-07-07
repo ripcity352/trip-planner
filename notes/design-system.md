@@ -324,6 +324,20 @@ Note: the travel leg **form** (`travel-leg-form.tsx`) still uses the older
 binding. That is a separate, latent inconsistency — a behavioral change with
 data implications — not addressed here. Tracked as a follow-up to #254.
 
+### Parsing axis (date-only columns)
+
+`trips.starts_at` / `trips.ends_at` are Postgres `date` columns —
+`'YYYY-MM-DD'` strings with no time-of-day or offset component.
+**Never parse a date-only string with `new Date(dateString)`** — the
+native `Date` constructor treats a bare `'YYYY-MM-DD'` as UTC midnight,
+which renders one calendar day early anywhere west of UTC (all of the
+US). Use `parseDateOnly()` from `lib/utils/date-only.ts` (a thin
+`date-fns` `parseISO` wrapper), which parses the same string as local
+midnight instead. `app/(authed)/trips/[tripId]/dates/_format.ts`
+already used `parseISO` directly for this reason before this axis was
+named; `parseDateOnly` is the shared primitive going forward so new
+call sites don't rediscover the hazard by shipping the bug first. (#350)
+
 ---
 
 ## Spacing

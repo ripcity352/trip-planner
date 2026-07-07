@@ -12,6 +12,7 @@ import {
 import { listMyTrips } from "@/lib/db/trips";
 import { EMPTY_STATES, EMPTY_STATE_CTAS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { createClient } from "@/lib/supabase/server";
+import { parseDateOnly } from "@/lib/utils/date-only";
 import type { Trip } from "@/lib/db/types";
 
 // Defensive fallback: if the CTA palette is ever stripped down, the
@@ -119,13 +120,13 @@ function TripCard({ trip }: { trip: Trip }) {
  */
 function formatTripDates(trip: Trip): string {
   if (trip.starts_at && trip.ends_at) {
-    return `${format(new Date(trip.starts_at), "MMM d")} – ${format(
-      new Date(trip.ends_at),
+    return `${format(parseDateOnly(trip.starts_at), "MMM d")} – ${format(
+      parseDateOnly(trip.ends_at),
       "MMM d"
     )}`;
   }
   if (trip.starts_at) {
-    return format(new Date(trip.starts_at), "MMM d");
+    return format(parseDateOnly(trip.starts_at), "MMM d");
   }
   return "";
 }

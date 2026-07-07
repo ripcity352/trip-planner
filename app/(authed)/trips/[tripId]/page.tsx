@@ -54,6 +54,7 @@ import {
 import { getItineraryByTrip } from "@/lib/db/itinerary";
 import { getTripNotes } from "@/lib/db/trip-notes";
 import { createClient } from "@/lib/supabase/server";
+import { parseDateOnly } from "@/lib/utils/date-only";
 import { M2_UI_STRINGS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Trip } from "@/lib/db/types";
 
@@ -217,13 +218,13 @@ export default async function TripDashboardPage({ params }: PageProps) {
 
 function formatTripDates(trip: Trip): string {
   if (trip.starts_at && trip.ends_at) {
-    return `${format(new Date(trip.starts_at), "MMM d")} – ${format(
-      new Date(trip.ends_at),
+    return `${format(parseDateOnly(trip.starts_at), "MMM d")} – ${format(
+      parseDateOnly(trip.ends_at),
       "MMM d"
     )}`;
   }
   if (trip.starts_at) {
-    return format(new Date(trip.starts_at), "MMM d");
+    return format(parseDateOnly(trip.starts_at), "MMM d");
   }
   return M2_UI_STRINGS.dashboard_dates_unset;
 }
