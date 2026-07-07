@@ -176,7 +176,9 @@ function VoteChip({ label, active, onClick, disabled }: VoteChipProps) {
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "focus-visible:ring-ring inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+        // Hit-slop (#F4): 36px visual -> 44px effective, y-only. Chips sit
+        // in a gap-2 (8px) row — x-slop would overlap the neighboring chip.
+        "focus-visible:ring-ring relative inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors after:absolute after:-inset-y-1 after:content-[''] focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
         active
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-muted text-muted-foreground hover:bg-muted/80"

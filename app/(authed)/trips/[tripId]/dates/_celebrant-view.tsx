@@ -151,7 +151,10 @@ function CandidateCelebrantCard({
                 disabled={isPending}
                 onClick={() => handleSet(chip.mark)}
                 className={cn(
-                  "focus-visible:ring-ring inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+                  // Hit-slop (#F4): 36px visual -> 44px effective, y-only.
+                  // Chips sit in a gap-2 (8px) row — x-slop would overlap
+                  // the neighboring chip's hit box.
+                  "focus-visible:ring-ring relative inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors after:absolute after:-inset-y-1 after:content-[''] focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
                   isActive
                     ? // no-go is a state signal, not an error: §State signals
                       // specs `declined` as a calm, non-persimmon ink (#301).
