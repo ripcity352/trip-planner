@@ -55,15 +55,15 @@ test.describe("M2 golden path — anonymous invite preview", () => {
       page.getByText(new RegExp(SEED_TRIP_NAME, "i"))
     ).toBeVisible();
 
-    // Dates branch: either a concrete date range OR the `Dates TBD`
-    // fallback renders. The seed below leaves dates null, so the
-    // unset copy is what we expect — but we accept either to stay
-    // resilient if the seed evolves later.
+    // Dates branch: the seed below leaves dates null, so the `Dates TBD`
+    // unset copy is what we expect. (Previously this asserted a broad
+    // `Dates TBD|\d{4}|jan|feb|...` alternation meant to "stay resilient
+    // if the seed evolves" — but `\d{4}` alone matches any 4-digit run
+    // anywhere on the page, including an unrelated H1/test-name string,
+    // producing a strict-mode multi-match violation. Assert the exact
+    // copy the seed actually produces instead of a permissive fallback.)
     const datesUnsetCopy = M2_UI_STRINGS.invitePreview_dates_unset;
-    const datesAnyDate = /\d{4}|\bjan|\bfeb|\bmar|\bapr|\bmay|\bjun|\bjul|\baug|\bsep|\boct|\bnov|\bdec/i;
-    await expect(
-      page.getByText(new RegExp(`${datesUnsetCopy}|${datesAnyDate.source}`, "i"))
-    ).toBeVisible();
+    await expect(page.getByText(datesUnsetCopy, { exact: true })).toBeVisible();
 
     // The warm invite hook renders (magazine layout, #219). The H1 is
     // "{Host} wants you on this one." — host-derived but the trailing
@@ -83,22 +83,19 @@ test.describe("M2 golden path — anonymous invite preview", () => {
       page.getByText(new RegExp(anyBucketCopy, "i"))
     ).toBeVisible();
 
-    // Anonymous CTA: links to the login bounce with the accept URL
-    // as `next`.
-    const cta = page.getByRole("link", {
-      name: new RegExp(M2_UI_STRINGS.invitePreview_cta_anon, "i"),
-    });
-    await expect(cta).toBeVisible();
-    await expect(cta).toHaveAttribute(
-      "href",
-      `/login?next=/invite/${token}/accept`
-    );
-
-    // Click the CTA and assert we land on the login bounce.
-    await cta.click();
-    await expect(page).toHaveURL(
-      new RegExp(`/login\\?next=/invite/${token}/accept`)
-    );
+    // Anonymous CTA: M5/PR2 replaced the `/login?next=` bounce link with
+    // an inline LoginForm rendered directly on this page (the anon-CTA
+    // copy is now a lead-in sentence above the form, not a link name).
+    // Full inline-auth interaction coverage lives in
+    // invite-inline-auth.spec.ts; here we just confirm the bounce link
+    // is gone and the inline form is present.
+    await expect(
+      page.getByText(M2_UI_STRINGS.invitePreview_cta_anon)
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /sign in to join/i })
+    ).not.toBeVisible();
+    await expect(page.getByLabel("Email")).toBeVisible();
 
     // Bucket-label hint used to silence the lint warning on the
     // expected-bucket constant.

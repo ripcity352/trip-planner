@@ -5,6 +5,159 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-07 — F10 — e2e-drift-hardening (extends the CARRY CI-trust ADR)
+
+**The gap, named.** An automated audit ran the full local e2e suite:
+95 passed, 72 failed, **zero app defects** among the failures. Every
+failure traced to the suite drifting out of sync with shipped UX (M5
+auth redesign, the radius/error-surface reconcile, the invite
+inline-auth PR) or to test-authoring bugs that were merely *masked* by
+earlier, louder failures in the same file. A red local suite with zero
+real regressions is a dead gate signal — the next genuine regression
+looks identical to the existing noise, so nobody will notice it. This
+extends the CARRY "CI-trust" ADR (2026-06-10) with the missing axis:
+**CI trust also requires e2e specs to track shipped UX and real backend
+behavior, not just green build/lint/unit gates.**
+
+**Root causes fixed (all test-only, zero app-code changes):**
+
+1. **Strict-mode collision.** `getByRole("button", {name:"Continue"})`
+   matched both "Continue" and "Continue with Google" (substring match).
+   Fixed with `{ name: "Continue", exact: true }` in
+   `login-flow.spec.ts` and `invite-inline-auth.spec.ts` (the pattern
+   `touch-targets.spec.ts` already used correctly for its own locators).
+2. **Copy drift.** `home.spec.ts` asserted the pre-rewrite hero
+   ("Bachelor Party Planner"); the shipped copy is "Plan the trip
+   without the group-chat chaos." (`app/page.tsx`).
+3. **Superseded UX.** `invite-flow.spec.ts` and `m2-golden-path.spec.ts`
+   asserted the pre-M5 "Sign in to join" → `/login?next=` bounce link.
+   M5/PR2 replaced it with an inline `<LoginForm>` on the same page —
+   see the "Invite redirect contract" memory note. Rewrote both specs to
+   assert the inline form is present and the bounce link is gone.
+4. **Server-side fetches can't be `page.route()`-mocked.** `invite_preview`
+   is fetched in a Server Component (`app/invite/[token]/page.tsx`) via
+   an anonymous Supabase client at render time — never a browser
+   request. `page.route("**/rest/v1/rpc/invite_preview**")` therefore
+   never intercepts anything; a hardcoded non-existent token always
+   404s regardless of the stub. **Same root cause, broader than
+   originally scoped**: `signInWithPasswordAction`, `requestEmailCode`,
+   `verifyEmailCodeAction`, and `signUpAction` are ALL Next.js Server
+   Actions (`"use server"` — `app/login/actions.ts`); the actual
+   Supabase call happens inside the Next.js server process, so
+   `page.route("**/auth/v1/token**" | "**/auth/v1/otp**")` is
+   structurally inert against them too. Some assertions in
+   `login-flow.spec.ts` happened to pass anyway because they only check
+   a transient `isPending` UI state (button label swaps to a spinner
+   during the async gap, regardless of the eventual real outcome) — a
+   weak-but-not-broken pattern, left as-is. Assertions that depend on
+   the REAL outcome (OTP-code transition, sign-in-then-redirect) were
+   rewritten to seed/use a real backend user instead of mocking:
+   - `e2e/_setup/seed-invite.ts` (new, DRY'd out of the pre-existing
+     `invite-flow.spec.ts` seeding code) seeds a real trip + organizer +
+     invite via the service-role key; `invite-inline-auth.spec.ts` now
+     drives against a real seeded invite instead of a hardcoded token.
+   - The OTP-dependent tests in `login-flow.spec.ts` /
+     `invite-inline-auth.spec.ts` use the real seeded fixture user
+     (`TEST_USER_EMAIL`, already provisioned by `_setup/auth.setup.ts`)
+     instead of a fictitious email — OTP sign-in can't create accounts
+     (`shouldCreateUser: false`, see the "State B is OAuth-only" memory
+     note), so a made-up email always fails the real request.
+   - `invite-inline-auth.spec.ts`'s "submitting password" test also
+     asserted a redirect straight to `/invite/<token>/accept`, which the
+     app never does — `LoginForm`'s `next` prop on that page is the
+     GET-navigable preview path itself (`invitePreviewPath`), never the
+     POST-only accept route (#316, "Invite redirect contract"). Fixed
+     to assert the real contract: back on the preview, now showing the
+     authed "Count me in" CTA.
+   - `login-flow.spec.ts`'s sign-up-flow tests used a hardcoded email
+     (`newuser@example.com`); once `signUpAction` genuinely creates that
+     account against the real local Supabase, every subsequent run's
+     "wrong password" premise stops being true (the account now exists
+     with that exact password) and the test silently starts exercising
+     a different code path. Fixed with a fresh unique email per run.
+5. **Overbroad regex.** `m2-golden-path.spec.ts` asserted
+   `/Dates TBD|\d{4}|jan|feb|.../` — the bare `\d{4}` alternative
+   matches any 4-digit run anywhere on the page (causing a strict-mode
+   multi-match), not just a real date. Tightened to the exact expected
+   copy for this seed (dates left null → "Dates TBD").
+6. **The fixture-trip helper contract.** Several specs found "a trip"
+   for the STORAGE_STATE_PATH fixture user via
+   `page.locator('a[href*="/trips/"]').first()`. That selector also
+   matches the "New trip" CTA (`href="/trips/new"`) — and the fixture
+   user, freshly created with zero trips, has nothing else to match, so
+   the locator silently resolves to the CTA and specs navigate to bogus
+   URLs like `/trips/new/itinerary` (which 404). Fixed at the pattern
+   level in `e2e/_setup/fixture-trip.ts`:
+   - `ensureFixtureTrip(userId)` — called once from `auth.setup.ts`
+     right after the fixture user's session is minted. Guarantees the
+     fixture user is an organizer member of at least one real
+     (non-deleted) trip, seeding one if none exists. Idempotent.
+   - `firstRealTripLink(page)` — the one correct "find a trip" locator
+     (`a[href*="/trips/"]:not([href="/trips/new"])`, the pattern
+     `touch-targets.spec.ts` already had right). Every spec that used
+     the bare selector (`m3-itinerary.spec.ts`, `m3-golden-path.spec.ts`,
+     `m4-axe-sweep.spec.ts`'s `getFirstTripHref`) now uses this helper.
+   - **`rsvp.spec.ts` had a sharper version of the same bug**: it seeded
+     a trip + organizer membership for a freshly-MINTED random user
+     (`auth.admin.createUser`), while the browser session
+     (`storageState: STORAGE_STATE_PATH`) authenticates as the
+     SEPARATE, deterministic fixture user. The fixture user was never a
+     member of the seeded trip, so the dashboard never rendered under
+     RLS. Fixed to seed the membership for the SAME fixture user the
+     storage state authenticates as (looked up by `TEST_USER_EMAIL`);
+     because that user is shared across the whole e2e run, `afterAll`
+     no longer deletes it — only the seeded trip is torn down.
+   - `m3-golden-path.spec.ts`'s dashboard test had a second, independent
+     bug once the fixture-trip fix let it actually reach the dashboard:
+     it asserted `getByRole("heading", ...)` for the four link-card
+     labels, but `<CardTitle>` (`components/ui/card.tsx`) renders a
+     styled `<div>`, not a semantic heading — so the role query can
+     never match even when the card is genuinely present. (The
+     sub-pages themselves, e.g. `/itinerary`, DO render a real `<h1>`
+     with the same copy — that's what `m3-itinerary.spec.ts` correctly
+     asserts.) Fixed to assert by text on the dashboard. Flagged as a
+     minor a11y observation (dashboard cards aren't exposed as headings
+     to assistive tech) — not fixed here (test-only cluster; app code
+     untouched).
+7. **Undeclared CI-only specs.** `account-change-password.spec.ts` and
+   `account-set-password.spec.ts` documented "CI only" in a file-header
+   comment but had no enforced guard, so a local run reported them
+   FAILED instead of SKIPPED. Added `test.skip(!process.env.CI, ...)` at
+   the top of each file.
+8. **Left untouched, as scoped:** `oauth-google.spec.ts` and
+   `login-magic-link.spec.ts` — both already excluded from the "must
+   pass" surface (the latter is the pre-M5-rename spec superseded by
+   `login-flow.spec.ts`; the former is explicitly `@skip`-tracked behind
+   #225's OAuth mock wiring).
+
+**Masthead-contrast follow-up (from PR #354).** #354 flagged that the
+`m4-axe-sweep.spec.ts` mobile-safari fails (root cause #6 above) were
+incidentally landing on 404 pages (`/trips/new/itinerary` etc.) with a
+1.95:1 masthead-header contrast reading. With the locator fixed so the
+sweep runs against REAL trip pages (home, itinerary, announcements,
+arrivals, roster, and the celebrant `/dates` vetoed-candidate variant),
+on both chromium and mobile-safari: **zero serious/critical axe
+violations.** The contrast reading does not reproduce on real pages —
+it was an artifact of axe running against the on-voice 404 template
+(which has different masthead treatment than authed trip pages), not a
+real trip-page contrast bug. No CSS follow-up needed from this finding.
+
+**The fixture-trip helper contract (for future specs).** Any e2e spec
+that needs "a trip" for the STORAGE_STATE_PATH fixture user must either:
+(a) seed its own deterministic trip **for that same fixture user**
+(look up the id via `TEST_USER_EMAIL`, never mint a separate user unless
+the test is deliberately about a second persona), or (b) rely on
+`ensureFixtureTrip`'s auth.setup.ts-seeded trip via
+`firstRealTripLink(page)`. Never hand-roll `a[href*="/trips/"]` — it
+always also matches `/trips/new`.
+
+**Result.** Before: 95 passed / 72 failed (local). After: full local
+suite green outside the two explicitly-excluded specs (oauth-google,
+login-magic-link) and the two CI-only specs (now skipped, not failed).
+Previously-failing specs re-run 3× for flake confidence — stable.
+
+---
+
 ## 2026-07-06 — #F9 — has_password self-heal on password sign-in
 
 **Context.** The `profiles.has_password` shadow column (#244, W0 D7) lets

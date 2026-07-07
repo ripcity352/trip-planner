@@ -8,15 +8,31 @@
  *   3. sign-up flow (wrong password → "Create account instead")
  *   4. sign-up for new email auto-suggestion
  *
- * Network intercepts: we stub Supabase auth endpoints so the spec runs
- * in CI without live credentials.
+ * Network intercepts (F10 follow-up finding): `signInWithPasswordAction`,
+ * `requestEmailCode`, `verifyEmailCodeAction`, and `signUpAction` are all
+ * Next.js Server Actions ("use server" — app/login/actions.ts). The
+ * actual Supabase call happens INSIDE the Next.js server process, never
+ * as a browser-issued request — so `page.route("**\/auth/v1/token**")` /
+ * `**\/auth/v1/otp**` can never intercept it (same class of bug as the
+ * invite_preview server-fetch issue, see `_setup/seed-invite.ts`). The
+ * `page.route()` calls below are dead weight kept only where a test's
+ * assertion doesn't actually depend on the real outcome (see per-test
+ * notes). The "code fallback" tests DO depend on a real backend
+ * response, so they use the real seeded fixture user
+ * (`TEST_USER_EMAIL`/`TEST_USER_PASSWORD`, provisioned by
+ * `_setup/auth.setup.ts`) instead of a fictitious email — OTP sign-in
+ * can't create new users (`shouldCreateUser: false`, CLAUDE.md "State B
+ * is OAuth-only"), so a made-up email always fails the real request.
  */
 
 import { test, expect } from "@playwright/test";
+import { TEST_USER_EMAIL } from "./_setup/seed-test-user";
 
-// Supabase auth endpoint patterns
+// Supabase auth endpoint pattern. Kept only where a test's assertion
+// doesn't depend on the real backend outcome (see file-header note) —
+// the mock itself is inert against the Server Action call path, but
+// harmless to leave as documentation of original intent.
 const SUPABASE_TOKEN_URL = "**/auth/v1/token**";
-const SUPABASE_OTP_URL = "**/auth/v1/otp**";
 
 test.describe("login — password sign-in", () => {
   test.use({ viewport: { width: 375, height: 812 } });
@@ -42,7 +58,7 @@ test.describe("login — password sign-in", () => {
 
     // email-only mode
     await page.getByLabel("Email").fill("dave@example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
 
     // password mode
     await expect(page.getByLabel("Password")).toBeVisible();
@@ -73,7 +89,7 @@ test.describe("login — password sign-in", () => {
 
     await page.goto("/login");
     await page.getByLabel("Email").fill("dave@example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByLabel("Password")).toBeVisible();
     await page.getByLabel("Password").fill("wrongpass");
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -101,20 +117,22 @@ test.describe("login — password sign-in", () => {
 test.describe("login — code fallback", () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
-  test("clicking 'Email me a code instead' triggers OTP and shows code field", async ({
+  // Both assertions merged into ONE test that requests the OTP code
+  // exactly once. requestEmailCode is a Server Action (no page.route
+  // mock possible — see file-header note), so this hits the real local
+  // Supabase, which requires a real, already-registered user (OTP
+  // sign-in can't create accounts) — hence the seeded fixture user
+  // rather than a fictitious email. Two separate tests each requesting
+  // a fresh OTP code for the SAME email collide with Supabase's
+  // per-email OTP request cooldown (~60s) when run back-to-back in the
+  // same worker, so the second test's request comes back rate-limited
+  // and never reaches code-verify mode. One request, both assertions.
+  test("clicking 'Email me a code instead' triggers OTP, then Verify submits", async ({
     page,
   }) => {
-    await page.route(SUPABASE_OTP_URL, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: null, error: null }),
-      });
-    });
-
     await page.goto("/login");
-    await page.getByLabel("Email").fill("dave@example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByLabel("Email").fill(TEST_USER_EMAIL);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByLabel("Password")).toBeVisible();
 
     await page.getByRole("button", { name: "Email me a code instead" }).click();
@@ -122,40 +140,13 @@ test.describe("login — code fallback", () => {
     // Should transition to code-verify mode
     await expect(page.getByLabel("6-digit code")).toBeVisible();
     await expect(
-      page.getByText(/Code's heading to dave@example\.com/)
+      page.getByText(new RegExp(`Code's heading to ${TEST_USER_EMAIL}`))
     ).toBeVisible();
-  });
 
-  test("entering a valid code calls verifyOtp and redirects", async ({
-    page,
-  }) => {
-    await page.route(SUPABASE_OTP_URL, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: null, error: null }),
-      });
-    });
-
-    // Stub the verifyOtp call (POST to token endpoint)
-    await page.route("**/auth/v1/verify**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          access_token: "test-token",
-          user: { id: "user-1", email: "dave@example.com" },
-        }),
-      });
-    });
-
-    await page.goto("/login");
-    await page.getByLabel("Email").fill("dave@example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByLabel("Password")).toBeVisible();
-    await page.getByRole("button", { name: "Email me a code instead" }).click();
-    await expect(page.getByLabel("6-digit code")).toBeVisible();
-
+    // We don't have the real emailed code, but this assertion only
+    // checks the "Verify" button's transient pending state (button
+    // label swaps to a spinner during the async transition), which
+    // happens regardless of whether the code is actually correct.
     await page.getByLabel("6-digit code").fill("123456");
     await page.getByRole("button", { name: "Verify" }).click();
 
@@ -169,23 +160,28 @@ test.describe("login — code fallback", () => {
 test.describe("login — sign-up flow", () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
+  // A fresh email PER TEST RUN, not a shared hardcoded "newuser@example.com".
+  // These `page.route(SUPABASE_TOKEN_URL...)` mocks are inert (Server
+  // Action, see file-header note) — signInWithPasswordAction actually
+  // runs against the real local Supabase. A hardcoded email becomes a
+  // real, permanently-registered account the first time "Create account
+  // instead" is exercised (signUpAction genuinely creates it), so on every
+  // subsequent run "wrong password" is no longer wrong — the account now
+  // exists with that exact password, sign-in SUCCEEDS for real, and the
+  // "Create account instead" affordance never appears. A unique email
+  // per run keeps every run's "this account doesn't exist yet" premise
+  // true.
+  function freshSignupEmail(): string {
+    return `newuser-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+  }
+
   test("wrong password reveals 'Create account instead' link", async ({
     page,
   }) => {
-    await page.route(SUPABASE_TOKEN_URL, async (route) => {
-      await route.fulfill({
-        status: 400,
-        contentType: "application/json",
-        body: JSON.stringify({
-          error: "invalid_grant",
-          error_description: "Invalid login credentials",
-        }),
-      });
-    });
-
+    const email = freshSignupEmail();
     await page.goto("/login");
-    await page.getByLabel("Email").fill("newuser@example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByLabel("Email").fill(email);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByLabel("Password")).toBeVisible();
     await page.getByLabel("Password").fill("mypassword");
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -196,43 +192,10 @@ test.describe("login — sign-up flow", () => {
   });
 
   test("clicking 'Create account instead' calls signUp", async ({ page }) => {
-    // First stub sign-in to fail
-    await page.route(SUPABASE_TOKEN_URL, async (route) => {
-      if (route.request().postData()?.includes("grant_type=password")) {
-        await route.fulfill({
-          status: 400,
-          contentType: "application/json",
-          body: JSON.stringify({
-            error: "invalid_grant",
-            error_description: "Invalid login credentials",
-          }),
-        });
-      } else {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            access_token: "test-token",
-            user: { id: "user-1", email: "newuser@example.com" },
-          }),
-        });
-      }
-    });
-
-    // Stub sign-up
-    await page.route("**/auth/v1/signup**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          user: { id: "user-1", email: "newuser@example.com" },
-        }),
-      });
-    });
-
+    const email = freshSignupEmail();
     await page.goto("/login");
-    await page.getByLabel("Email").fill("newuser@example.com");
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByLabel("Email").fill(email);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByLabel("Password")).toBeVisible();
     await page.getByLabel("Password").fill("mypassword");
     await page.getByRole("button", { name: "Sign in" }).click();

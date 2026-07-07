@@ -33,6 +33,7 @@
 import { test as setup, expect } from "@playwright/test";
 
 import { seedTestUser } from "./seed-test-user";
+import { ensureFixtureTrip } from "./fixture-trip";
 import { STORAGE_STATE_PATH } from "../../tests/fixtures/auth";
 
 /**
@@ -64,6 +65,13 @@ setup("authenticate test user", async ({ browser }) => {
   }
 
   const { userId, accessToken, refreshToken } = await seedTestUser();
+
+  // F10 #6: guarantee the fixture user has a real trip. Without this,
+  // specs that scan `/trips` for "the first trip link" resolve to the
+  // "New trip" CTA instead (a fresh fixture user has zero trips) and
+  // navigate to bogus URLs like `/trips/new/itinerary`. See
+  // `fixture-trip.ts` for the full contract.
+  await ensureFixtureTrip(userId);
 
   const projectRef = getProjectRef(supabaseUrl);
   const cookieName = `sb-${projectRef}-auth-token`;

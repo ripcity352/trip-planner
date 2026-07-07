@@ -21,6 +21,7 @@
 
 import { test, expect } from "@playwright/test";
 import { STORAGE_STATE_PATH } from "../tests/fixtures/auth";
+import { firstRealTripLink } from "./_setup/fixture-trip";
 import fs from "node:fs";
 
 function authFixtureAvailable(): boolean {
@@ -70,7 +71,7 @@ test.describe("authenticated M3 golden path", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
 
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     test.skip(
       !(await tripLink.isVisible()),
       "No trips found for test user — fixture has not been seeded with a trip"
@@ -84,24 +85,32 @@ test.describe("authenticated M3 golden path", () => {
     // member; Invites is organizer-only — assert it exists OR is absent
     // depending on viewer role (we don't know which the fixture user is,
     // so we just check the visible four).
-    await expect(
-      page.getByRole("heading", { name: /what's the plan/i }),
-    ).toBeVisible({ timeout: 5000 });
-    await expect(
-      page.getByRole("heading", { name: /announcements/i }),
-    ).toBeVisible({ timeout: 5000 });
-    await expect(
-      page.getByRole("heading", { name: /who's landing when/i }),
-    ).toBeVisible({ timeout: 5000 });
-    await expect(
-      page.getByRole("heading", { name: /who's coming/i }),
-    ).toBeVisible({ timeout: 5000 });
+    //
+    // NOTE: these render as `<CardTitle>` (a styled `<div>`, per
+    // components/ui/card.tsx — shadcn's CardTitle is not a semantic
+    // heading element), so `getByRole("heading", ...)` never matches
+    // here even when the card is genuinely on the page. That's distinct
+    // from the sub-pages themselves (e.g. /itinerary), which DO render a
+    // real `<h1>` with the same copy — see m3-itinerary.spec.ts. Assert
+    // by text for the dashboard link cards instead.
+    await expect(page.getByText(/what's the plan/i)).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.getByText(/announcements/i)).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.getByText(/who's landing when/i)).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.getByText(/who's coming/i)).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test("announcements page renders at 375px", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     test.skip(
       !(await tripLink.isVisible()),
       "No trips found for test user — fixture has not been seeded with a trip"
@@ -117,7 +126,7 @@ test.describe("authenticated M3 golden path", () => {
   test("arrivals page renders at 375px", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     test.skip(
       !(await tripLink.isVisible()),
       "No trips found for test user — fixture has not been seeded with a trip"
@@ -133,7 +142,7 @@ test.describe("authenticated M3 golden path", () => {
   test("roster page renders at 375px", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     test.skip(
       !(await tripLink.isVisible()),
       "No trips found for test user — fixture has not been seeded with a trip"
@@ -158,7 +167,7 @@ test.describe("authenticated M3 golden path", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     test.skip(
       !(await tripLink.isVisible()),
       "No trips found for test user — fixture has not been seeded with a trip"

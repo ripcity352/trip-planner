@@ -18,6 +18,7 @@
 
 import { test, expect } from "@playwright/test";
 import { STORAGE_STATE_PATH } from "../tests/fixtures/auth";
+import { firstRealTripLink } from "./_setup/fixture-trip";
 import path from "node:path";
 import fs from "node:fs";
 
@@ -62,7 +63,7 @@ test.describe("authenticated itinerary flows", () => {
     await page.goto("/trips");
 
     // Find any trip and navigate to its itinerary
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
 
     if (!(await tripLink.isVisible())) {
       // No trips yet — this is a fresh test user. The test is still useful
@@ -90,7 +91,7 @@ test.describe("authenticated itinerary flows", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
 
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     if (!(await tripLink.isVisible())) return;
 
     const tripHref = await tripLink.getAttribute("href");
@@ -120,7 +121,7 @@ test.describe("authenticated itinerary flows", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
 
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     if (!(await tripLink.isVisible())) return;
 
     const tripHref = await tripLink.getAttribute("href");
@@ -162,7 +163,7 @@ test.describe("authenticated itinerary flows", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
 
-    const tripLink = page.locator('a[href*="/trips/"]').first();
+    const tripLink = firstRealTripLink(page);
     if (!(await tripLink.isVisible())) return;
 
     const tripHref = await tripLink.getAttribute("href");

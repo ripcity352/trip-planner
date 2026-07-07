@@ -15,6 +15,16 @@
 
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
+// F10 #7: this spec was documented "DO NOT run locally — CI executes
+// this spec only" but had no enforced guard, so a local full-suite run
+// reported it as FAILED (auth/env preconditions only CI satisfies)
+// instead of SKIPPED. Make the documented constraint real: skip the
+// entire file unless running under CI.
+test.skip(
+  !process.env.CI,
+  "CI-only spec — requires CI-provisioned auth/env preconditions. See file header."
+);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

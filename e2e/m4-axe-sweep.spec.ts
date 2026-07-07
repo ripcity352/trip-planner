@@ -31,6 +31,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { createClient } from "@supabase/supabase-js";
 import { STORAGE_STATE_PATH } from "../tests/fixtures/auth";
 import { TEST_USER_EMAIL } from "./_setup/seed-test-user";
+import { firstRealTripLink } from "./_setup/fixture-trip";
 import fs from "node:fs";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -45,14 +46,15 @@ function authFixtureAvailable(): boolean {
 }
 
 /**
- * Navigate to /trips, grab the first trip link, and return its href.
- * Returns null if no trip is available for the fixture user.
+ * Navigate to /trips, grab the first REAL trip link (excludes the
+ * "New trip" CTA — see `fixture-trip.ts`), and return its href. Returns
+ * null if no trip is available for the fixture user.
  */
 async function getFirstTripHref(
   page: import("@playwright/test").Page
 ): Promise<string | null> {
   await page.goto("/trips");
-  const tripLink = page.locator('a[href*="/trips/"]').first();
+  const tripLink = firstRealTripLink(page);
   const visible = await tripLink.isVisible().catch(() => false);
   if (!visible) return null;
   return tripLink.getAttribute("href");
