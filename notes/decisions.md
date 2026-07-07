@@ -38,6 +38,43 @@ correctly" only has to check one shape, not two.
 
 ---
 
+## 2026-07-06 — F2 — the #110 mutation contract extends to "actor's own view never depends on Realtime"
+
+**Gap named.** The post-M5 audit (F2, P1) caught `postAnnouncement` and
+the date-poll actions (`proposeDateCandidatesAction`,
+`setCelebrantMarkAction`) with zero `revalidatePath` calls — only
+`setRsvpAction` (#110) implemented the pattern. The client composers
+(`announcement-composer.tsx`, `_add-window-form.tsx`, `_celebrant-view.tsx`)
+papered over this by relying solely on the Supabase Realtime channel to
+fold the new row into the actor's own view — the same channel issue #349
+already flags as not delivering on the local stack. Net effect: the
+organizer who just posted or added a window sees nothing happen until a
+manual reload, indistinguishable from a silent failure at exactly the
+moment a rushed organizer is most likely to double-tap or give up.
+
+**Decision.** Extend the #110 contract: **`revalidatePath` on success is
+mandatory for every mutation server action** — the actor's own view must
+never depend on the Realtime channel for freshness. Realtime is for
+*other* clients watching the same surface live; the actor who just
+performed the mutation gets their refresh from the mutation's own
+response path, full stop.
+
+For Server-Component pages with a client-component mutation surface
+underneath (announcements feed, date-poll candidate list), pairing
+`revalidatePath` (server-side cache invalidation, benefits every future
+navigation) with the caller doing `router.refresh()` on a successful
+result (immediate RSC re-fetch for the current view) is the established
+repo pattern — see `components/trip/itinerary/edit-item-form-sheet.tsx`.
+`revalidatePath` alone does not repaint an already-mounted client tree;
+`router.refresh()` alone doesn't help future page loads if the route were
+ever cached. Ship both where a same-view refresh is needed.
+
+**Scope of this pass:** `postAnnouncement`, `proposeDateCandidatesAction`,
+`setCelebrantMarkAction`. `castDateVoteAction` and `lockInCandidateAction`
+were left out — see the F2 PR body for the specific reasoning per action.
+
+---
+
 ## 2026-06-22 — #301 + #304 — design-system radius / error-surface reconcile
 
 **Context.** Two CARRY-deferred call-site reconciles, each gated behind an

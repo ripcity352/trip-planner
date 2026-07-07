@@ -12,11 +12,20 @@
  *   - the propose action enforces the MAX_CANDIDATES_PER_TRIP cap
  *   - the vote action does NOT spoof trip_member_id — it looks up
  *     the caller's own id from trip_members
+ *   - F2/#110: proposeDateCandidatesAction + setCelebrantMarkAction call
+ *     revalidatePath on success and never on a failure branch —
+ *     castDateVoteAction is deliberately excluded (already-optimistic
+ *     vote UI; see notes/decisions.md "F2 — the #110 mutation contract
+ *     extends…")
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mocks ----------------------------------------------------------
+// Mock next/cache revalidatePath for the F2/#110 assertions.
+const revalidatePathMock = vi.fn();
+vi.mock("next/cache", () => ({
+  revalidatePath: (...args: unknown[]) => revalidatePathMock(...args),
+}));
 
 const getUserMock = vi.fn();
 // resolver per table; reset per test
@@ -110,6 +119,7 @@ describe("proposeDateCandidatesAction", () => {
     insertCalls.length = 0;
     upsertCalls.length = 0;
     rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -251,6 +261,80 @@ describe("proposeDateCandidatesAction", () => {
     );
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
   });
+
+  // F2 / #110 — the organizer/celebrant's own view must not depend on
+  // the Realtime channel.
+  it("calls revalidatePath on a successful propose (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    let callCount = 0;
+    tableResolvers.set("date_poll_candidates", () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return { data: null, error: null, count: 0 } as unknown as {
+          data: unknown;
+          error: unknown;
+        };
+      }
+      return { data: [{ id: "new-1" }], error: null };
+    });
+    const { proposeDateCandidatesAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    await proposeDateCandidatesAction(
+      {
+        tripId: VALID_TRIP_ID,
+        candidates: [
+          { label: "X", starts_on: "2026-06-01", ends_on: "2026-06-02" },
+        ],
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("does NOT call revalidatePath when the cap is exceeded (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: null,
+      error: null,
+      count: 4,
+    } as unknown as { data: unknown; error: unknown }));
+    const { proposeDateCandidatesAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    await proposeDateCandidatesAction(
+      {
+        tripId: VALID_TRIP_ID,
+        candidates: [
+          { label: "X", starts_on: "2026-06-01", ends_on: "2026-06-02" },
+        ],
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call revalidatePath when the rate limiter throws (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("createTrip", { remaining: 0, reset: 0 })
+    );
+    const { proposeDateCandidatesAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    await proposeDateCandidatesAction(
+      {
+        tripId: VALID_TRIP_ID,
+        candidates: [
+          { label: "X", starts_on: "2026-06-01", ends_on: "2026-06-02" },
+        ],
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("setCelebrantMarkAction", () => {
@@ -260,6 +344,7 @@ describe("setCelebrantMarkAction", () => {
     insertCalls.length = 0;
     upsertCalls.length = 0;
     rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -314,6 +399,53 @@ describe("setCelebrantMarkAction", () => {
     );
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
   });
+
+  // F2 / #110 — the celebrant's own view must not depend on Realtime.
+  it("calls revalidatePath on a successful mark (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_celebrant_marks", () => ({
+      data: null,
+      error: null,
+    }));
+    const { setCelebrantMarkAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    await setCelebrantMarkAction(
+      { candidateId: VALID_CANDIDATE_ID, mark: "works" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("does NOT call revalidatePath on rls_denied (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_celebrant_marks", () => ({
+      data: null,
+      error: { code: "42501", message: "rls" },
+    }));
+    const { setCelebrantMarkAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    await setCelebrantMarkAction(
+      { candidateId: VALID_CANDIDATE_ID, mark: "works" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call revalidatePath on validation_failed (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    const { setCelebrantMarkAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    await setCelebrantMarkAction(
+      // @ts-expect-error — deliberate
+      { candidateId: VALID_CANDIDATE_ID, mark: "garbage" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("castDateVoteAction", () => {
@@ -323,6 +455,7 @@ describe("castDateVoteAction", () => {
     insertCalls.length = 0;
     upsertCalls.length = 0;
     rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -417,6 +550,12 @@ describe("castDateVoteAction", () => {
     expect(payload.trip_member_id).toBe(VALID_MEMBER_ID);
     expect(payload.vote).toBe(true);
     expect(payload.idempotency_key).toBe(VALID_IDEMPOTENCY_KEY);
+    // F2 / #110 — deliberately excluded: castDateVoteAction does NOT
+    // call revalidatePath. The member-vote UI is already fully
+    // optimistic (mirrors RsvpToggle) and this is the highest-tap path
+    // on the page; see notes/decisions.md "F2 — the #110 mutation
+    // contract extends…" for the full reasoning.
+    expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
   it("rate_limit when limiter throws", async () => {

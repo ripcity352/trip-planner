@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { ERRORS } from "@/lib/copy/errors";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
-import type { TripVisibility } from "@/lib/db/types";
+import type { Announcement, TripVisibility } from "@/lib/db/types";
 
 // MVP visibility options — "custom" excluded
 const VISIBILITY_OPTIONS: { value: Exclude<TripVisibility, "custom">; label: string }[] = [
@@ -50,19 +50,36 @@ type ComposerFormValues = z.infer<typeof composerSchema>;
 interface AnnouncementComposerProps {
   tripId: string;
   isOrganizer: boolean;
+  /**
+   * F2: called with the newly-created announcement on success, in
+   * addition to the server-side `revalidatePath`. The composer and the
+   * feed list are siblings, not parent/child, so this is how the
+   * poster's own view picks up their post without waiting on Realtime.
+   * Optional — omitting it doesn't break the post itself, it just means
+   * the caller opted out of the same-view refresh (not expected in
+   * production usage).
+   */
+  onPosted?: (announcement: Announcement) => void;
 }
 
 export function AnnouncementComposer({
   tripId,
   isOrganizer,
+  onPosted,
 }: AnnouncementComposerProps) {
   // Non-organizers: hide entirely
   if (!isOrganizer) return null;
 
-  return <ComposerForm tripId={tripId} />;
+  return <ComposerForm tripId={tripId} onPosted={onPosted} />;
 }
 
-function ComposerForm({ tripId }: { tripId: string }) {
+function ComposerForm({
+  tripId,
+  onPosted,
+}: {
+  tripId: string;
+  onPosted?: (announcement: Announcement) => void;
+}) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<ComposerFormValues["visibility"]>("everyone");
 
@@ -101,6 +118,7 @@ function ComposerForm({ tripId }: { tripId: string }) {
 
     reset();
     setVisibility("everyone");
+    onPosted?.(result.announcement);
   }
 
   return (

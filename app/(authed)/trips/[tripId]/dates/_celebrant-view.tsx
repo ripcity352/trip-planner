@@ -10,6 +10,12 @@
  * channel (owned by the parent `<PulsePoll>`) refetches and replaces
  * state, so we do NOT mutate local state — server is authoritative.
  * If the action fails we surface a small inline alert.
+ *
+ * F2: on success we ALSO call `onMutated` (PulsePoll's `refetch`)
+ * directly — the celebrant's own view must not depend solely on the
+ * Realtime channel landing the change (#349 flags it as unreliable on
+ * the local stack). Safe to call alongside a Realtime-triggered
+ * refetch; both are idempotent reads.
  */
 
 import * as React from "react";
@@ -29,6 +35,8 @@ import { formatDateRange } from "./_format";
 
 interface CelebrantViewProps {
   candidates: ReadonlyArray<DatePollCandidateView>;
+  /** F2: PulsePoll's `refetch`, called after a successful mark. */
+  onMutated?: () => void;
 }
 
 type ChipDef = {
@@ -45,7 +53,7 @@ const CHIPS: ReadonlyArray<ChipDef> = [
   { mark: "no-go", label: M2_UI_STRINGS.datePoll_celebrant_chip_no_go },
 ];
 
-export function CelebrantView({ candidates }: CelebrantViewProps) {
+export function CelebrantView({ candidates, onMutated }: CelebrantViewProps) {
   if (candidates.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -58,14 +66,20 @@ export function CelebrantView({ candidates }: CelebrantViewProps) {
     <ul className="flex flex-col gap-3">
       {candidates.map((row) => (
         <li key={row.candidate.id}>
-          <CandidateCelebrantCard row={row} />
+          <CandidateCelebrantCard row={row} onMutated={onMutated} />
         </li>
       ))}
     </ul>
   );
 }
 
-function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
+function CandidateCelebrantCard({
+  row,
+  onMutated,
+}: {
+  row: DatePollCandidateView;
+  onMutated?: () => void;
+}) {
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
 
@@ -82,16 +96,19 @@ function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
           );
           if (!result.ok) {
             setErrorKey(result.errorKey);
+            return;
           }
-          // On success we do nothing — the realtime channel will
-          // refetch and the new mark will land via the parent.
+          // F2: pull a fresh copy now — don't wait on the Realtime
+          // channel. The parent may also refetch again when its own
+          // `postgres_changes` event fires; that's a harmless repeat.
+          onMutated?.();
         } catch (err) {
           console.error("[date-poll] setCelebrantMark threw:", err);
           setErrorKey("network");
         }
       });
     },
-    [row.candidate.id, row.mark]
+    [row.candidate.id, row.mark, onMutated]
   );
 
   const isVetoed = row.mark === "no-go";

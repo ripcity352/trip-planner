@@ -8,9 +8,17 @@
  *   - happy path postAnnouncement returns the announcement
  *   - idempotency replay (23505) returns existing row
  *   - rls_denied on 42501
+ *   - revalidatePath is called on success, incl. idempotency replay (F2/#110)
+ *   - revalidatePath is NOT called on any failure branch (F2/#110)
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock next/cache revalidatePath for the F2/#110 assertions.
+const revalidatePathMock = vi.fn();
+vi.mock("next/cache", () => ({
+  revalidatePath: (...args: unknown[]) => revalidatePathMock(...args),
+}));
 
 const getUserMock = vi.fn();
 const tableResolvers = new Map<
@@ -102,6 +110,7 @@ describe("postAnnouncement", () => {
     tableResolvers.clear();
     insertCalls.length = 0;
     rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -209,5 +218,86 @@ describe("postAnnouncement", () => {
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "announcement_post_failed" });
+  });
+
+  // F2 / #110 — the actor's own view must not depend on the Realtime
+  // channel. revalidatePath must fire on every success branch and never
+  // on a failure branch.
+  it("calls revalidatePath on a successful post (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: mockAnnouncement,
+      error: null,
+    }));
+    const { postAnnouncement } = await import("@/lib/actions/announcements");
+    await postAnnouncement(
+      { tripId: VALID_TRIP_ID, body: "Pack light." },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("calls revalidatePath on an idempotency replay (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    let callCount = 0;
+    tableResolvers.set("announcements", () => {
+      callCount++;
+      if (callCount === 1) {
+        return { data: null, error: { code: "23505", message: "duplicate" } };
+      }
+      return { data: mockAnnouncement, error: null };
+    });
+    const { postAnnouncement } = await import("@/lib/actions/announcements");
+    await postAnnouncement(
+      { tripId: VALID_TRIP_ID, body: "Pack light." },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT call revalidatePath when not authenticated (F2/#110)", async () => {
+    primeAuth(null);
+    const { postAnnouncement } = await import("@/lib/actions/announcements");
+    await postAnnouncement(
+      { tripId: VALID_TRIP_ID, body: "Pack light." },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call revalidatePath on validation_failed (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    const { postAnnouncement } = await import("@/lib/actions/announcements");
+    await postAnnouncement({ tripId: VALID_TRIP_ID, body: "" }, VALID_IDEMPOTENCY_KEY);
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call revalidatePath on a generic DB error (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "XXXXX", message: "unexpected" },
+    }));
+    const { postAnnouncement } = await import("@/lib/actions/announcements");
+    await postAnnouncement(
+      { tripId: VALID_TRIP_ID, body: "Pack light." },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call revalidatePath when the rate limiter throws (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("postAnnouncement", { reset: Date.now() + 60000, remaining: 0 })
+    );
+    const { postAnnouncement } = await import("@/lib/actions/announcements");
+    await postAnnouncement(
+      { tripId: VALID_TRIP_ID, body: "Pack light." },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 });

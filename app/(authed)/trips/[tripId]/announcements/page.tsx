@@ -3,20 +3,20 @@
  *
  * Server Component. Resolves the trip by slug (the URL segment is the slug,
  * not the UUID — same pattern as the dashboard page). Fetches announcements
- * server-side for the initial render, then passes to AnnouncementList which
- * subscribes to Realtime for live updates.
+ * server-side for the initial render, then passes to AnnouncementsFeed
+ * (composer + list) which subscribes to Realtime for live updates AND
+ * (F2) folds the poster's own announcement in immediately on success.
  *
  * Organizer check is done via `is_trip_organizer` RPC, consistent with the
- * dashboard and itinerary pages. The result is passed to AnnouncementComposer,
- * which hides itself entirely for non-organizers.
+ * dashboard and itinerary pages. The result is passed to AnnouncementsFeed,
+ * which hides the composer entirely for non-organizers.
  */
 
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getTripMembers } from "@/lib/db/trips";
 import { enrichAnnouncements, getAnnouncements } from "@/lib/db/announcements";
-import { AnnouncementList } from "@/components/trip/announcements/announcement-list";
-import { AnnouncementComposer } from "@/components/trip/announcements/announcement-composer";
+import { AnnouncementsFeed } from "@/components/trip/announcements/announcements-feed";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 
 type PageProps = {
@@ -72,13 +72,9 @@ export default async function AnnouncementsPage({ params }: PageProps) {
         <p className="text-muted-foreground mt-1 text-sm">{trip.name}</p>
       </header>
 
-      {/* Organizer composer sits above the feed */}
-      <div className="mb-6">
-        <AnnouncementComposer tripId={trip.id} isOrganizer={isOrganizer} />
-      </div>
-
-      <AnnouncementList
+      <AnnouncementsFeed
         tripId={trip.id}
+        isOrganizer={isOrganizer}
         initialAnnouncements={enrichedAnnouncements}
         memberUserMap={memberUserMap}
       />

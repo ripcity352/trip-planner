@@ -12,9 +12,20 @@
  * the author's name. The map is passed through to `subscribeToAnnouncements`
  * for realtime enrichment, and each initial announcement already has
  * `authorDisplayName` resolved by `getAnnouncements` at the page layer.
+ *
+ * F2: exposes an imperative `prepend` handle so the composer (a sibling,
+ * not a parent) can fold in the poster's own announcement the instant
+ * `postAnnouncement` succeeds — the actor's own view must not depend on
+ * the Realtime channel landing the INSERT. See
+ * `components/trip/announcements/announcements-feed.tsx`.
  */
 
-import { useEffect, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { createClient } from "@/lib/supabase/browser";
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import { AnnouncementCard } from "./announcement-card";
@@ -32,6 +43,11 @@ interface AnnouncementListProps {
   memberUserMap: ReadonlyMap<string, string | null>;
 }
 
+export interface AnnouncementListHandle {
+  /** Fold a locally-known announcement into the feed (F2). */
+  prepend: (announcement: Announcement) => void;
+}
+
 /** Sort pinned first, then by created_at descending (newest first). */
 function sortAnnouncements(items: Announcement[]): Announcement[] {
   return [...items].sort((a, b) => {
@@ -40,13 +56,30 @@ function sortAnnouncements(items: Announcement[]): Announcement[] {
   });
 }
 
-export function AnnouncementList({
-  tripId,
-  initialAnnouncements,
-  memberUserMap,
-}: AnnouncementListProps) {
+export const AnnouncementList = forwardRef<
+  AnnouncementListHandle,
+  AnnouncementListProps
+>(function AnnouncementList(
+  { tripId, initialAnnouncements, memberUserMap },
+  ref
+) {
   const [announcements, setAnnouncements] = useState<Announcement[]>(
     () => sortAnnouncements(initialAnnouncements)
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      prepend: (announcement: Announcement) => {
+        setAnnouncements((prev) =>
+          // De-dupe against a Realtime arrival that beat us here.
+          prev.some((a) => a.id === announcement.id)
+            ? prev
+            : sortAnnouncements([announcement, ...prev])
+        );
+      },
+    }),
+    []
   );
 
   useEffect(() => {
@@ -57,8 +90,11 @@ export function AnnouncementList({
       tripId,
       (newAnnouncement) => {
         setAnnouncements((prev) =>
-          // Prepend then re-sort so pinned state is honoured
-          sortAnnouncements([newAnnouncement, ...prev])
+          // Prepend then re-sort so pinned state is honoured. De-dupe
+          // against our own optimistic `prepend()` (F2) landing first.
+          prev.some((a) => a.id === newAnnouncement.id)
+            ? prev
+            : sortAnnouncements([newAnnouncement, ...prev])
         );
       },
       memberUserMap
@@ -93,4 +129,4 @@ export function AnnouncementList({
       ))}
     </ol>
   );
-}
+});
