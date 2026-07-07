@@ -76,7 +76,7 @@ export function LiveRegion({
       initialData={initialRows}
       fetchData={fetchData}
       subscribeTableConfig={subscribeTableConfig}
-      render={(rows, isStale) => {
+      render={(rows, isStale, refetch) => {
         const ranked = rankCandidates(rows);
         const visible = isCelebrant ? ranked : filterMemberVisible(ranked);
         return (
@@ -87,7 +87,7 @@ export function LiveRegion({
               </Badge>
             ) : null}
             {isCelebrant ? (
-              <CelebrantView candidates={visible} />
+              <CelebrantView candidates={visible} onMutated={refetch} />
             ) : (
               <MemberView candidates={visible} />
             )}
@@ -95,6 +95,7 @@ export function LiveRegion({
               <AddWindowForm
                 tripId={tripId}
                 atCap={rows.length >= MAX_CANDIDATES_PER_TRIP}
+                onMutated={refetch}
               />
             ) : null}
           </div>

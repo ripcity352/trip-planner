@@ -3,8 +3,11 @@
 /**
  * Add-window form (organizer/celebrant only). Renders inline below
  * the candidate list. Submit calls `proposeDateCandidatesAction`
- * with a single candidate; success closes the form and relies on
- * the realtime channel to refresh the list.
+ * with a single candidate; success closes the form and (F2) calls
+ * `onMutated` (PulsePoll's `refetch`) directly so the organizer's own
+ * view picks up the new window immediately — it does not rely solely
+ * on the realtime channel, which #349 flags as unreliable on the
+ * local stack.
  *
  * Max-windows cap is enforced server-side; the form surfaces the
  * cap message inline when the action returns validation_failed.
@@ -24,9 +27,11 @@ import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 interface AddWindowFormProps {
   tripId: string;
   atCap: boolean;
+  /** F2: PulsePoll's `refetch`, called after a successful propose. */
+  onMutated?: () => void;
 }
 
-export function AddWindowForm({ tripId, atCap }: AddWindowFormProps) {
+export function AddWindowForm({ tripId, atCap, onMutated }: AddWindowFormProps) {
   const [open, setOpen] = React.useState(false);
   const [label, setLabel] = React.useState("");
   const [startsOn, setStartsOn] = React.useState("");
@@ -77,12 +82,14 @@ export function AddWindowForm({ tripId, atCap }: AddWindowFormProps) {
           setErrorKey(result.errorKey);
           return;
         }
-        // Success: reset + close. Realtime will fold the new row in.
+        // Success: reset + close, then pull a fresh copy directly (F2)
+        // rather than waiting on Realtime to fold the new row in.
         setOpen(false);
         setLabel("");
         setStartsOn("");
         setEndsOn("");
         setErrorKey(null);
+        onMutated?.();
       } catch (err) {
         console.error("[date-poll] proposeDateCandidates threw:", err);
         setErrorKey("network");

@@ -19,9 +19,20 @@
  * caller can't enumerate vetoed candidates through error probing
  * (P0001 from the trigger collapses to the generic `validation_failed`
  * key — see `mapDbError`).
+ *
+ * F2 / #110: `proposeDateCandidatesAction` and `setCelebrantMarkAction`
+ * call `revalidatePath` on success so the organizer/celebrant's own view
+ * never depends on the Realtime channel — see notes/decisions.md
+ * "F2 — the #110 mutation contract extends…". `castDateVoteAction` is
+ * deliberately left out: the member-vote UI is already fully optimistic
+ * (mirrors `RsvpToggle`), and it's the highest-tap path on this page —
+ * see the F2 PR body for the full reasoning. `lockInCandidateAction` is
+ * unwired stretch scope with no UI consumer, so there's no "actor's own
+ * view" to fix.
  */
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -239,6 +250,10 @@ export async function proposeDateCandidatesAction(
             errorKey: mapDbError(insertError),
           };
         }
+
+        // F2 / #110: revalidate only on a genuine success — every other
+        // branch above already returned `ok: false`.
+        revalidatePath("/trips", "layout");
         return { ok: true as const, created: (data ?? []).length };
       }
     );
@@ -312,6 +327,9 @@ export async function setCelebrantMarkAction(
             errorKey: mapDbError(error),
           };
         }
+
+        // F2 / #110: revalidate only on a genuine success.
+        revalidatePath("/trips", "layout");
         return { ok: true as const, mark };
       }
     );

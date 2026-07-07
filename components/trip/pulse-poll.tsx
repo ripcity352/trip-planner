@@ -96,10 +96,24 @@ export interface PulsePollProps<T> {
   subscribeTableConfig: ReadonlyArray<PulsePollSubscriptionTable>;
 
   /**
-   * Renderer. Receives the latest data plus an `isStale` flag (true
-   * when we've seen a channel disconnect or a pending refetch).
+   * Renderer. Receives the latest data, an `isStale` flag (true when
+   * we've seen a channel disconnect or a pending refetch), and a
+   * `refetch` callback.
+   *
+   * F2: `refetch` lets a mutation surface rendered inside `render()`
+   * pull a fresh copy immediately after its own server action
+   * succeeds, instead of waiting on the `postgres_changes` event to
+   * arrive over the Realtime channel — the actor's own view must not
+   * depend on Realtime (see notes/decisions.md "F2 — the #110
+   * mutation contract extends…"). Safe to call redundantly; a
+   * `postgres_changes` event for the same write may also fire and
+   * trigger a second (idempotent) refetch.
    */
-  render: (data: T, isStale: boolean) => React.ReactNode;
+  render: (
+    data: T,
+    isStale: boolean,
+    refetch: () => Promise<void>
+  ) => React.ReactNode;
 
   /**
    * Reserved for the future voter-opt-in per-name visibility surface.
@@ -150,6 +164,22 @@ export function PulsePoll<T>({
     [subscribeTableConfig]
   );
 
+  // F2: extracted so it's callable both from the Realtime event handler
+  // (inside the effect below) and directly from `render()` via the
+  // `refetch` argument — the mutation surface's own success path, not
+  // gated on a `postgres_changes` event ever arriving.
+  const refresh = React.useCallback(async () => {
+    try {
+      const next = await fetchData();
+      setData(next);
+      setIsStale(false);
+    } catch (err) {
+      // Don't surface refetch errors visually — the next event/manual
+      // call will try again, and the previous data is still useful.
+      console.error("[pulse-poll] refetch failed:", err);
+    }
+  }, [fetchData]);
+
   React.useEffect(() => {
     // #117: ignore the test-injection seam in production builds. The
     // prop stays on the type so callers don't need to special-case;
@@ -163,21 +193,6 @@ export function PulsePoll<T>({
       !isProd && __supabaseClient ? __supabaseClient : undefined;
     const client = injectedClient ?? createClient();
     const channel: RealtimeChannel = client.channel(channelKey);
-
-    // Refetch-on-change. We don't try to merge the payload into the
-    // existing state — refetching is simpler and RLS-aware. The
-    // bandwidth cost is bounded by the small view-model size.
-    const refresh = async () => {
-      try {
-        const next = await fetchData();
-        setData(next);
-        setIsStale(false);
-      } catch (err) {
-        // Don't surface refetch errors visually — the next event will
-        // try again, and the previous data is still useful.
-        console.error("[pulse-poll] refetch failed:", err);
-      }
-    };
 
     // Subscribe to every configured table. `postgres_changes` with
     // event '*' covers INSERT / UPDATE / DELETE in one binding.
@@ -252,7 +267,7 @@ export function PulsePoll<T>({
     // is intentional: we explicitly want hash equality, not reference
     // equality, on the subscription config.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channelKey, fetchData, subscribeTableConfigKey, __supabaseClient]);
+  }, [channelKey, fetchData, subscribeTableConfigKey, __supabaseClient, refresh]);
 
-  return <>{render(data, isStale)}</>;
+  return <>{render(data, isStale, refresh)}</>;
 }

@@ -9,9 +9,14 @@
  *   - Organizer-only via RLS.
  *   - Idempotency key scope: (trip_id, idempotency_key) — organizer
  *     acting on behalf of the trip.
+ *   - F2 / #110 pattern: `revalidatePath` fires on every success branch
+ *     (fresh insert AND idempotency replay) so the poster's own view
+ *     never depends on the Realtime channel — see notes/decisions.md
+ *     "F2 — the #110 mutation contract extends…".
  */
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   RATE_LIMIT_SCOPES,
@@ -118,6 +123,11 @@ export async function postAnnouncement(
       }
     );
 
+    // F2 / #110: revalidate the trips layout so the announcements feed
+    // (and the dashboard link into it) stay fresh for the poster's own
+    // view. Called only on the success branch — a failed insert must
+    // not trigger a cache miss.
+    revalidatePath("/trips", "layout");
     return { ok: true, announcement };
   } catch (err) {
     if (err instanceof RateLimitError) {
