@@ -5,6 +5,69 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-07 — Automated E2E audit + fix wave — 2026-07-07
+
+**The audit.** Six auditors (baseline suite + organizer / invitee /
+celebrant / mobile-a11y / edge-RLS personas) ran a Playwright E2E pass
+against the app on a local Supabase + dev-server stack. **Verdict:
+usable but not yet trustworthy.** RLS, idempotency, and UI voice all
+held up. Four P1s surfaced:
+
+- **F1/F6** — date-only columns parsed as UTC, producing an off-by-one
+  day on render for some timezones; no guard against `end < start`.
+- **F5 (partial)/F9** — an actor's own mutation (announcement, date-poll
+  vote) was invisible in their own view without a manual reload —
+  Realtime delivery isn't guaranteed for the mutating client itself.
+- **Roster "Guest" wall** — a display-name/identity gap surfaced as a
+  generic "Guest" label in places it shouldn't.
+- Assorted **AA contrast** failures from de-emphasis via opacity instead
+  of explicit tokens.
+
+**Landed (7 PRs + 1 pre-existing dep bump):**
+
+- **#347** (docs #312) + **#315** (tailwind-group dep bump, pre-existing
+  in the merge queue) — routine, unrelated to the audit findings.
+- **#351** — date-only parse contract: dates parsed as local, not UTC;
+  `end < start` rejected via a zod refine. Closes F1 + F6.
+- **#352** — on-voice 404 page, `organizers_only` itinerary badge,
+  own-row "You" label, `has_password` self-heal. Closes F7 + F8,
+  partially closes F5, closes F9.
+- **#353** — the #110 revalidatePath pattern extended to announcements
+  + date-poll mutations, so the actor's own mutation is visible without
+  a reload. Closes F2.
+- **#354** — AA contrast: explicit de-emphasis tokens replace card
+  opacity; ink tokens on logged-out surfaces. Closes #338, closes F3.
+- **#355** — 44px effective touch-target axis via hit-slop (visual
+  sizes unchanged). Closes F4.
+- **#356** — e2e suite drift repair (see the F10 entry directly below)
+  so the suite is a live gate again, not background noise.
+
+**Filed for later (not built this wave):**
+
+- **#348** — invite-accept identity capture — gated, feature-shaped,
+  not infra.
+- **#349** — Realtime `postgres_changes` local-delivery research (why
+  the actor's own client didn't get pushed updates before #353's
+  revalidatePath fix).
+- **#350** — `trips.end_date >= start_date` as a DB CHECK constraint
+  (the app-level zod refine from #351 isn't a substitute for a
+  database invariant).
+
+**Known gap, recorded not fixed.** `visibility = 'custom'` currently
+falls back to "visible to every trip member" in `can_see_content` — the
+`content_visibility_grants` join table is still deferred (per
+`notes/killed-and-deferred.md`). Recording this here so a future
+`content_visibility_grants` implementer knows the silent default
+they're replacing, not just the missing table.
+
+**Deliberately NOT done.** No gated M6 feature surface was built — the
+M6 real-trip-retrospective gate (see the M4/M5/DS/CARRY/AUTH closure
+ADRs above and below) stays intact. This was audit-and-fix, not
+feature work. Prod (`travelston.com`) was never touched — the entire
+session ran against a local Supabase + dev-server stack.
+
+---
+
 ## 2026-07-07 — F10 — e2e-drift-hardening (extends the CARRY CI-trust ADR)
 
 **The gap, named.** An automated audit ran the full local e2e suite:
