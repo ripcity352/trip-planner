@@ -161,6 +161,12 @@ test.describe("authenticated M3 golden path", () => {
     const consoleErrors: string[] = [];
     page.on("console", (msg) => {
       if (msg.type() === "error") {
+        // WebKit resource-load errors omit the failing URL from the text, so
+        // filter by console location: the dev-only Vercel Analytics debug
+        // script (va.vercel-scripts.com) 403s under `next dev` and is not
+        // app code.
+        const sourceUrl = msg.location().url ?? "";
+        if (sourceUrl.startsWith("https://va.vercel-scripts.com")) return;
         consoleErrors.push(msg.text());
       }
     });
