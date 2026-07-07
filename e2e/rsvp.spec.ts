@@ -7,14 +7,24 @@
  *     RSVP and the state persists across a page reload.
  *
  * The authenticated test seeds a trip + organizer membership via the
- * Supabase service-role admin API. A fresh user is minted per test run
- * via `auth.admin.createUser` (deterministic, no list-users dependency)
- * and deleted in afterAll so runs don't accumulate stale auth rows.
+ * Supabase service-role admin API.
+ *
+ * F10 #6 fix: this used to mint a brand-new random user
+ * (`auth.admin.createUser`) and add THAT user as the trip's organizer,
+ * while the browser session (`storageState: STORAGE_STATE_PATH`) is the
+ * separate, deterministic fixture user from `seed-test-user.ts`. The
+ * fixture user was never a member of the seeded trip, so
+ * `/trips/<seedSlug>` 404'd/bounced under RLS and the RSVP heading never
+ * rendered. We now seed the membership for the SAME fixture user the
+ * storage state authenticates as — see `TEST_USER_EMAIL` below. Because
+ * that user is shared across the whole e2e run (via `auth.setup.ts`), we
+ * do NOT delete it in `afterAll`; only the seeded trip is torn down.
  */
 
 import { test, expect } from "@playwright/test";
 import { STORAGE_STATE_PATH } from "../tests/fixtures/auth";
 import { makeAdminClient } from "./_setup/seed-m4-shared";
+import { TEST_USER_EMAIL } from "./_setup/seed-test-user";
 
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 
@@ -50,8 +60,6 @@ test.describe("RSVP dashboard — authenticated", () => {
 
   let seedSlug: string;
   let seedTripId: string;
-  // The freshly-minted e2e user id — deleted in afterAll.
-  let seedUserId: string;
 
   test.beforeAll(async () => {
     test.skip(
@@ -59,22 +67,17 @@ test.describe("RSVP dashboard — authenticated", () => {
       "Service-role key not configured — skipping authenticated RSVP path."
     );
 
-    const { slug, tripId, userId } = await seedRsvpTrip();
+    const { slug, tripId } = await seedRsvpTrip();
     seedSlug = slug;
     seedTripId = tripId;
-    seedUserId = userId;
   });
 
   test.afterAll(async () => {
-    if (SUPABASE_URL && SERVICE_ROLE_KEY) {
-      // Delete the trip first (cascades to trip_members via FK).
-      if (seedTripId) {
-        await cleanupRsvpTrip(seedTripId);
-      }
-      // Delete the freshly-minted e2e user so runs don't accumulate.
-      if (seedUserId) {
-        await cleanupRsvpUser(seedUserId);
-      }
+    // Delete the trip only (cascades to trip_members via FK). The
+    // fixture user itself is shared across the whole e2e run — do not
+    // delete it here.
+    if (SUPABASE_URL && SERVICE_ROLE_KEY && seedTripId) {
+      await cleanupRsvpTrip(seedTripId);
     }
   });
 
@@ -120,71 +123,59 @@ test.describe("RSVP dashboard — authenticated", () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a fresh e2e user via the admin API (deterministic — no listUsers
- * dependency) and inserts the trip + organizer trip_member row for the smoke
- * test. The caller is responsible for teardown via cleanupRsvpTrip /
- * cleanupRsvpUser.
+ * Inserts a trip + organizer trip_member row for the STORAGE_STATE_PATH
+ * fixture user (same deterministic user `auth.setup.ts` authenticates
+ * as — see the F10 #6 note above). The caller is responsible for
+ * teardown via `cleanupRsvpTrip`.
  */
 async function seedRsvpTrip(): Promise<{
   slug: string;
   tripId: string;
-  userId: string;
 }> {
   const admin = makeAdminClient();
 
-  // Mint a fresh user per test run so results are deterministic and
-  // independent of any pre-existing staging state.
-  const { data: createData, error: createErr } =
-    await admin.auth.admin.createUser({
-      email: `rsvp-e2e-${crypto.randomUUID()}@example.test`,
-      email_confirm: true,
-    });
-  if (createErr) {
-    throw new Error(`seedRsvpTrip: createUser — ${createErr.message}`);
+  const { data: listData, error: listErr } = await admin.auth.admin.listUsers({
+    perPage: 1000,
+  });
+  if (listErr) {
+    throw new Error(`seedRsvpTrip: listUsers — ${listErr.message}`);
   }
-  const freshUser = createData.user;
-
-  // Leak-proof: once the user exists, any failure in the trip/member
-  // seeding below must delete the user before re-throwing — otherwise a
-  // partial failure orphans the minted auth row (the exact accumulation
-  // problem #112 fixes), since the caller hasn't captured the id yet.
-  try {
-    const slug = `rsvp-smoke-${Date.now().toString(36)}`;
-
-    const { data: tripRows, error: tripErr } = await admin
-      .from("trips")
-      .insert({
-        slug,
-        name: "RSVP Smoke",
-        created_by: freshUser.id,
-        kind: "bachelor",
-      })
-      .select("id")
-      .single();
-
-    if (tripErr) {
-      throw new Error(`seedRsvpTrip: insert trips — ${tripErr.message}`);
-    }
-
-    const { error: memberErr } = await admin.from("trip_members").insert({
-      trip_id: tripRows.id,
-      user_id: freshUser.id,
-      role: "organizer",
-      rsvp_status: "pending",
-    });
-
-    if (memberErr) {
-      throw new Error(
-        `seedRsvpTrip: insert trip_members — ${memberErr.message}`
-      );
-    }
-
-    return { slug, tripId: tripRows.id as string, userId: freshUser.id };
-  } catch (err) {
-    // Best-effort cleanup of the minted user before propagating.
-    await cleanupRsvpUser(freshUser.id);
-    throw err;
+  const fixtureUser = listData.users.find((u) => u.email === TEST_USER_EMAIL);
+  if (!fixtureUser) {
+    throw new Error(
+      `seedRsvpTrip: fixture user ${TEST_USER_EMAIL} not found. Run the setup project first.`
+    );
   }
+
+  const slug = `rsvp-smoke-${Date.now().toString(36)}`;
+
+  const { data: tripRows, error: tripErr } = await admin
+    .from("trips")
+    .insert({
+      slug,
+      name: "RSVP Smoke",
+      created_by: fixtureUser.id,
+      kind: "bachelor",
+    })
+    .select("id")
+    .single();
+
+  if (tripErr) {
+    throw new Error(`seedRsvpTrip: insert trips — ${tripErr.message}`);
+  }
+
+  const { error: memberErr } = await admin.from("trip_members").insert({
+    trip_id: tripRows.id,
+    user_id: fixtureUser.id,
+    role: "organizer",
+    rsvp_status: "pending",
+  });
+
+  if (memberErr) {
+    throw new Error(`seedRsvpTrip: insert trip_members — ${memberErr.message}`);
+  }
+
+  return { slug, tripId: tripRows.id as string };
 }
 
 /** Deletes the seeded trip (cascades to trip_members via FK). */
@@ -194,20 +185,6 @@ async function cleanupRsvpTrip(tripId: string): Promise<void> {
   if (error) {
     console.error(
       `cleanupRsvpTrip: failed to delete trip ${tripId} — ${error.message}`
-    );
-  }
-}
-
-/**
- * Deletes the freshly-minted e2e user from Supabase Auth so runs don't
- * accumulate stale users in the staging project.
- */
-async function cleanupRsvpUser(userId: string): Promise<void> {
-  const admin = makeAdminClient();
-  const { error } = await admin.auth.admin.deleteUser(userId);
-  if (error) {
-    console.error(
-      `cleanupRsvpUser: failed to delete user ${userId} — ${error.message}`
     );
   }
 }

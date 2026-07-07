@@ -18,6 +18,15 @@
 
 import { test, expect } from "@playwright/test";
 
+// F10 #7: documented as CI-only ("CI note: requires a seeded test
+// account with identityState === 'no-password'") but had no enforced
+// guard — a local run reported these as FAILED (no such fixture locally)
+// instead of SKIPPED. Make the documented constraint real.
+test.skip(
+  !process.env.CI,
+  "CI-only spec — requires a CI-seeded no-password identity fixture. See file header."
+);
+
 test.describe("State B — set password (OAuth-only / OTP-only user)", () => {
   // For CI, the auth setup fixture provides a seeded OAuth-only session.
   // For local runs against a real Supabase, sign in via Google OAuth first
