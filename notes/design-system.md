@@ -700,6 +700,66 @@ spec'd it (see signature pattern reduced-motion specs above).
 - **`@media (hover: hover)`** gates for hover styles. Drunk-thumb on
   mobile shouldn't trigger desktop-hover states on touch.
 
+### Contrast — de-emphasis without container opacity (#338)
+
+The #338 axe finding was bigger than its title: `dates/_celebrant-view.tsx`
+applied `opacity-60` at the `<Card>` level to signal a vetoed ("no-go")
+candidate. Container opacity is a **filter**, not a background alpha — it
+composites the *entire rendered subtree* against whatever sits behind the
+card, multiplying through every descendant. One veto toggle silently
+dragged the subtitle, both inactive chips, the active no-go chip, and the
+vote count below 4.5:1, and the active no-go chip (which was *already*
+using `--ink-tertiary`, 3.05:1 on `--card` even at full opacity) compounded
+to 1.83:1.
+
+Two axes were missing from the spec:
+
+1. **De-emphasis is expressed per-element, with an explicit ink token —
+   never with container `opacity`.** Container opacity can't be scoped to
+   "the parts that should look calmer"; it silently drags every descendant,
+   including ones that must stay AA. If a card-level "recede" affordance is
+   wanted, use a background-alpha or border-alpha utility (`bg-muted/40`,
+   `border-border/40`) — those only dim the *paint*, not text drawn on top.
+2. **`--ink-tertiary` (`#6B6356`) is a large-text/decorative-glyph token
+   only.** It measures 3.05:1 on `--card` / 3.28:1 on `--surface-base` —
+   below the 4.5:1 small-text AA floor, though above the 3:1 large-text
+   (≥18px/14px-bold) and non-text UI-component floor. It's fine for the
+   RSVP `declined` glyph register (§State signals) and decorative hairline
+   borders, but any *small body text* that wants to read as quieter than
+   `--ink-secondary` needs a different move (e.g. size, weight, or a
+   border/underline signal) — not a darker ink token, because there isn't
+   a small-text-safe one below `--ink-secondary` (`#A89E89`, 6.80:1 on
+   `--card` / 7.32:1 on `--surface-base`) in the current palette.
+
+Fix applied: the Card-level `opacity-60` is gone. The vetoed state is now
+expressed as `--ink-secondary` on the title (still visibly quieter than
+`--ink-primary`, still 6.8:1+) and the active no-go chip's label moved
+from the inline `--ink-tertiary` style to `--ink-secondary` — de-emphasized
+relative to the vivid `bg-primary` active states used by the other two
+chips, but AA-safe. No small text in this component may drop below
+`--ink-secondary` going forward.
+
+### Ink tokens on logged-out surfaces (#338)
+
+`app/page.tsx` and the `/legal/*` pages used raw `text-zinc-600
+dark:text-zinc-400` instead of sourcing `--ink-secondary` /
+`--ink-tertiary` via the existing `text-muted-foreground` /
+`text-foreground` utilities. This is the same token-drift class the CARRY
+milestone (#297/#188) fixed on authed surfaces, just never swept on the
+marketing/legal pages because they predate the theming pass. It's a
+correctness bug, not just a style nit: `<html data-theme="bachelor">` is
+unconditional (`app/layout.tsx`) — the app has no light mode — so the
+`dark:` variant is gated on the *browser's* `prefers-color-scheme`, not on
+whether the bachelor theme is active. Any visitor (or headless test
+runner) without an OS dark-mode preference renders the **light-mode**
+class (`text-zinc-600`) against the always-dark `--surface-base`
+(`#100C0F`) background: 2.51:1, a hard AA failure. `text-muted-foreground`
+has no such split — it resolves through the CSS custom property, which is
+always bound to the bachelor palette regardless of OS preference.
+Marketing/legal surfaces must source ink tokens the same way authed
+surfaces do; raw `zinc-*` utilities (with or without a `dark:` pair) are
+banned on any surface rendered under `data-theme="bachelor"`.
+
 ## What this rules out (visually reaffirming the CLAUDE.md anti-pattern bans)
 
 Cross-referencing the existing hard-banned UI patterns:
