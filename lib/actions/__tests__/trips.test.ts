@@ -84,6 +84,40 @@ describe("createTripAction", () => {
     expect(createTripMock).not.toHaveBeenCalled();
   });
 
+  it("validates: returns validation_failed when ends_at is before starts_at (#350)", async () => {
+    primeAuth("u-1");
+    const { createTripAction } = await import("@/lib/actions/trips");
+
+    const result = await createTripAction({
+      name: "Vegas",
+      starts_at: "2027-06-10",
+      ends_at: "2027-06-01",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(createTripMock).not.toHaveBeenCalled();
+  });
+
+  it("validates: accepts ends_at equal to starts_at (single-day trip)", async () => {
+    primeAuth("u-1");
+    createTripMock.mockResolvedValue({
+      id: "trip-1",
+      slug: "vegas",
+      name: "Vegas",
+    });
+    const { createTripAction } = await import("@/lib/actions/trips");
+
+    await expect(
+      createTripAction({
+        name: "Vegas",
+        starts_at: "2027-06-10",
+        ends_at: "2027-06-10",
+      })
+    ).rejects.toThrow("NEXT_REDIRECT:/trips/vegas");
+
+    expect(createTripMock).toHaveBeenCalledTimes(1);
+  });
+
   it("returns auth_failed when there is no signed-in user", async () => {
     primeAuth(null);
     const { createTripAction } = await import("@/lib/actions/trips");

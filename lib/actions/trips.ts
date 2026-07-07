@@ -44,18 +44,28 @@ export interface CreateTripActionInput {
 }
 
 // zod schema. Names are short, dates are optional, vibe_tags are
-// strings. We deliberately do NOT enforce starts_at <= ends_at here —
-// the DB check constraint catches it and the UI can render the dates
-// invalid before submit if it wants. Server-side belt+suspenders is
-// fine to skip when the DB has the constraint.
-const inputSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  description: z.string().trim().max(1000).optional(),
-  location: z.string().trim().max(200).optional(),
-  starts_at: z.string().trim().min(1).optional(),
-  ends_at: z.string().trim().min(1).optional(),
-  vibe_tags: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
-});
+// strings. `ends_at < starts_at` is rejected by the cross-field
+// `.refine()` below — there is NO DB check constraint backstopping
+// this (verified against pg_constraint; filed separately as #350's
+// DB-layer follow-up), so the zod refine is the only enforcement
+// today, not defense-in-depth on top of one.
+const inputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    description: z.string().trim().max(1000).optional(),
+    location: z.string().trim().max(200).optional(),
+    starts_at: z.string().trim().min(1).optional(),
+    ends_at: z.string().trim().min(1).optional(),
+    vibe_tags: z.array(z.string().trim().min(1).max(40)).max(10).optional(),
+  })
+  .refine(
+    (data) =>
+      !data.starts_at || !data.ends_at || data.ends_at >= data.starts_at,
+    {
+      message: "End date can't be before the start date.",
+      path: ["ends_at"],
+    }
+  );
 
 /**
  * Slugify a trip name. Lowercase, replace non-alphanumerics with `-`,

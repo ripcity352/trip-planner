@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { getInvitePreview } from "@/lib/db/invites";
 import { invitePreviewPath, inviteAcceptPath } from "@/lib/invites/paths";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { parseDateOnly } from "@/lib/utils/date-only";
 import type { InvitePreview } from "@/lib/db/types";
 import { LoginForm } from "@/app/login/_form";
 import { buildInviteH1 } from "@/lib/og/invite-card";
@@ -215,13 +216,13 @@ function InviteMissing() {
 
 function formatPreviewDates(preview: InvitePreview): string {
   if (preview.starts_at && preview.ends_at) {
-    return `${format(new Date(preview.starts_at), "MMM d")} – ${format(
-      new Date(preview.ends_at),
+    return `${format(parseDateOnly(preview.starts_at), "MMM d")} – ${format(
+      parseDateOnly(preview.ends_at),
       "MMM d"
     )}`;
   }
   if (preview.starts_at) {
-    return format(new Date(preview.starts_at), "MMM d");
+    return format(parseDateOnly(preview.starts_at), "MMM d");
   }
   // Dates not yet set — show the "Dates TBD" affordance (behavior preserved
   // from the pre-magazine layout; an undecided-dates invite still tells the
