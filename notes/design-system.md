@@ -1648,3 +1648,58 @@ content-type component imports, instead of each leaf component defining
 its own `Record<TripVisibility, string>` subset. Filing that
 consolidation is a candidate for a future DS wave — this fix closes the
 immediate parity gap without taking on that refactor.
+
+## Touch-target hit-slop mechanism (#F4, audit finding, 2026-07-06)
+
+§"Other established-craft adds" above already names the axis — "**Tap
+targets ≥44×44px** per Apple HIG / WCAG 2.5.8. Visual button can be
+smaller; hit area can't." — but that line only stated the target, not
+the mechanism. Nothing in the codebase closed it: `buttonVariants`
+default is `h-8` (32px), `lg` is `h-9` (36px), `icon` is `size-8`
+(32×32), the header avatar trigger is 32×32, and the bespoke RSVP/date
+vote chips (`rsvp-toggle.tsx`, `dates/_member-view.tsx`) are `h-9`
+(36px). All pass the WCAG 2.2 AA 24px floor but miss the 44px bar the
+product's own "drunk thumb at a bar" framing implies. The gap wasn't a
+missing *value* — it was a missing *mechanism spec* for how to hit 44px
+without changing the visual density the rest of the system is
+calibrated around (radius reconcile #304, hairline buttons, etc.).
+
+**Contract:** every primary tap surface gets an EFFECTIVE hit area
+≥44×44px. The VISUAL size is unchanged. The sanctioned mechanism is
+**hit-slop via a `content-['']` pseudo-element**: `relative` on the
+tap-target root, plus an `after:absolute after:inset-*` box sized so
+`visual size + 2 × slop ≥ 44px`. The pseudo-element carries no paint
+(no background, no border) — it exists purely to extend the clickable
+box, so it never shows up in a screenshot diff and never touches a
+visual baseline.
+
+Per-size slop (rounds up to the nearest half-token):
+
+| Surface | Visual size | Slop needed | Axis |
+|---|---|---|---|
+| `buttonVariants` `default` | 32px (h-8) | 6px/side | y-only |
+| `buttonVariants` `lg` | 36px (h-9) | 4px/side | y-only |
+| `buttonVariants` `icon` | 32×32 (size-8) | 6px/side | x + y |
+| Header avatar trigger | 32×32 | 6px/side | x + y |
+| RSVP/date vote chips | 36px (h-9) | 4px/side | y-only |
+
+**Axis rule:** default the mechanism to **y-only** slop wherever the
+surface can sit in a horizontal row with a small gap (button pairs at
+`gap-2` — 8px — e.g. the date-poll add/cancel pair; chip groups at
+`gap-2`). A symmetric x+y slop on adjacent 32–36px elements 8px apart
+would make each element's hit box overlap its neighbor's, stealing
+clicks meant for the sibling. Only use x+y slop on surfaces confirmed
+to have no close horizontal neighbor — standalone icon buttons, the
+header avatar (flush against the header's own edge padding, with the
+brand link on the opposite side of a `justify-between` row).
+
+**Verification note:** pseudo-elements DO receive pointer events for
+their host element by default — no `pointer-events` override is
+needed, and `focus-visible` rings render on the real element's box
+(border/ring), not the pseudo-element, so hit-slop doesn't touch focus
+styling. Confirmed with a Playwright click-precision probe in
+`e2e/touch-targets.spec.ts`.
+
+This does not change `notes/design-system.md`'s radius/height scale —
+the 2px-hairline button and 36px chip visual heights from #304 are
+untouched. It adds a hit-area axis on top of them.

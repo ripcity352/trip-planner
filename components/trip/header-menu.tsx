@@ -33,7 +33,14 @@ export function HeaderMenu({ children }: { children: React.ReactNode }) {
         // The Avatar lives behind the trigger; aria-label keeps the
         // button discoverable for keyboard / screen-reader users.
         aria-label="Account menu"
-        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        // Hit-slop (#F4 / design-system.md "Touch-target hit-slop
+        // mechanism"): the avatar is 32x32; `after:-inset-1.5` extends the
+        // EFFECTIVE hit area to 44x44 without resizing the visible avatar.
+        // Safe on both axes — the trigger sits flush against the header's
+        // own edge padding with the brand link on the opposite side of a
+        // `justify-between` row, so there's no adjacent element to steal
+        // clicks from.
+        className="relative rounded-full outline-none after:absolute after:-inset-1.5 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {children}
       </DropdownMenuTrigger>
