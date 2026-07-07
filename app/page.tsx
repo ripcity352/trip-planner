@@ -22,7 +22,7 @@ export default async function Home() {
         <h1 className="text-4xl font-semibold tracking-tight">
           Plan the trip without the group-chat chaos.
         </h1>
-        <p className="text-base text-zinc-600 dark:text-zinc-400">
+        <p className="text-muted-foreground text-base">
           Pick dates, settle who&apos;s in, share the link. Mobile-first.
           No notifications you didn&apos;t ask for.
         </p>
@@ -35,11 +35,11 @@ export default async function Home() {
         Sign in to your trip
       </Link>
 
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="text-muted-foreground text-sm">
         {AUTH_COPY.landingInviteAffordance}
       </p>
 
-      <footer className="mt-auto flex gap-4 text-sm text-zinc-500 dark:text-zinc-500">
+      <footer className="text-muted-foreground mt-auto flex gap-4 text-sm">
         <Link href="/legal/terms" className="underline-offset-2 hover:underline">
           Terms
         </Link>

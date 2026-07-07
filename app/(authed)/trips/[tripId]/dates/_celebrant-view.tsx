@@ -96,10 +96,21 @@ function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
 
   const isVetoed = row.mark === "no-go";
 
+  // De-emphasis for the vetoed state is expressed per-element via
+  // `--ink-secondary` (the muted-foreground token) — never via container
+  // `opacity`. Container opacity is a filter: it composites the whole
+  // subtree against the page background, multiplying through every
+  // descendant and silently dragging text below AA (#338). See
+  // notes/design-system.md "Contrast — de-emphasis without container
+  // opacity (#338)".
   return (
-    <Card className={cn(isVetoed && "opacity-60")}>
+    <Card className={cn(isVetoed && "border-border/40")}>
       <CardHeader>
-        <CardTitle className="text-base">{row.candidate.label}</CardTitle>
+        <CardTitle
+          className={cn("text-base", isVetoed && "text-muted-foreground")}
+        >
+          {row.candidate.label}
+        </CardTitle>
         <p className="text-muted-foreground text-sm">
           {formatDateRange(row.candidate.starts_on, row.candidate.ends_on)}
         </p>
@@ -126,18 +137,17 @@ function CandidateCelebrantCard({ row }: { row: DatePollCandidateView }) {
                   "focus-visible:ring-ring inline-flex h-9 items-center rounded-full border px-4 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
                   isActive
                     ? // no-go is a state signal, not an error: §State signals
-                      // specs `declined` = --ink-tertiary on a calm surface,
-                      // never persimmon (#301).
+                      // specs `declined` as a calm, non-persimmon ink (#301).
+                      // --ink-tertiary is a large-text/decorative-glyph-only
+                      // token (3.05:1 on --card, below the 4.5:1 small-text
+                      // floor) — this pill label is small text, so the
+                      // de-emphasis move is --ink-secondary/muted-foreground
+                      // (6.8:1 on --card) instead (#338).
                       chip.mark === "no-go"
-                      ? "border-border bg-card"
+                      ? "border-border bg-card text-muted-foreground"
                       : "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-muted text-muted-foreground hover:bg-muted/80"
                 )}
-                style={
-                  isActive && chip.mark === "no-go"
-                    ? { color: "var(--ink-tertiary)" }
-                    : undefined
-                }
               >
                 {chip.label}
               </button>
