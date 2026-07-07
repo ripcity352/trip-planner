@@ -1,20 +1,41 @@
 # Database workflow
 
-How we manage Supabase across local dev, staging, and (eventually) prod
-with two developers. Decision context in
+How we manage Supabase across local dev and the one shared project with
+two developers. Original decision context in
 [`notes/decisions.md`](./decisions.md) — "local Supabase per dev + shared
-staging".
+staging"; deployment reality re-recorded in the "CARRY — milestone
+closed" ADR (2026-06-10) and issue #312.
 
-## Three environments
+## Two environments
 
 | Env | Where it lives | Used for | Who can apply migrations |
 |---|---|---|---|
 | **Local** | `pnpm dlx supabase start` on your laptop, Postgres on `localhost:54322` | day-to-day dev, fast iteration, free resets | you (only affects you) |
-| **Staging** | Shared Supabase project (free tier) | `main`-branch Vercel deploy, all PR preview URLs | merging a PR to `main` |
-| **Prod** | Separate Supabase project (free tier → Pro when needed) | the real bachelor party | manual, after staging soaks ≥24h |
+| **Prod** | The lone shared Supabase project (free tier), ref `bonvqazcqwkrowtkdmuq` | `travelston.com`, the `main`-branch Vercel deploy, AND all PR preview URLs | merging a PR to `main` (CI pushes immediately) |
 
-Prod doesn't exist yet — it's created when Goal 6 ships. Staging is the
-project being created during Goal 1 setup.
+There is no staging project and no separate prod project. The shared
+project is confusingly still **named** `trip-planner-staging` — a relic
+of the original plan to split staging/prod at Goal 6, which never
+happened — but it IS production: travelston.com reads and writes it.
+**A merged migration is live in prod the moment main's CI job runs.**
+There is no soak step and no manual prod push. Treat every migration PR
+accordingly.
+
+**Free-tier auto-pause is a PROD risk.** The project pauses after ~1
+week of inactivity; symptom is main's migration CI job failing with
+`project is paused` while code jobs stay green — and the live site going
+down with it. The Supabase CLI has no restore command; restore via the
+Management API (run by a human — needs a prior `pnpm dlx supabase login`
+so the token is in the macOS keychain):
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $(security find-generic-password -s 'Supabase CLI' -w)" \
+  https://api.supabase.com/v1/projects/bonvqazcqwkrowtkdmuq/restore
+```
+
+Then wait ~4 min for `ACTIVE_HEALTHY` and re-run the failed CI job
+(`gh run rerun <run-id> --failed`).
 
 ## Local Supabase setup (one-time, per dev machine)
 
@@ -43,18 +64,17 @@ Studio (web UI for the local DB) is at <http://127.0.0.1:54323>.
 To stop: `pnpm dlx supabase stop`. State persists between starts via
 Docker volumes; `supabase stop --no-backup` wipes the volume.
 
-## Staging linkage (one-time, per dev machine)
+## Prod linkage (one-time, per dev machine)
 
 ```bash
 pnpm dlx supabase login                          # browser auth
-pnpm dlx supabase link --project-ref <staging-ref>
+pnpm dlx supabase link --project-ref bonvqazcqwkrowtkdmuq
 ```
 
-The `<staging-ref>` comes from the staging project URL:
-`https://app.supabase.com/project/<ref>`. Both devs link to the same
-ref. Once linked, you can run `supabase db push` to apply migrations to
-staging — but **don't**, that's CI's job (see "Applying migrations"
-below).
+Both devs link to the same ref. Once linked, you can run
+`supabase db push` to apply migrations — but **don't**: that's CI's job
+(see "Applying migrations" below), and a manual push goes straight to
+the production database.
 
 ## Writing a migration
 
@@ -88,59 +108,63 @@ Rules (also in `CLAUDE.md`):
 | Env | Trigger | Mechanism |
 |---|---|---|
 | Local | `pnpm dlx supabase db reset` | local CLI re-applies from scratch |
-| Staging | PR merged to `main` | CI workflow runs `supabase db push` |
-| Prod | Manual, after staging soak | one dev runs `supabase db push --linked` against the prod ref |
+| Prod | PR merged to `main` | CI workflow runs `supabase db push` — **live immediately** |
 
-**Why CI does staging push, not us locally:**
-- One actor applies migrations to staging → no race condition between
+**Why CI does the push, not us locally:**
+- One actor applies migrations to prod → no race condition between
   the two devs running `db push` at the same time.
 - The audit trail is the merge commit on `main`.
-- The migration history table on staging stays consistent with `main`.
+- The migration history table on prod stays consistent with `main`.
 
 The CI step is the `migrate-staging` job in
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It runs only
-on push to `main` (not on PRs), gates on the existing `verify` job so a
-broken main never pushes migrations, and no-ops when the
-`SUPABASE_ACCESS_TOKEN` repo secret is absent. Wired up in #16.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — the name
+says "staging" for historical reasons; the target is the prod DB. It
+runs only on push to `main` (not on PRs), gates on the existing
+`verify` job so a broken main never pushes migrations, and no-ops when
+the `SUPABASE_ACCESS_TOKEN` repo secret is absent. Wired up in #16.
+
+Because merge = live, the local `pnpm dlx supabase db reset` proof
+before opening the PR is the *only* rehearsal a migration gets. Don't
+skip it, and be extra careful with anything destructive (see the rules
+above).
 
 Required repo secrets (provisioned once by `ripcity352`):
-- `SUPABASE_ACCESS_TOKEN` — PAT scoped to the staging project, from
+- `SUPABASE_ACCESS_TOKEN` — PAT scoped to the project, from
   <https://supabase.com/dashboard/account/tokens>
 - `SUPABASE_PROJECT_REF` — `bonvqazcqwkrowtkdmuq`
 
-If a migration fails after merge, main is ahead of staging — write a
+If a migration fails after merge, main is ahead of prod — write a
 hotfix migration that resolves the divergence and merge it; the next
-push to main re-runs the job.
+push to main re-runs the job. (The job also fails when the project has
+auto-paused — see "Two environments" above for the restore curl.)
 
 ## What goes in `.env.local`
 
-Three contexts, three files (or one file with commented blocks — pick
-your style):
+Two contexts, two blocks (or two files — pick your style):
 
 - **Local Supabase** — values from `pnpm dlx supabase start` output
-- **Staging** — values from `pnpm dlx vercel env pull` (we use staging
-  vars as the default "preview" env in Vercel)
-- **Prod** — same `vercel env pull` but with `--environment=production`
-  — you almost never need this locally; use it only to verify a hotfix
-  before it goes out
+- **Prod** — values from `pnpm dlx vercel env pull`. Vercel's "preview"
+  and "production" environments point at the same Supabase project, so
+  there's only one set of remote values.
 
-Default to local. Keep staging values around for the rare day you need
-to repro a "works locally, fails on staging" bug.
+Default to local. Keep prod values around for the rare day you need to
+repro a "works locally, fails deployed" bug — and remember that with
+those values loaded, your local app is reading/writing the live DB.
 
 ## Common operations
 
 | Need | Command |
 |---|---|
 | Reset local DB to clean state | `pnpm dlx supabase db reset` |
-| Regenerate TS types from staging | `pnpm types:gen` (writes `lib/db/database.types.ts`; needs `SUPABASE_ACCESS_TOKEN`) |
+| Regenerate TS types from prod | `pnpm types:gen` (writes `lib/db/database.types.ts`; needs `SUPABASE_ACCESS_TOKEN`) |
 | Regenerate TS types from local Supabase | `pnpm dlx supabase gen types typescript --local > lib/db/database.types.ts` |
 | See what migrations have been applied where | `pnpm dlx supabase migration list` (per-env) |
 | Inspect local data | <http://127.0.0.1:54323> (Studio) |
-| Pull a snapshot of staging data to local | `pnpm dlx supabase db dump --data-only --linked` then restore |
+| Pull a snapshot of prod data to local | `pnpm dlx supabase db dump --data-only --linked` then restore |
 
-## When local diverges from staging
+## When local diverges from prod
 
-If your local schema has uncommitted changes and staging moves ahead
+If your local schema has uncommitted changes and prod moves ahead
 (another dev's PR merged), do:
 
 ```bash
@@ -321,4 +345,6 @@ deferred — for M1 `custom` falls back to membership (same as
 
 Supabase has a "branch database" feature where each PR gets an
 ephemeral DB. As of writing this is gated/paid; revisit if it becomes
-free or cheap. Would replace the "all previews share staging" model.
+free or cheap. Would replace the "all previews share the prod project"
+model — which is the strongest argument for it, given that model is
+what we're actually running today.
