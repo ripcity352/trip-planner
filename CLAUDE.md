@@ -345,17 +345,15 @@ only arises via OAuth or invite-accept. **#255 closed as superseded** (its
 stays unit-verified).
 
 **Next:** real-trip retrospective still gates M6 — same bright line as
-M4/M5. **No infra wave lifts the gate.** Open carry-backs / follow-ups:
+M4/M5. **No infra wave lifts the gate.** See `notes/decisions.md`
+"Automated E2E audit + fix wave — 2026-07-07" ADR for the 2026-07-07
+audit session (6-agent Playwright pass, 7 PRs landed, #348/#349/#350
+filed for later). Open carry-backs / follow-ups:
 - **#232** — OAuth-existing-user detection — **parked per operator
   (2026-06-22)**; optional polish, and needs the Google provider enabled
   in Supabase before it can be built or tested
 - **#298** — eslint 9→10 major (deferred; must pass the #182
   rule-fires-on-fixture test under eslint 10 first)
-- **#315** — tailwind-group dependabot bump has a merge conflict
-  (dependabot to rebase; routine devDep)
-- `notes/database-workflow.md` is stale on deployment reality — the
-  lone Supabase project serves travelston.com and CI pushes migrations
-  to it on merge (no soak step exists); update the doc
 
 When you complete a milestone, update `/notes/roadmap.md` to mark it done
 and add any deviations or follow-ups to `/notes/decisions.md`.
