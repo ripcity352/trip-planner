@@ -5,6 +5,76 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-07 — Security & supply-chain hardening session (automated)
+
+Fully-automated /loop session: Dependabot triage, eslint-10 gate proof,
+#350 CHECK constraint, branch-protection hardening (#100/#133), #349
+realtime spike, advisor/secret-scanning sweep. **Zero feature surface —
+the M6 real-trip gate stays intact.** Prod data untouched (read-only
+policy; the one prod-lifecycle attempt — unpausing the project — was
+correctly permission-blocked and handed to the operator).
+
+**Landed.**
+
+- **#360** — all 20 open Dependabot alerts (4 high) cleared in one
+  transitive-bump PR: hono 4.12.28, undici 7.28.0, vite 8.1.3,
+  js-yaml 4.3.0, @babel/core 7.29.7, @opentelemetry/core 2.9.0.
+  Alert count is now **0 with zero dismissals**. Two mechanism notes
+  for the next dep wave: pnpm overrides cannot retarget *auto-installed
+  peers* (vite needed an explicit `"vite": "^8.0.16"` devDep pin), and
+  pnpm 11 only honors overrides in `pnpm-workspace.yaml`, not
+  `package.json#pnpm`. Verified: typecheck/lint/test/build + a
+  three-run e2e triangulation (full suite on the PR worktree; failing-
+  spec baseline on unbumped main; controlled rerun) — no failure
+  reproduced across runs; all were the known flake class, none
+  dep-caused. **CI does not run the e2e suite** (verify = unit only;
+  visual.yml = pixel-diff) — local e2e stays a mandatory pre-merge
+  step for runtime-relevant PRs.
+- **Branch protection** — `enforce_admins=true` +
+  `require_code_owner_reviews=true` per #100/#133, applied immediately
+  after this ADR merged (sequenced so the session could still
+  self-merge its own closure). With the wildcard CODEOWNERS this
+  **ends single-dev self-merge on every PR** — deliberate; empirical
+  verification of the blocked path is recorded on #100/#133.
+
+**Open, operator-gated.**
+
+- **#359 (PR, HOLD)** — #350's `trips_end_after_start` CHECK
+  (`ends_at >= starts_at`; NULLs pass by design). Locally verified
+  (reset + reject/accept matrix) but **merge-gated on restoring the
+  paused Supabase project and a prod violator count of 0** — the query
+  is in the PR body and migration header.
+- **Prod Supabase project paused** (free-tier idle, discovered
+  mid-session). Main's `migrate-staging` job has been red on every
+  push since ~06:00Z today — pre-existing, not this session. Restore
+  is operator-run (Management API curl). Blocks: #359 merge, #349 prod
+  publication check, Supabase advisors.
+
+**Blocked / discovered.**
+
+- **#298 (eslint 9→10): blocked upstream.** The #182 gate test crashes
+  under eslint 10 — `eslint-plugin-react@7.37.5` (latest; a direct
+  dependency of `eslint-config-next`) still calls the removed
+  `context.getFilename()`. Not migratable until the plugin ships
+  eslint-10 support and eslint-config-next picks it up; re-check
+  commands are on the issue.
+- **#361 (new).** A clean `supabase db reset` on the pinned local image
+  leaves `anon`/`authenticated`/`service_role` with **no DML grants**
+  on `public` tables (competing postgres-owned `pg_default_acl` row) —
+  the local e2e gate is environmentally broken on fresh setups until
+  the grant fix (SQL in the issue) is made durable.
+- **#349.** The publication-membership theory is **falsified** locally
+  (all four subscribed tables are in `supabase_realtime` with sane
+  replica identity). The audit-day symptom remains unexplained and is
+  now confounded by #361; prod-side check TODO post-restore.
+- **Sweep:** secret scanning + push protection enabled, 0 alerts
+  (non-provider patterns and validity checks off — acceptable at this
+  repo's scale). Hygiene note, not filed: the `shadcn` CLI sits in prod
+  `dependencies` and drags hono/@modelcontextprotocol runtime-scope —
+  candidate for `devDependencies` in a future chore PR.
+
+---
+
 ## 2026-07-07 — Automated E2E audit + fix wave — 2026-07-07
 
 **The audit.** Six auditors (baseline suite + organizer / invitee /
