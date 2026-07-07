@@ -66,6 +66,16 @@ export function ItemCard({
   tripTimezone,
 }: ItemCardProps) {
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
+  // Non-default visibility badge for organizers_only / custom — parity with
+  // AnnouncementCard's VISIBILITY_LABEL mapping (#F8). hide_from_celebrant
+  // keeps its own celebrant-name template below since it also gates the
+  // celebrant-facing placeholder above.
+  const nonCelebrantVisibilityLabel =
+    item.visibility === "organizers_only"
+      ? M3_UI_STRINGS.announcements_badge_organizers_only
+      : item.visibility === "custom"
+        ? M3_UI_STRINGS.announcements_badge_custom
+        : null;
 
   // Celebrant sees only the placeholder
   if (isHiddenFromCelebrant && isCelebrant) {
@@ -101,13 +111,23 @@ export function ItemCard({
         ) : null}
       </div>
 
-      {/* Organizer visibility badge */}
+      {/* Organizer visibility badge — hide_from_celebrant keeps the amber
+          celebrant-name template; organizers_only / custom get the neutral
+          muted badge, matching AnnouncementCard's non-default treatment. */}
       {isHiddenFromCelebrant && isOrganizer ? (
         <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {M3_UI_STRINGS.itinerary_item_visibility_hide_celebrant_badge.replace(
             "{name}",
             celebrantName ?? "the celebrant"
           )}
+        </span>
+      ) : null}
+      {nonCelebrantVisibilityLabel && isOrganizer ? (
+        <span
+          data-testid="visibility-badge"
+          className="inline-flex w-fit items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+        >
+          {nonCelebrantVisibilityLabel}
         </span>
       ) : null}
 

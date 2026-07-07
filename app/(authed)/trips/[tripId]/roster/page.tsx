@@ -45,13 +45,16 @@ export default async function RosterPage({ params }: PageProps) {
   // with itinerary page pattern — easy to extend later)
   const rawMembers = await getTripMembers(supabase, trip.id);
 
-  // Map to the RosterMember shape the component expects
+  // Map to the RosterMember shape the component expects. isViewer flags the
+  // signed-in user's own row so RosterList can render "You" instead of the
+  // "Guest" fallback (#F5-partial — full identity-capture fix is #348).
   const members: RosterMember[] = rawMembers.map((m) => ({
     id: m.id,
     displayName: m.display_name,
     phone: m.phone_e164,
     role: m.role,
     isCelebrant: m.is_celebrant,
+    isViewer: m.id === viewer.id,
   }));
 
   return (

@@ -20,3 +20,25 @@ export const ERROR_PAGE_COPY = {
   /** Retry button — calls Next's reset(). */
   retry: "Try again",
 } as const;
+
+/**
+ * `app/not-found.tsx` copy — the `notFound()` surface (#F7).
+ *
+ * Distinct from ERROR_PAGE_COPY: `notFound()` isn't a thrown/caught error,
+ * it's Next's dedicated 404 render path, and it's also what all 8
+ * `/trips/[tripId]/*` pages fall through to on a cross-trip access denial
+ * (RLS already filtered the row, so a non-member gets the same "can't find
+ * that" outcome as a stale/mistyped URL — no distinguishing "doesn't
+ * exist" from "not yours to see").
+ *
+ * Voice test: "would you say this out loud at a pre-trip dinner?" Same
+ * anti-SaaS bar as ERROR_PAGE_COPY — no "404", no "Page not found".
+ */
+export const NOT_FOUND_PAGE_COPY = {
+  /** Heading. */
+  title: "Nothing here.",
+  /** Body — same collapsed-outcome framing as the invite-preview 404. */
+  body: "Whatever you were looking for isn't at this link.",
+  /** CTA back to the signed-in home. */
+  backCta: "Back to your trips",
+} as const;

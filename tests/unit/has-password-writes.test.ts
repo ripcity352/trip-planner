@@ -73,7 +73,7 @@ vi.mock("@/lib/rate-limit", () => ({
 }));
 
 // Import AFTER mocks.
-import { signUpAction } from "@/app/login/actions";
+import { signUpAction, signInWithPasswordAction } from "@/app/login/actions";
 import {
   changePasswordAction,
   setPasswordViaRecoveryAction,
@@ -136,6 +136,54 @@ describe("signUpAction — has_password atomic write", () => {
     const result = await signUpAction({
       email: "test@example.com",
       password: "password123",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// signInWithPasswordAction — has_password self-heal write after sign-in
+// succeeds (#F9). A successful password sign-in is definitive proof a
+// password exists, even if it was set outside app code paths.
+// ---------------------------------------------------------------------------
+
+describe("signInWithPasswordAction — has_password self-heal write", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRateLimitedAction.mockImplementation(
+      async <T>(_scope: unknown, _key: unknown, fn: () => Promise<T>) => fn(),
+    );
+    mockSingle.mockResolvedValue({ data: { id: "user-abc", has_password: true }, error: null });
+  });
+
+  it("calls .from('profiles').update({has_password:true}) after successful password sign-in", async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: { id: "user-abc" } },
+      error: null,
+    });
+
+    const result = await signInWithPasswordAction({
+      email: "test@example.com",
+      password: "password123",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(mockFrom).toHaveBeenCalledWith("profiles");
+    expect(mockUpdate).toHaveBeenCalledWith({ has_password: true });
+    expect(mockEq).toHaveBeenCalledWith("id", "user-abc");
+  });
+
+  it("does NOT call .from('profiles').update when sign-in returns an error", async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: null },
+      error: { status: 400, code: "invalid_credentials", message: "Wrong password" },
+    });
+
+    const result = await signInWithPasswordAction({
+      email: "test@example.com",
+      password: "wrongpassword",
     });
 
     expect(result.ok).toBe(false);

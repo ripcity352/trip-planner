@@ -182,7 +182,7 @@ export async function signInWithPasswordAction(input: {
 
   try {
     const supabase = await createClient();
-    const { error } = await rateLimitedAction(
+    const { data, error } = await rateLimitedAction(
       RATE_LIMIT_SCOPES.AUTH_PASSWORD,
       email,
       () => supabase.auth.signInWithPassword({ email, password }),
@@ -196,6 +196,18 @@ export async function signInWithPasswordAction(input: {
       });
       const mapped = mapAuthErrorToKey(error);
       return { ok: false, errorKey: mapped ?? "network" };
+    }
+
+    // Self-heal has_password — a successful password sign-in is definitive
+    // proof a password exists on this account, even if it was set outside
+    // app code paths (e.g. Supabase dashboard). Same closure as signUp/
+    // changePassword/setPassword — only reachable on success. (#F9)
+    const userId = data?.user?.id;
+    if (userId) {
+      const hp = await markPasswordSet(supabase, userId, "auth:signInWithPassword");
+      if (!hp.ok) {
+        return { ok: false, errorKey: "network" };
+      }
     }
 
     return { ok: true };

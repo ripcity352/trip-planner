@@ -299,6 +299,10 @@ export const M3_UI_STRINGS = {
   // Roster member fallback + role labels (Wave 4b fix-up — inline JSX
   // literals flagged in code review)
   roster_member_fallback_name: "Guest",
+  // Own-row affordance (#F5-partial, issue #348 tracks the full identity-
+  // capture fix) — the signed-in user's own roster row, regardless of
+  // whether display_name is set.
+  roster_member_you: "You",
   roster_role_celebrant: "celebrant",
   roster_role_organizer: "organizer",
   roster_role_co_organizer: "co-organizer",
