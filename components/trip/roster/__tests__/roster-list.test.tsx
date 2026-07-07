@@ -102,4 +102,25 @@ describe("RosterList", () => {
     // organizer member Alice should have a role indicator
     expect(screen.getByText(/organizer/i)).toBeInTheDocument();
   });
+
+  // #F5-partial — own-row "You" affordance (full fix gated behind #348)
+  it("renders 'You' for the viewer's own row instead of their display name", () => {
+    const withViewer: RosterMember[] = [
+      { id: "m1", displayName: "Alice", phone: "+15555550100", role: "organizer", isCelebrant: false, isViewer: true },
+      { id: "m2", displayName: "Bob", phone: "+15555550101", role: "attendee", isCelebrant: true },
+    ];
+    render(<RosterList members={withViewer} tripName="Test Trip" />);
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+  });
+
+  it("renders 'You' for the viewer's own row even when display_name is null", () => {
+    const withViewer: RosterMember[] = [
+      { id: "m1", displayName: null, phone: null, role: "attendee", isCelebrant: false, isViewer: true },
+    ];
+    render(<RosterList members={withViewer} tripName="Test Trip" />);
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.queryByText("Guest")).not.toBeInTheDocument();
+  });
 });

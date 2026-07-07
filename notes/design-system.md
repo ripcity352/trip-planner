@@ -1525,3 +1525,52 @@ window in dev. Test these explicitly when M1 #69 ships:
    FOUT *and* no motion. This is the worst-case render. It should
    still ship the voice line legibly; the brand is allowed to feel
    plainer in this corner.
+
+## Spec gaps closed — audit fix-polish wave (2026-07-06)
+
+### `notFound()` surface gap (#F7)
+
+The error-pages copy register (`lib/copy/error-pages.ts`) only covered
+the thrown/caught boundary (`error.tsx` / `global-error.tsx`) — it had
+no entry for Next's `notFound()` render path, which is a *different*
+mechanism (a dedicated 404 tree, not a catch boundary) and a much wider
+surface: every one of the 8 `/trips/[tripId]/*` pages calls `notFound()`
+on a cross-trip access denial, in addition to any mistyped/stale URL.
+Before this fix both cases fell through to Next's stock "404 | This page
+could not be found" — the one off-voice SaaS screen in the app.
+
+Closed by adding `app/not-found.tsx` (Server Component, styled like the
+`InviteMissing` surface in `app/invite/[token]/page.tsx`) with its own
+`NOT_FOUND_PAGE_COPY` entry in `lib/copy/error-pages.ts`, so the copy
+register now has one export per render mechanism: `ERROR_PAGE_COPY` for
+thrown/caught, `NOT_FOUND_PAGE_COPY` for `notFound()`. The two are kept
+distinct rather than merged into one generic "error" export because they
+answer different questions to the user ("something broke, retry" vs.
+"that link doesn't lead anywhere, here's home") and a future feature
+adding a third render mechanism should add a third export, not overload
+either existing one.
+
+### Visibility-badge contract gap (#F8)
+
+`AnnouncementCard` badges all three non-default `trip_visibility` values
+(`organizers_only`, `hide_from_celebrant`, `custom`); `ItemCard` only
+badged `hide_from_celebrant`. There was no single spec defining "which
+visibility values get a badge, in what surfaces, to which viewers" — each
+content-type component grew its own ad hoc mapping, and the itinerary one
+silently lagged the announcements one.
+
+Closed narrowly for this wave: `ItemCard` now badges `organizers_only`
+and `custom` too, reusing `M3_UI_STRINGS.announcements_badge_organizers_only`
+/ `announcements_badge_custom` rather than minting parallel
+`itinerary_item_visibility_*` strings for identical text (`hide_from_celebrant`
+keeps its own celebrant-name-templated string since it also gates the
+celebrant-facing placeholder, which the other two values don't). Badge
+visibility is gated on `isOrganizer`, matching the existing
+`hide_from_celebrant` badge's audience.
+
+**Still open:** a real fix is a single `VISIBILITY_BADGE` map (or a
+shared `<VisibilityBadge visibility={…} />` primitive) that every
+content-type component imports, instead of each leaf component defining
+its own `Record<TripVisibility, string>` subset. Filing that
+consolidation is a candidate for a future DS wave — this fix closes the
+immediate parity gap without taking on that refactor.

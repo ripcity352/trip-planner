@@ -5,6 +5,39 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-06 — #F9 — has_password self-heal on password sign-in
+
+**Context.** The `profiles.has_password` shadow column (#244, W0 D7) lets
+the account-security page distinguish State A (password) from State B
+(OTP/OAuth-only) without inspecting `auth.users.identities`. Four call
+sites set it atomically in the same closure as their auth mutation:
+`signUpAction`, `changePasswordAction`, `setPasswordViaRecoveryAction`,
+`setPasswordAction`. `signInWithPasswordAction` was missing from that
+list — an account whose password was set outside these app code paths
+(e.g. directly in the Supabase dashboard) could sign in with a password
+successfully forever while `/account/sign-in-and-security` kept telling
+them "You currently sign in with a code."
+
+**Decision.** Call `markPasswordSet` in `signInWithPasswordAction`'s
+success path too, following the exact same pattern as the other four call
+sites: awaited, inside the same closure as the auth call, only reached
+after `signInWithPassword` returns without error, hard-fails the action
+with `errorKey: "network"` if the write itself fails.
+
+**Why this is safe.** A successful password sign-in is definitive proof a
+password exists on the account — there is no authz change here, just a
+truthful write to a shadow flag that was already lagging reality. No new
+read path, no new grant, no new failure mode beyond the write failure
+mode the other four call sites already have.
+
+**Alternative considered:** fire-and-forget (don't await, don't fail
+sign-in on write failure). Rejected to keep the pattern uniform across
+all five password-proof call sites — a future reader auditing "does
+every place that proves a password exists call `markPasswordSet`
+correctly" only has to check one shape, not two.
+
+---
+
 ## 2026-06-22 — #301 + #304 — design-system radius / error-surface reconcile
 
 **Context.** Two CARRY-deferred call-site reconciles, each gated behind an

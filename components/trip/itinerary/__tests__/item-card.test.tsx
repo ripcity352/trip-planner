@@ -185,6 +185,40 @@ describe("ItemCard", () => {
     expect(screen.getByText(/hidden from/i)).toBeInTheDocument();
   });
 
+  // #F8 — parity with AnnouncementCard's badge mapping
+  it("shows 'Organizers only' badge for organizer when visibility is organizers_only", () => {
+    render(
+      <ItemCard
+        item={makeItem({ visibility: "organizers_only" })}
+        {...baseProps}
+        isOrganizer={true}
+      />
+    );
+    expect(screen.getByText("Organizers only")).toBeInTheDocument();
+  });
+
+  it("shows 'Custom audience' badge for organizer when visibility is custom", () => {
+    render(
+      <ItemCard
+        item={makeItem({ visibility: "custom" })}
+        {...baseProps}
+        isOrganizer={true}
+      />
+    );
+    expect(screen.getByText("Custom audience")).toBeInTheDocument();
+  });
+
+  it("does not show a non-default visibility badge for everyone-visibility items", () => {
+    render(
+      <ItemCard
+        item={makeItem({ visibility: "everyone" })}
+        {...baseProps}
+        isOrganizer={true}
+      />
+    );
+    expect(screen.queryByTestId("visibility-badge")).not.toBeInTheDocument();
+  });
+
   it("renders ItemRsvpChip with correct initial status", () => {
     render(
       <ItemCard item={makeItem()} {...baseProps} myRsvpStatus="skipping" />

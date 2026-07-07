@@ -22,6 +22,13 @@ export interface RosterMember {
   phone: string | null;
   role: TripRole;
   isCelebrant: boolean;
+  /**
+   * True when this row is the signed-in viewer's own trip_member row.
+   * Own-row rendering shows "You" regardless of display_name (#F5-partial —
+   * the full identity-capture fix is gated behind #348). Optional so
+   * existing callers/tests that don't thread a viewer id keep working.
+   */
+  isViewer?: boolean;
 }
 
 interface RosterListProps {
@@ -114,7 +121,9 @@ export function RosterList({
                 className="flex items-center justify-between rounded-md border border-border px-4 py-3 min-h-11"
               >
                 <span className="font-medium text-sm">
-                  {member.displayName ?? M3_UI_STRINGS.roster_member_fallback_name}
+                  {member.isViewer
+                    ? M3_UI_STRINGS.roster_member_you
+                    : member.displayName ?? M3_UI_STRINGS.roster_member_fallback_name}
                 </span>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   {member.phone && (
