@@ -55,7 +55,18 @@ async function handle(
   { params }: { params: Promise<{ token: string }> }
 ): Promise<NextResponse> {
   const { token } = await params;
-  void request; // No body needed; we read auth from cookies via the server client.
+
+  // #348: the accept form may carry an optional display name. The form
+  // posts application/x-www-form-urlencoded (no-JS path included);
+  // formData() failure just means "no name" — never block the accept.
+  let displayName: string | null = null;
+  try {
+    const form = await request.formData();
+    const raw = form.get("display_name");
+    if (typeof raw === "string") displayName = raw;
+  } catch {
+    displayName = null;
+  }
 
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -77,7 +88,7 @@ async function handle(
   // On failure, we map the errorKey to a query string so `/invite/[token]`
   // (which doesn't currently render errors) at least lands the user
   // somewhere they can read the toast.
-  const result = await acceptInviteAction(token, idempotencyKey);
+  const result = await acceptInviteAction(token, idempotencyKey, displayName);
 
   // `acceptInviteAction` throws NEXT_REDIRECT on success; if we get
   // here, it returned an error envelope.

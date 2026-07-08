@@ -14,6 +14,8 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { createInviteRecord, revokeInvite } from "@/lib/db/invites";
+import { setMemberDisplayName } from "@/lib/db/trips";
+import { setProfileDisplayNameIfEmpty } from "@/lib/db/profiles";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -97,6 +99,11 @@ function mapRpcErrorToKey(error: {
  */
 const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
 
+// #348: display-name clamp at the accept boundary. Length only — the
+// roster renders via React (no injection surface) and names are personal;
+// don't over-police what people call themselves.
+const DISPLAY_NAME_MAX = 80;
+
 const createInviteSchema = z.object({
   tripId: z.string().uuid(),
   usesLeft: z.number().int().positive().max(1000).nullable().optional(),
@@ -123,7 +130,8 @@ const createInviteSchema = z.object({
  */
 export async function acceptInviteAction(
   token: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  displayName?: string | null
 ): Promise<AcceptInviteResult | never> {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -169,6 +177,22 @@ export async function acceptInviteAction(
     }
     console.error("[invites] acceptInvite unexpected failure:", err);
     return { ok: false, errorKey: "network" };
+  }
+
+  // #348: capture the display name the invitee typed at accept time.
+  // Best-effort by design — the accept ALREADY happened; a name-write
+  // failure must never bounce the user off the trip. RLS scopes both
+  // writes to the caller's own rows.
+  const cleanName = (displayName ?? "").trim().slice(0, DISPLAY_NAME_MAX);
+  if (cleanName) {
+    try {
+      await setMemberDisplayName(supabase, memberId, cleanName);
+      // Durable identity for future trips — fills only a NULL profile
+      // name (single conditional UPDATE, no clobber).
+      await setProfileDisplayNameIfEmpty(supabase, userId, cleanName);
+    } catch (err) {
+      console.error("[invites] accept display-name write failed:", err);
+    }
   }
 
   // Look up the trip slug so the redirect lands on the friendly URL.
