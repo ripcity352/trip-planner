@@ -12,7 +12,7 @@
 import { format, parseISO } from "date-fns";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ItemCard } from "./item-card";
-import type { ItineraryItem, ItineraryItemRsvpStatus, LodgingAssignment, TripMember } from "@/lib/db/types";
+import type { ItineraryItem, ItineraryItemMemberFlag, ItineraryItemRsvpStatus, LodgingAssignment, TripMember } from "@/lib/db/types";
 
 export interface DaySectionProps {
   day: string; // ISO YYYY-MM-DD
@@ -28,6 +28,8 @@ export interface DaySectionProps {
   tripMembers: TripMember[];
   /** IANA timezone from `trips.timezone` — forwarded to ItemCard → EditItemFormSheet. */
   tripTimezone: string;
+  /** #365: itemId → member flags (organizer: all members; member: own). */
+  itemFlagsMap: Map<string, ItineraryItemMemberFlag[]>;
 }
 
 export function DaySection({
@@ -40,6 +42,7 @@ export function DaySection({
   lodgingAssignmentsMap,
   tripMembers,
   tripTimezone,
+  itemFlagsMap,
 }: DaySectionProps) {
   // parseISO treats the string as local midnight — keeps the weekday
   // consistent with what you'd expect for the trip date.
@@ -65,6 +68,7 @@ export function DaySection({
               lodgingAssignments={lodgingAssignmentsMap.get(item.id) ?? []}
               tripMembers={tripMembers}
               tripTimezone={tripTimezone}
+              itemFlags={itemFlagsMap.get(item.id) ?? []}
             />
           </li>
         ))}

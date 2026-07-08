@@ -14,6 +14,8 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { createInviteRecord, revokeInvite } from "@/lib/db/invites";
+import { setMemberDisplayName } from "@/lib/db/trips";
+import { setProfileDisplayNameIfEmpty } from "@/lib/db/profiles";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -95,6 +97,13 @@ function mapRpcErrorToKey(error: {
  * `usesLeft = null` means unlimited; positive integer with a cap so a
  * client can't ask for a 9-quadrillion-use link.
  */
+const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
+
+// #348: display-name clamp at the accept boundary. Length only — the
+// roster renders via React (no injection surface) and names are personal;
+// don't over-police what people call themselves.
+const DISPLAY_NAME_MAX = 80;
+
 const createInviteSchema = z.object({
   tripId: z.string().uuid(),
   usesLeft: z.number().int().positive().max(1000).nullable().optional(),
@@ -121,7 +130,8 @@ const createInviteSchema = z.object({
  */
 export async function acceptInviteAction(
   token: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  displayName?: string | null
 ): Promise<AcceptInviteResult | never> {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -169,6 +179,22 @@ export async function acceptInviteAction(
     return { ok: false, errorKey: "network" };
   }
 
+  // #348: capture the display name the invitee typed at accept time.
+  // Best-effort by design — the accept ALREADY happened; a name-write
+  // failure must never bounce the user off the trip. RLS scopes both
+  // writes to the caller's own rows.
+  const cleanName = (displayName ?? "").trim().slice(0, DISPLAY_NAME_MAX);
+  if (cleanName) {
+    try {
+      await setMemberDisplayName(supabase, memberId, cleanName);
+      // Durable identity for future trips — fills only a NULL profile
+      // name (single conditional UPDATE, no clobber).
+      await setProfileDisplayNameIfEmpty(supabase, userId, cleanName);
+    } catch (err) {
+      console.error("[invites] accept display-name write failed:", err);
+    }
+  }
+
   // Look up the trip slug so the redirect lands on the friendly URL.
   // We use trip_members → trips here; the membership row was just
   // created (or already existed), so RLS lets us read it.
@@ -206,7 +232,8 @@ export async function acceptInviteAction(
  * accept budget for incoming members (or vice versa).
  */
 export async function createInviteAction(
-  input: CreateInviteActionInput
+  input: CreateInviteActionInput,
+  idempotencyKey: string
 ): Promise<CreateInviteResult> {
   // Validate first — reject usesLeft <= 0, capped >1000, and any
   // expires_at already in the past. The DB columns don't enforce
@@ -214,6 +241,14 @@ export async function createInviteAction(
   // action layer is the only chokepoint.
   const parsed = createInviteSchema.safeParse(input);
   if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  // #366: client-generated replay key, scope (trip_id, idempotency_key)
+  // per the M4 Delta 2 partial unique index. Same local-const pattern as
+  // announcements/travel-legs.
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
     return { ok: false, errorKey: "validation_failed" };
   }
 
@@ -234,7 +269,8 @@ export async function createInviteAction(
           parsed.data.tripId,
           parsed.data.usesLeft ?? null,
           parsed.data.expiresAt ?? null,
-          userId
+          userId,
+          keyParse.data
         )
     );
     return { ok: true, invite };

@@ -111,6 +111,9 @@ export const M2_UI_STRINGS = {
   dashboard_dates_unset: "Dates not locked in yet.",
   // /invite/[token]
   invitePreview_cta_authed: "Count me in",
+  // #348: optional name capture at accept — no asterisk, no gate.
+  invitePreview_name_label: "What should the crew call you?",
+  invitePreview_name_placeholder: "First name works",
   invitePreview_cta_anon: "Sign in to join",
   invitePreview_back_link: "Back home",
   invitePreview_dates_unset: "Dates TBD",
@@ -390,3 +393,25 @@ export const M4_UI_STRINGS = {
 } as const;
 
 export type M4UIStringKey = keyof typeof M4_UI_STRINGS;
+
+/**
+ * M5-era strings — expenses MVP (#372). Voice rule unchanged: would you
+ * say it out loud at a pre-trip dinner? No shame-coding, no nudges —
+ * passive-aggressive payment pressure is hard-banned (CLAUDE.md).
+ */
+export const M5_UI_STRINGS = {
+  expenses_heading: "Who paid for what",
+  expenses_total_label: "So far",
+  expenses_your_share_label: "Your share",
+  expenses_paid_by_template: "{name} covered it",
+  expenses_add_cta: "Log a spend",
+  expensesForm_description_label: "What was it?",
+  expensesForm_description_placeholder: "Boat deposit, first round, gas…",
+  expensesForm_amount_label: "How much?",
+  expensesForm_amount_placeholder: "120 or 120.50",
+  expensesForm_date_label: "When? (today if blank)",
+  expensesForm_split_label: "Who's splitting it?",
+  expensesForm_visibility_label: "Who sees this?",
+  expensesForm_submit: "Log it",
+  expensesForm_cancel: "Never mind",
+} as const;

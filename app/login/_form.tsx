@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AUTH_COPY } from "@/lib/copy/auth";
+import { isGoogleOAuthEnabled } from "@/lib/auth/oauth-config";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import {
   signInWithPasswordAction,
@@ -246,8 +247,11 @@ export function LoginForm({ next }: LoginFormProps) {
             {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.continueButton}</span>}
           </Button>
         </form>
-        {/* H3 ordering: Google button is BELOW the primary CTA — OTP-as-floor first */}
-        <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+        {/* H3 ordering: Google button is BELOW the primary CTA — OTP-as-floor first.
+            #370: hidden until the Supabase provider is enabled (see lib/auth/oauth-config). */}
+        {isGoogleOAuthEnabled() && (
+          <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+        )}
       </div>
     );
   }
@@ -313,8 +317,11 @@ export function LoginForm({ next }: LoginFormProps) {
             {AUTH_COPY.emailMeCodeLink}
           </button>
         </form>
-        {/* H3 ordering: Google button BELOW the "Email me a code" link */}
-        <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+        {/* H3 ordering: Google button BELOW the "Email me a code" link.
+            #370: hidden until the Supabase provider is enabled (see lib/auth/oauth-config). */}
+        {isGoogleOAuthEnabled() && (
+          <GoogleButton onClick={handleGoogleSignIn} disabled={isPending} />
+        )}
       </div>
     );
   }
