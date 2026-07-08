@@ -111,6 +111,9 @@ export const M2_UI_STRINGS = {
   dashboard_dates_unset: "Dates not locked in yet.",
   // /invite/[token]
   invitePreview_cta_authed: "Count me in",
+  // #348: optional name capture at accept — no asterisk, no gate.
+  invitePreview_name_label: "What should the crew call you?",
+  invitePreview_name_placeholder: "First name works",
   invitePreview_cta_anon: "Sign in to join",
   invitePreview_back_link: "Back home",
   invitePreview_dates_unset: "Dates TBD",

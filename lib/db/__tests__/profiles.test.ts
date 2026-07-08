@@ -13,7 +13,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getProfile } from "../profiles";
+import { getProfile, setProfileDisplayNameIfEmpty } from "../profiles";
 
 // ---------------------------------------------------------------------------
 // Builder helpers
@@ -141,5 +141,19 @@ describe("getProfile — error handling", () => {
     await expect(
       getProfile(client as unknown as SupabaseClient, "user-1")
     ).resolves.toBeNull();
+  });
+});
+
+// #348: durable-identity backfill — only fills a NULL profile name
+describe("setProfileDisplayNameIfEmpty", () => {
+  it("updates display_name filtered to id AND display_name IS NULL", async () => {
+    const { calls, client } = makeBuilder({ data: null, error: null });
+    await setProfileDisplayNameIfEmpty(client as never, "user-1", "Nate");
+    const update = calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({ display_name: "Nate" });
+    const eq = calls.find((c) => c.method === "eq");
+    expect(eq?.args).toEqual(["id", "user-1"]);
+    const isCall = calls.find((c) => c.method === "is");
+    expect(isCall?.args).toEqual(["display_name", null]);
   });
 });

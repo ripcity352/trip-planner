@@ -221,3 +221,24 @@ export async function createTrip(
   }
   return data as Trip;
 }
+
+/**
+ * #348: set the caller's per-trip display name on their own membership
+ * row. RLS ("users can update their own RSVP" — whole-row, user_id-
+ * scoped) means this can only ever touch the caller's row; passing a
+ * foreign memberId updates zero rows rather than erroring.
+ */
+export async function setMemberDisplayName(
+  supabase: SupabaseClient,
+  memberId: string,
+  displayName: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("trip_members")
+    .update({ display_name: displayName })
+    .eq("id", memberId);
+
+  if (error) {
+    throw new Error(`setMemberDisplayName failed: ${error.message}`);
+  }
+}

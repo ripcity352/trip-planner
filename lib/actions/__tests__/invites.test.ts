@@ -76,6 +76,31 @@ vi.mock("next/navigation", () => ({
   redirect: redirectMock,
 }));
 
+// #348: name-capture setters — mocked so accept tests can assert the
+// best-effort write without a full builder chain.
+const setMemberDisplayNameMock = vi.fn(async () => {});
+const setProfileDisplayNameIfEmptyMock = vi.fn(async () => {});
+vi.mock("@/lib/db/trips", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/db/trips")>(
+    "@/lib/db/trips"
+  );
+  return {
+    ...actual,
+    setMemberDisplayName: (...args: unknown[]) =>
+      setMemberDisplayNameMock(...(args as [])),
+  };
+});
+vi.mock("@/lib/db/profiles", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/db/profiles")>(
+    "@/lib/db/profiles"
+  );
+  return {
+    ...actual,
+    setProfileDisplayNameIfEmpty: (...args: unknown[]) =>
+      setProfileDisplayNameIfEmptyMock(...(args as [])),
+  };
+});
+
 describe("createInviteAction — rate-limit scope (#107)", () => {
   beforeEach(() => {
     rpcMock.mockReset();
@@ -340,5 +365,82 @@ describe("acceptInviteAction", () => {
     const result = await acceptInviteAction("token-1", "idem-1");
 
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #348: display-name capture at accept
+// ---------------------------------------------------------------------------
+
+describe("acceptInviteAction — display-name capture (#348)", () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+    getUserMock.mockReset();
+    rateLimitedActionMock.mockClear();
+    redirectMock.mockClear();
+    createClientMock.mockReset();
+    setMemberDisplayNameMock.mockClear();
+    setProfileDisplayNameIfEmptyMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  function primeSuccess() {
+    getUserMock.mockResolvedValue({
+      data: { user: { id: "u-1" } },
+      error: null,
+    });
+    createClientMock.mockResolvedValue(
+      buildClient({
+        trip_members: { trip_id: "trip-1" },
+        trips: { slug: "vegas-bach" },
+      })
+    );
+    rpcMock.mockResolvedValueOnce({ data: "tm-1", error: null });
+  }
+
+  it("writes the trimmed name to the member row and backfills the profile", async () => {
+    primeSuccess();
+    const { acceptInviteAction } = await import("@/lib/actions/invites");
+
+    await expect(
+      acceptInviteAction("token-1", "idem-1", "  Nate Newguy  ")
+    ).rejects.toThrow("NEXT_REDIRECT:/trips/vegas-bach");
+
+    expect(setMemberDisplayNameMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "tm-1",
+      "Nate Newguy"
+    );
+    expect(setProfileDisplayNameIfEmptyMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "u-1",
+      "Nate Newguy"
+    );
+  });
+
+  it("skips the writes entirely for an empty/whitespace name", async () => {
+    primeSuccess();
+    const { acceptInviteAction } = await import("@/lib/actions/invites");
+
+    await expect(
+      acceptInviteAction("token-1", "idem-1", "   ")
+    ).rejects.toThrow("NEXT_REDIRECT:/trips/vegas-bach");
+
+    expect(setMemberDisplayNameMock).not.toHaveBeenCalled();
+    expect(setProfileDisplayNameIfEmptyMock).not.toHaveBeenCalled();
+  });
+
+  it("still redirects into the trip when the name write fails (best-effort)", async () => {
+    primeSuccess();
+    setMemberDisplayNameMock.mockRejectedValueOnce(new Error("RLS"));
+    const { acceptInviteAction } = await import("@/lib/actions/invites");
+
+    await expect(
+      acceptInviteAction("token-1", "idem-1", "Nate")
+    ).rejects.toThrow("NEXT_REDIRECT:/trips/vegas-bach");
   });
 });
