@@ -161,7 +161,8 @@ export async function createInviteRecord(
   tripId: string,
   usesLeft: number | null,
   expiresAt: string | null,
-  createdBy?: string
+  createdBy?: string,
+  idempotencyKey?: string | null
 ): Promise<Invite> {
   const payload: Record<string, unknown> = {
     trip_id: tripId,
@@ -174,6 +175,9 @@ export async function createInviteRecord(
   if (createdBy) {
     payload.created_by = createdBy;
   }
+  if (idempotencyKey) {
+    payload.idempotency_key = idempotencyKey;
+  }
 
   const { data, error } = await supabase
     .from("invites")
@@ -182,6 +186,27 @@ export async function createInviteRecord(
     .single();
 
   if (error) {
+    // #366: replay of the same (trip_id, idempotency_key) trips the M4
+    // Delta 2 partial unique index. That's not a failure — it's the
+    // double-tap the key exists for. Return the invite the first tap
+    // minted (postAnnouncement replay pattern).
+    if (
+      idempotencyKey &&
+      (error as { code?: string }).code === "23505"
+    ) {
+      const { data: existing, error: selectError } = await supabase
+        .from("invites")
+        .select(INVITE_COLUMNS)
+        .eq("trip_id", tripId)
+        .eq("idempotency_key", idempotencyKey)
+        .single();
+      if (selectError) {
+        throw new Error(
+          `createInviteRecord replay re-select failed: ${selectError.message}`
+        );
+      }
+      return existing as Invite;
+    }
     throw new Error(`createInviteRecord failed: ${error.message}`);
   }
 

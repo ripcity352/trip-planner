@@ -95,6 +95,8 @@ function mapRpcErrorToKey(error: {
  * `usesLeft = null` means unlimited; positive integer with a cap so a
  * client can't ask for a 9-quadrillion-use link.
  */
+const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
+
 const createInviteSchema = z.object({
   tripId: z.string().uuid(),
   usesLeft: z.number().int().positive().max(1000).nullable().optional(),
@@ -206,7 +208,8 @@ export async function acceptInviteAction(
  * accept budget for incoming members (or vice versa).
  */
 export async function createInviteAction(
-  input: CreateInviteActionInput
+  input: CreateInviteActionInput,
+  idempotencyKey: string
 ): Promise<CreateInviteResult> {
   // Validate first — reject usesLeft <= 0, capped >1000, and any
   // expires_at already in the past. The DB columns don't enforce
@@ -214,6 +217,14 @@ export async function createInviteAction(
   // action layer is the only chokepoint.
   const parsed = createInviteSchema.safeParse(input);
   if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  // #366: client-generated replay key, scope (trip_id, idempotency_key)
+  // per the M4 Delta 2 partial unique index. Same local-const pattern as
+  // announcements/travel-legs.
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
     return { ok: false, errorKey: "validation_failed" };
   }
 
@@ -234,7 +245,8 @@ export async function createInviteAction(
           parsed.data.tripId,
           parsed.data.usesLeft ?? null,
           parsed.data.expiresAt ?? null,
-          userId
+          userId,
+          keyParse.data
         )
     );
     return { ok: true, invite };
