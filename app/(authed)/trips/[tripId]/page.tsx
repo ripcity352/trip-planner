@@ -55,7 +55,8 @@ import { getItineraryByTrip } from "@/lib/db/itinerary";
 import { getTripNotes } from "@/lib/db/trip-notes";
 import { createClient } from "@/lib/supabase/server";
 import { parseDateOnly } from "@/lib/utils/date-only";
-import { M2_UI_STRINGS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import {
+  M5_UI_STRINGS, M2_UI_STRINGS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Trip } from "@/lib/db/types";
 
 type PageProps = {
@@ -175,6 +176,15 @@ export default async function TripDashboardPage({ params }: PageProps) {
           <Card className="hover:bg-muted/40 transition-colors">
             <CardHeader>
               <CardTitle>{M3_UI_STRINGS.roster_heading}</CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        {/* Expenses — #372 MVP over the M1 schema. */}
+        <Link href={`/trips/${trip.slug}/expenses`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{M5_UI_STRINGS.expenses_heading}</CardTitle>
             </CardHeader>
           </Card>
         </Link>
