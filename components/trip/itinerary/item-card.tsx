@@ -18,9 +18,11 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { MapsLink } from "./maps-link";
 import { ItemRsvpChip } from "./item-rsvp-chip";
 import { ItemFlagForm } from "./item-flag-form";
+import { OrganizerFlagView } from "./organizer-flag-view";
 import { EditItemFormSheet } from "./edit-item-form-sheet";
 import { LodgingRoster } from "./lodging-roster";
 import type {
+  ItineraryItemMemberFlag,
   ItineraryItem,
   ItineraryItemRsvpStatus,
   LodgingAssignment,
@@ -53,6 +55,10 @@ export interface ItemCardProps {
   tripMembers: TripMember[];
   /** IANA timezone from `trips.timezone` — forwarded to EditItemFormSheet. */
   tripTimezone: string;
+  /** #365: member flags for this item. Under organizer RLS this is every
+   * member's flags; under member RLS it is already scoped to the viewer's
+   * own rows (the M4 owner-reads-own SELECT policy). */
+  itemFlags: ItineraryItemMemberFlag[];
 }
 
 export function ItemCard({
@@ -64,6 +70,7 @@ export function ItemCard({
   lodgingAssignments,
   tripMembers,
   tripTimezone,
+  itemFlags,
 }: ItemCardProps) {
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
   // Non-default visibility badge for organizers_only / custom — parity with
@@ -173,10 +180,27 @@ export function ItemCard({
       {/* Per-item RSVP chip */}
       <ItemRsvpChip itemId={item.id} initialStatus={myRsvpStatus} />
 
-      {/* Per-item flag form — only for non-organizer members
-          (organizer read surface ships in Wave 4) */}
+      {/* #365: organizer read surface for member flags. Renders only when
+          flags exist — a per-card "nothing yet" line is 375px noise. */}
+      {isOrganizer && itemFlags.length > 0 ? (
+        <OrganizerFlagView
+          flags={itemFlags}
+          memberNames={Object.fromEntries(
+            tripMembers.flatMap((m) =>
+              m.display_name ? [[m.id, m.display_name]] : []
+            )
+          )}
+        />
+      ) : null}
+
+      {/* Per-item flag form — only for non-organizer members. itemFlags is
+          RLS-scoped to the viewer's own rows here, so it doubles as the
+          rehydration source (#365). */}
       {!isOrganizer ? (
-        <ItemFlagForm itemId={item.id} />
+        <ItemFlagForm
+          itemId={item.id}
+          initialFlags={itemFlags.map((f) => f.flag)}
+        />
       ) : null}
     </article>
   );
