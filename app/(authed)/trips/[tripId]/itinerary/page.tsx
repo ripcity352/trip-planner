@@ -22,7 +22,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getCelebrantName, getTripMembers } from "@/lib/db/trips";
-import { getItineraryByTrip, getMyItemRsvps, getLodgingAssignmentsByTrip } from "@/lib/db/itinerary";
+import { getItineraryByTrip, getMyItemRsvps, getLodgingAssignmentsByTrip, getItemFlagsForOrganizer } from "@/lib/db/itinerary";
 import { M3_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
 import { DaySection } from "@/components/trip/itinerary/day-section";
 import { AddItemFormSheet } from "./add-item-form-sheet";
@@ -63,12 +63,24 @@ export default async function ItineraryPage({ params }: PageProps) {
     : undefined;
 
   // Fan out: items + my RSVPs + lodging assignments + trip members in parallel
-  const [items, myRsvps, lodgingAssignmentsMap, tripMembers] = await Promise.all([
-    getItineraryByTrip(supabase, trip.id),
-    getMyItemRsvps(supabase, trip.id),
-    getLodgingAssignmentsByTrip(supabase, trip.id),
-    getTripMembers(supabase, trip.id),
-  ]);
+  // #365: one flags fetch serves both roles — the SELECT policies stack
+  // (organizers read all, owners read own), so organizers get the full
+  // read surface and members get exactly their own flags for rehydration.
+  const [items, myRsvps, lodgingAssignmentsMap, tripMembers, allFlags] =
+    await Promise.all([
+      getItineraryByTrip(supabase, trip.id),
+      getMyItemRsvps(supabase, trip.id),
+      getLodgingAssignmentsByTrip(supabase, trip.id),
+      getTripMembers(supabase, trip.id),
+      getItemFlagsForOrganizer(supabase, trip.id),
+    ]);
+
+  // Group flags by item for DaySection → ItemCard threading
+  const itemFlagsMap = new Map<string, typeof allFlags>();
+  for (const flag of allFlags) {
+    const bucket = itemFlagsMap.get(flag.item_id) ?? [];
+    itemFlagsMap.set(flag.item_id, [...bucket, flag]);
+  }
 
   // Build a quick-lookup map of itemId → my RSVP status
   const myRsvpMap: Record<string, ItineraryItemRsvpStatus> = {};
@@ -112,6 +124,7 @@ export default async function ItineraryPage({ params }: PageProps) {
               lodgingAssignmentsMap={lodgingAssignmentsMap}
               tripMembers={tripMembers}
               tripTimezone={trip.timezone}
+              itemFlagsMap={itemFlagsMap}
             />
           ))}
         </div>

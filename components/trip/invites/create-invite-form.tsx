@@ -81,7 +81,15 @@ export function CreateInviteForm({ tripId, onCreated }: CreateInviteFormProps) {
     // schema treats both as "no expiry").
     const expiresAt = fromDatetimeLocal(values.expiresAt);
 
-    const result = await createInviteAction({ tripId, usesLeft, expiresAt });
+    // Generate idempotency key at submit time — drunk-user double-tap
+    // safety (#366, announcement-composer pattern): a transport-level
+    // replay of this submit carries the same key and the DB's partial
+    // unique index collapses it to one invite.
+    const idempotencyKey = crypto.randomUUID();
+    const result = await createInviteAction(
+      { tripId, usesLeft, expiresAt },
+      idempotencyKey
+    );
 
     if (!result.ok) {
       setErrorMsg(ERRORS[result.errorKey] ?? ERRORS.network);

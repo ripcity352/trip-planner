@@ -13,3 +13,6 @@ overrides:
   # CVE: postcss < 8.5.10 has an XSS via unescaped </style> in stringify.
   # Flagged by Dependabot. Bumps every transitive consumer to safe.
   postcss@<8.5.10: ">=8.5.10"
+  # Dependabot alert 8: @opentelemetry/core < 2.8.0, duplicated at 2.6.1 and
+  # 2.7.1 via @sentry/node's instrumentation subpackages.
+  "@opentelemetry/core@<2.8.0": ">=2.8.0"

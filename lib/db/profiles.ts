@@ -30,10 +30,10 @@ import type { Profile } from "./types";
 export async function getProfile(
   supabase: SupabaseClient,
   userId: string,
-): Promise<Pick<Profile, "id" | "has_password"> | null> {
+): Promise<Pick<Profile, "id" | "has_password" | "display_name"> | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, has_password")
+    .select("id, has_password, display_name")
     .eq("id", userId)
     .single();
 
@@ -43,5 +43,27 @@ export async function getProfile(
     throw error;
   }
 
-  return data as Pick<Profile, "id" | "has_password">;
+  return data as Pick<Profile, "id" | "has_password" | "display_name">;
+}
+
+/**
+ * #348: backfill the durable profile display name, but ONLY when it is
+ * currently NULL — the `.is("display_name", null)` filter makes this a
+ * single conditional statement (no read-then-write race) so an
+ * invite-accept never clobbers a name the user chose elsewhere.
+ */
+export async function setProfileDisplayNameIfEmpty(
+  supabase: SupabaseClient,
+  userId: string,
+  displayName: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ display_name: displayName })
+    .eq("id", userId)
+    .is("display_name", null);
+
+  if (error) {
+    throw new Error(`setProfileDisplayNameIfEmpty failed: ${error.message}`);
+  }
 }

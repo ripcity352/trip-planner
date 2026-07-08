@@ -5,6 +5,151 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-08 — Feature session: audit → backlog → build (operator-directed, M6 gate LIFTED for approved features)
+
+Three-phase operator-directed session (ultracode). Phase 1: full-repo +
+live-app audit (4 subagent sweeps + 5-persona 375px walks against a
+seeded local trip) produced a reconciliation matrix (works /
+half-wired / issue-covered / unfiled-gap). Phase 2: 9 issues filed
+(#364–#372), #27 + #131 comment-flagged as close-candidates. Phase 3:
+7 PRs built inline (subagent capacity was rate-limited) and merged on
+green CI + local e2e.
+
+**GATE DECISION — recorded per operator directive:** the operator
+(ripcity352, 2026-07-07) **explicitly lifted the M6 real-trip-retro
+gate for the features approved in this session's Phase 2** — the
+invite-chain fix pack, the organizer flag read surface, display-name
+capture at accept, and the expenses MVP (#372). The gate REMAINS in
+place for everything else in the M5 "Earned post-trip" backlog
+(itemized money pool, proration, comping, nudges, recap, photos, etc.).
+
+**Landed (7 PRs, zero migrations — prod was paused all session):**
+
+- **#373** (#364) — invite preview + OG rendered trip dates one day
+  early: `invite_preview()` casts `date` → timestamptz at UTC midnight;
+  fixed at the lib/db boundary (truncate to `YYYY-MM-DD`). New
+  **transport rule** added to the design-system parsing axis: date-only
+  values never travel through timestamp types; boundaries truncate at
+  the data layer. RPC return-type fix deferred to the migration batch.
+- **#374** (#366) — `createInviteAction` now populates
+  `invites.idempotency_key` (column + index existed since M4 with zero
+  writers); 23505 replay re-selects the original invite.
+- **#375** (#370) — "Continue with Google" gated behind
+  `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` (default off) until the operator
+  enables the Supabase provider; enable-then-walk procedure in
+  .env.example; #232 unchanged.
+- **#376** (#365) — organizer read surface for member flags MOUNTED
+  (was write-only phantom since "Wave 4"): one RLS-stacked fetch serves
+  organizers (all flags) and members (own flags → picker rehydration).
+  Renders only when flags exist — no per-card empty-state noise.
+- **#377** (#348) — optional display-name capture at invite-accept
+  ("What should the crew call you?"), best-effort writes to
+  `trip_members.display_name` (own-row RLS) + conditional
+  `profiles.display_name` backfill (`.is(null)` — no clobber). Ends the
+  wall-of-Guest roster for new accepts.
+- **#378 + #379** (#372) — **expenses MVP** over the M1 schema that had
+  sat orphaned: `evenSplitCents` (sum-exact, ≤1-cent spread,
+  deterministic), idempotent `createExpenseWithSplits` (23505 replay +
+  torn-write self-heal — two statements; atomic RPC needs a migration),
+  `addExpenseAction` (ADD_EXPENSE rate scope, payer = auth.uid()),
+  `/trips/[slug]/expenses` page + AddExpenseSheet + dashboard card.
+  Live-verified: celebrant page contains zero HTML trace of a
+  hide_from_celebrant expense and totals exclude it (RLS
+  `can_see_content` does the filtering — app code never re-filters).
+
+**Deferred with recorded rationale:**
+
+- **#367** (already-member invite CTA) — needs `invite_preview` v2
+  returning `viewer_is_member`; migration-gated. Good news documented
+  on the issue: `accept_invite`'s re-claim path already makes re-taps
+  safe no-ops.
+- **Migration batch queued for post-prod-restore** (after PR #359's
+  audit + merge, which stays first in line): invite_preview v2
+  (date return type + viewer_is_member), expenses UPDATE/DELETE
+  policies + atomic create RPC, `availability` table drop decision.
+- **#368/#369/#371** filed, not built (phone capture, dates-poll
+  reconcile, dead-code sweep).
+
+**Session facts worth keeping:** the walk seed lives at the session
+scratchpad (`seed-personas.mjs` — 5 personas + mixed-visibility trip
+`walk-tahoe`); handle_new_user derives profiles.display_name from the
+email local-part, so profile names are never NULL for email signups —
+the Guest wall came from the ROSTER reading only trip_members
+.display_name; celebrant visibility verified leak-free end-to-end at
+the raw-HTML level on itinerary, announcements, and expenses.
+
+---
+
+## 2026-07-07 — Security & supply-chain hardening session (automated)
+
+Fully-automated /loop session: Dependabot triage, eslint-10 gate proof,
+#350 CHECK constraint, branch-protection hardening (#100/#133), #349
+realtime spike, advisor/secret-scanning sweep. **Zero feature surface —
+the M6 real-trip gate stays intact.** Prod data untouched (read-only
+policy; the one prod-lifecycle attempt — unpausing the project — was
+correctly permission-blocked and handed to the operator).
+
+**Landed.**
+
+- **#360** — all 20 open Dependabot alerts (4 high) cleared in one
+  transitive-bump PR: hono 4.12.28, undici 7.28.0, vite 8.1.3,
+  js-yaml 4.3.0, @babel/core 7.29.7, @opentelemetry/core 2.9.0.
+  Alert count is now **0 with zero dismissals**. Two mechanism notes
+  for the next dep wave: pnpm overrides cannot retarget *auto-installed
+  peers* (vite needed an explicit `"vite": "^8.0.16"` devDep pin), and
+  pnpm 11 only honors overrides in `pnpm-workspace.yaml`, not
+  `package.json#pnpm`. Verified: typecheck/lint/test/build + a
+  three-run e2e triangulation (full suite on the PR worktree; failing-
+  spec baseline on unbumped main; controlled rerun) — no failure
+  reproduced across runs; all were the known flake class, none
+  dep-caused. **CI does not run the e2e suite** (verify = unit only;
+  visual.yml = pixel-diff) — local e2e stays a mandatory pre-merge
+  step for runtime-relevant PRs.
+- **Branch protection** — `enforce_admins=true` +
+  `require_code_owner_reviews=true` per #100/#133, applied immediately
+  after this ADR merged (sequenced so the session could still
+  self-merge its own closure). With the wildcard CODEOWNERS this
+  **ends single-dev self-merge on every PR** — deliberate; empirical
+  verification of the blocked path is recorded on #100/#133.
+
+**Open, operator-gated.**
+
+- **#359 (PR, HOLD)** — #350's `trips_end_after_start` CHECK
+  (`ends_at >= starts_at`; NULLs pass by design). Locally verified
+  (reset + reject/accept matrix) but **merge-gated on restoring the
+  paused Supabase project and a prod violator count of 0** — the query
+  is in the PR body and migration header.
+- **Prod Supabase project paused** (free-tier idle, discovered
+  mid-session). Main's `migrate-staging` job has been red on every
+  push since ~06:00Z today — pre-existing, not this session. Restore
+  is operator-run (Management API curl). Blocks: #359 merge, #349 prod
+  publication check, Supabase advisors.
+
+**Blocked / discovered.**
+
+- **#298 (eslint 9→10): blocked upstream.** The #182 gate test crashes
+  under eslint 10 — `eslint-plugin-react@7.37.5` (latest; a direct
+  dependency of `eslint-config-next`) still calls the removed
+  `context.getFilename()`. Not migratable until the plugin ships
+  eslint-10 support and eslint-config-next picks it up; re-check
+  commands are on the issue.
+- **#361 (new).** A clean `supabase db reset` on the pinned local image
+  leaves `anon`/`authenticated`/`service_role` with **no DML grants**
+  on `public` tables (competing postgres-owned `pg_default_acl` row) —
+  the local e2e gate is environmentally broken on fresh setups until
+  the grant fix (SQL in the issue) is made durable.
+- **#349.** The publication-membership theory is **falsified** locally
+  (all four subscribed tables are in `supabase_realtime` with sane
+  replica identity). The audit-day symptom remains unexplained and is
+  now confounded by #361; prod-side check TODO post-restore.
+- **Sweep:** secret scanning + push protection enabled, 0 alerts
+  (non-provider patterns and validity checks off — acceptable at this
+  repo's scale). Hygiene note, not filed: the `shadcn` CLI sits in prod
+  `dependencies` and drags hono/@modelcontextprotocol runtime-scope —
+  candidate for `devDependencies` in a future chore PR.
+
+---
+
 ## 2026-07-07 — Automated E2E audit + fix wave — 2026-07-07
 
 **The audit.** Six auditors (baseline suite + organizer / invitee /

@@ -338,6 +338,17 @@ already used `parseISO` directly for this reason before this axis was
 named; `parseDateOnly` is the shared primitive going forward so new
 call sites don't rediscover the hazard by shipping the bug first. (#350)
 
+**Transport rule (#364):** the render-side guard above is defeated if a
+date-only value is *transported* through a timestamp type anywhere
+upstream. `invite_preview()` cast `trips.starts_at::timestamptz` at
+midnight UTC "for signature alignment", and `parseISO` then honored the
+`+00:00` offset — the invite landing and OG card rendered every trip one
+day early west of UTC while the dashboard (reading the raw `date` column)
+was correct. Rule: a date-only column stays `YYYY-MM-DD` at every hop —
+SQL function signatures return `date`, and any boundary that receives a
+midnight-UTC timestamp for a known date-only value truncates back to the
+date part at the data layer (`lib/db`), never in components.
+
 ---
 
 ## Spacing

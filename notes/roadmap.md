@@ -179,6 +179,12 @@ closure PR W4c (#205) merges this plan. See `notes/decisions.md`
 decisions and `notes/retros/m4-retro.md` for the full retro.
 **M4 closed; M5 gated on real-trip retro.**
 
+> **2026-07-08 update:** operator-directed feature session lifted the M6
+> gate for FOUR approved features only (see decisions.md 2026-07-08 ADR):
+> invite-chain fixes (#364/#366/#370), organizer flag read surface
+> (#365), display-name at accept (#348), and the **expenses MVP (#372 —
+> shipped)**. The rest of M5 "Earned post-trip" stays retro-gated.
+
 **Sim 2026-05-20:** 16 of 21 future-state-guide open questions
 resolved; see `notes/sim/2026-05-20/findings.md` for the synthesis.
 
