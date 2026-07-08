@@ -55,11 +55,17 @@ describe("CreateInviteForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /mint it/i }));
 
     await waitFor(() => {
-      expect(createInviteActionMock).toHaveBeenCalledWith({
-        tripId: defaultProps.tripId,
-        usesLeft: null,
-        expiresAt: null,
-      });
+      expect(createInviteActionMock).toHaveBeenCalledWith(
+        {
+          tripId: defaultProps.tripId,
+          usesLeft: null,
+          expiresAt: null,
+        },
+        // #366: submit-time idempotency key
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        )
+      );
       expect(defaultProps.onCreated).toHaveBeenCalledTimes(1);
     });
   });
@@ -118,11 +124,17 @@ describe("CreateInviteForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /mint it/i }));
 
     await waitFor(() => {
-      expect(createInviteActionMock).toHaveBeenCalledWith({
-        tripId: defaultProps.tripId,
-        usesLeft: 5,
-        expiresAt: null,
-      });
+      expect(createInviteActionMock).toHaveBeenCalledWith(
+        {
+          tripId: defaultProps.tripId,
+          usesLeft: 5,
+          expiresAt: null,
+        },
+        // #366: submit-time idempotency key
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        )
+      );
     });
   });
 

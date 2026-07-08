@@ -35,6 +35,7 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   // M4 keys (Wave 0a)
   "address_lookup_failed",
   "datetime_invalid",
+  "expense_add_failed",
   "places_proxy_failed",
   // M5 auth keys (PR2)
   "auth_wrong_password",

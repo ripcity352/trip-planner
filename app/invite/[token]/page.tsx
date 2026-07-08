@@ -31,6 +31,8 @@ import { format } from "date-fns";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import {
   ATTENDEE_COUNT_BUCKET_LABELS,
@@ -47,6 +49,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { parseDateOnly } from "@/lib/utils/date-only";
 import type { InvitePreview } from "@/lib/db/types";
 import { LoginForm } from "@/app/login/_form";
+import { getProfile } from "@/lib/db/profiles";
 import { buildInviteH1 } from "@/lib/og/invite-card";
 
 type PageProps = {
@@ -118,6 +121,18 @@ export default async function InvitePreviewPage({
   } = await sessionClient.auth.getUser();
   const isSignedIn = Boolean(user);
 
+  // #348: prefill the accept-form name input from the durable profile
+  // name when one exists (RLS: own-profile read).
+  let viewerDisplayName: string | null = null;
+  if (user) {
+    try {
+      const profile = await getProfile(sessionClient, user.id);
+      viewerDisplayName = profile?.display_name ?? null;
+    } catch {
+      viewerDisplayName = null;
+    }
+  }
+
   // The H1 hook: "{Host} wants you on this one." — sourced from W0 D1 keys.
   // buildInviteH1 sanitizes, clamps, and falls back to inviteH1Fallback.
   const h1Text = buildInviteH1(preview.host_display_name);
@@ -167,7 +182,29 @@ export default async function InvitePreviewPage({
           {isSignedIn ? (
             // Authenticated viewer — submit the accept handler directly.
             // The POST route does the actual mutation and redirects.
-            <form action={inviteAcceptPath(token)} method="post">
+            // #348: optional display name so the roster shows a person,
+            // not "Guest". Prefilled from the profile when one exists;
+            // never required (rule 8 — no uniform-attendee assumptions,
+            // no asterisks).
+            <form
+              action={inviteAcceptPath(token)}
+              method="post"
+              className="flex flex-col gap-3"
+            >
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="invite-display-name">
+                  {M2_UI_STRINGS.invitePreview_name_label}
+                </Label>
+                <Input
+                  id="invite-display-name"
+                  name="display_name"
+                  type="text"
+                  maxLength={80}
+                  autoComplete="name"
+                  defaultValue={viewerDisplayName ?? undefined}
+                  placeholder={M2_UI_STRINGS.invitePreview_name_placeholder}
+                />
+              </div>
               <Button type="submit" size="lg" className="w-full">
                 {M2_UI_STRINGS.invitePreview_cta_authed}
               </Button>

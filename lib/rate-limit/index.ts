@@ -114,6 +114,10 @@ export const RATE_LIMIT_SCOPES = {
   // starve a member's accept attempt (or vice versa). Both paths default
   // to the standard 30 req / 60s sliding window.
   MINT_INVITE: "mintInvite",
+  // #372 — expenses MVP: logging spends is a high-tap dinner-table
+  // surface; own bucket so a burst doesn't starve other budgets.
+  // Fail-OPEN on shim (it's a ledger entry, not credential minting).
+  ADD_EXPENSE: "addExpense",
   // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
   // Isolated bucket so a burst of typeahead requests doesn't starve
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED

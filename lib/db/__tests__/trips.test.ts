@@ -7,7 +7,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { listMyTrips, getTripBySlug, createTrip } from "../trips";
+import {
+  listMyTrips,
+  getTripBySlug,
+  createTrip,
+  setMemberDisplayName,
+} from "../trips";
 
 const M1_COLUMNS = [
   "kind",
@@ -199,5 +204,21 @@ describe("lib/db/trips.ts", () => {
         createTrip(client, { slug: "vegas-bach", name: "Vegas" })
       ).rejects.toThrow(/empty response/);
     });
+  });
+});
+
+// #348: invite-accept display-name capture — member updates their own row
+describe("setMemberDisplayName", () => {
+  it("updates trip_members.display_name scoped to the member row", async () => {
+    const { calls, client } = makeBuilder(null);
+    await setMemberDisplayName(
+      client as never,
+      "member-1",
+      "Nate Newguy"
+    );
+    const update = calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({ display_name: "Nate Newguy" });
+    const eq = calls.find((c) => c.method === "eq");
+    expect(eq?.args).toEqual(["id", "member-1"]);
   });
 });

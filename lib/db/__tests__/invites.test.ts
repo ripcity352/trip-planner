@@ -50,6 +50,38 @@ function makeBuilder(rows: unknown, error: unknown = null) {
   };
 }
 
+/**
+ * Like `makeBuilder`, but each awaited builder chain consumes the next
+ * response in the queue — needed for insert-then-reselect flows (#366
+ * idempotency replay), which the single-response builder can't express.
+ */
+function makeSequencedBuilder(
+  responses: Array<{ data: unknown; error: unknown }>
+) {
+  const calls: Array<{ method: string; args: unknown[] }> = [];
+  const queue = [...responses];
+
+  const handler: ProxyHandler<Record<string, unknown>> = {
+    get(_target, prop: string) {
+      if (prop === "then") {
+        const next = queue.shift() ?? { data: null, error: null };
+        const p = Promise.resolve(next);
+        return p.then.bind(p);
+      }
+      return (...args: unknown[]) => {
+        calls.push({ method: prop, args });
+        return proxy;
+      };
+    },
+  };
+  const proxy: Record<string, unknown> = new Proxy({}, handler);
+
+  return {
+    calls,
+    client: { from: vi.fn(() => proxy), rpc: vi.fn() },
+  };
+}
+
 describe("lib/db/invites.ts", () => {
   describe("getInvitePreview", () => {
     it("calls invite_preview RPC with the token and returns the first row", async () => {
@@ -73,11 +105,57 @@ describe("lib/db/invites.ts", () => {
       });
       expect(preview).toEqual({
         trip_name: "Vegas",
-        starts_at: "2026-06-01T00:00:00Z",
-        ends_at: "2026-06-04T00:00:00Z",
+        // #364: the RPC's timestamptz strings are normalized back to the
+        // date-only values they encode — see the normalization tests below.
+        starts_at: "2026-06-01",
+        ends_at: "2026-06-04",
         host_display_name: "Dave",
         attendee_count_bucket: "small-crew",
       });
+    });
+
+    // #364 regression: invite_preview casts the `date` columns to
+    // timestamptz at midnight UTC. Passing that through to parseDateOnly/
+    // parseISO renders one calendar day early anywhere west of UTC. The
+    // boundary must hand consumers date-only strings.
+    it("normalizes timestamptz starts_at/ends_at to date-only strings", async () => {
+      const { client } = makeBuilder([
+        {
+          trip_name: "Tahoe",
+          starts_at: "2026-07-28T00:00:00+00:00",
+          ends_at: "2026-07-31T00:00:00+00:00",
+          host_display_name: "Dave",
+          attendee_count_bucket: "small-crew",
+        },
+      ]);
+
+      const preview = await getInvitePreview(
+        client as unknown as SupabaseClient,
+        "abc-token"
+      );
+
+      expect(preview?.starts_at).toBe("2026-07-28");
+      expect(preview?.ends_at).toBe("2026-07-31");
+    });
+
+    it("passes through date-only values and nulls untouched", async () => {
+      const { client } = makeBuilder([
+        {
+          trip_name: "Tahoe",
+          starts_at: "2026-07-28",
+          ends_at: null,
+          host_display_name: "Dave",
+          attendee_count_bucket: "small-crew",
+        },
+      ]);
+
+      const preview = await getInvitePreview(
+        client as unknown as SupabaseClient,
+        "abc-token"
+      );
+
+      expect(preview?.starts_at).toBe("2026-07-28");
+      expect(preview?.ends_at).toBeNull();
     });
 
     it("returns null when the RPC returns an empty array", async () => {
@@ -181,6 +259,64 @@ describe("lib/db/invites.ts", () => {
           null
         )
       ).rejects.toThrow(/createInviteRecord/);
+    });
+
+    // #366: the idempotency_key column + partial unique index shipped in
+    // M4 Delta 2 but were never populated — organizer double-tap minted
+    // two live invites. These pin the write and the replay recovery.
+    it("includes idempotency_key in the insert payload when provided", async () => {
+      const inserted = {
+        token: "t-new",
+        trip_id: "trip-1",
+        created_by: "user-1",
+        expires_at: null,
+        uses_left: null,
+        created_at: "2026-07-07T00:00:00Z",
+      };
+      const { calls, client } = makeBuilder(inserted);
+
+      await createInviteRecord(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        null,
+        null,
+        "user-1",
+        "11111111-2222-4333-8444-555555555555"
+      );
+
+      const insertCall = calls.find((c) => c.method === "insert");
+      const payload = insertCall?.args[0] as Record<string, unknown>;
+      expect(payload.idempotency_key).toBe(
+        "11111111-2222-4333-8444-555555555555"
+      );
+    });
+
+    it("recovers the existing invite when the key replays (23505)", async () => {
+      const existing = {
+        token: "t-existing",
+        trip_id: "trip-1",
+        created_by: "user-1",
+        expires_at: null,
+        uses_left: null,
+        created_at: "2026-07-07T00:00:00Z",
+      };
+      // First awaited chain (insert) violates the partial unique index;
+      // second awaited chain (re-select) finds the original row.
+      const { client } = makeSequencedBuilder([
+        { data: null, error: { code: "23505", message: "duplicate key" } },
+        { data: existing, error: null },
+      ]);
+
+      const out = await createInviteRecord(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        null,
+        null,
+        "user-1",
+        "11111111-2222-4333-8444-555555555555"
+      );
+
+      expect(out).toEqual(existing);
     });
   });
 });

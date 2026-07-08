@@ -79,3 +79,14 @@ describe("ItemFlagForm", () => {
     expect(mockAdd).not.toHaveBeenCalled();
   });
 });
+
+// #365: rehydration pass-through — previously the prop chain ended here
+// and members' saved flags never re-selected.
+describe("ItemFlagForm — initialFlags pass-through (#365)", () => {
+  it("pre-selects chips for flags the member already saved", () => {
+    render(<ItemFlagForm itemId="item-1" initialFlags={["Sober"]} />);
+    expect(
+      screen.getByRole("button", { name: "Sober", pressed: true })
+    ).toBeInTheDocument();
+  });
+});

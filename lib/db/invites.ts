@@ -43,6 +43,19 @@ function isAttendeeCountBucket(s: string): s is AttendeeCountBucket {
 }
 
 /**
+ * #364: `invite_preview()` casts trips' `date` columns to timestamptz at
+ * midnight UTC (a "signature alignment" choice documented in the M2
+ * migration). Rendering that string through parseISO/parseDateOnly lands
+ * one calendar day early anywhere west of UTC. Truncating to the first 10
+ * chars recovers exactly the calendar date the cast encoded, so this
+ * boundary only ever hands out `YYYY-MM-DD`. See notes/design-system.md
+ * "Parsing axis (date-only columns)" — transport rule.
+ */
+function toDateOnly(value: string | null): string | null {
+  return value === null ? null : value.slice(0, 10);
+}
+
+/**
  * Calls the `invite_preview(p_token)` RPC. Returns the first row
  * (preview shape) or `null` when the invite is missing / expired /
  * exhausted / the trip is soft-deleted. Safe to call with an anonymous
@@ -85,8 +98,8 @@ export async function getInvitePreview(
 
   return {
     trip_name: row.trip_name,
-    starts_at: row.starts_at,
-    ends_at: row.ends_at,
+    starts_at: toDateOnly(row.starts_at),
+    ends_at: toDateOnly(row.ends_at),
     host_display_name: row.host_display_name,
     attendee_count_bucket: row.attendee_count_bucket,
   } satisfies InvitePreview;
@@ -148,7 +161,8 @@ export async function createInviteRecord(
   tripId: string,
   usesLeft: number | null,
   expiresAt: string | null,
-  createdBy?: string
+  createdBy?: string,
+  idempotencyKey?: string | null
 ): Promise<Invite> {
   const payload: Record<string, unknown> = {
     trip_id: tripId,
@@ -161,6 +175,9 @@ export async function createInviteRecord(
   if (createdBy) {
     payload.created_by = createdBy;
   }
+  if (idempotencyKey) {
+    payload.idempotency_key = idempotencyKey;
+  }
 
   const { data, error } = await supabase
     .from("invites")
@@ -169,6 +186,27 @@ export async function createInviteRecord(
     .single();
 
   if (error) {
+    // #366: replay of the same (trip_id, idempotency_key) trips the M4
+    // Delta 2 partial unique index. That's not a failure — it's the
+    // double-tap the key exists for. Return the invite the first tap
+    // minted (postAnnouncement replay pattern).
+    if (
+      idempotencyKey &&
+      (error as { code?: string }).code === "23505"
+    ) {
+      const { data: existing, error: selectError } = await supabase
+        .from("invites")
+        .select(INVITE_COLUMNS)
+        .eq("trip_id", tripId)
+        .eq("idempotency_key", idempotencyKey)
+        .single();
+      if (selectError) {
+        throw new Error(
+          `createInviteRecord replay re-select failed: ${selectError.message}`
+        );
+      }
+      return existing as Invite;
+    }
     throw new Error(`createInviteRecord failed: ${error.message}`);
   }
 
