@@ -25,7 +25,7 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -451,6 +451,13 @@ describe("<LoginForm /> — next prop", () => {
 describe("<LoginForm /> — Google OAuth button", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // #370: the button is gated behind the provider-enabled flag; these
+    // tests exercise the enabled state.
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "true");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("renders the 'Continue with Google' button in email-only mode", () => {
@@ -537,3 +544,29 @@ describe("<LoginForm /> — Google OAuth button", () => {
 // public RPC; ADR-accepted enumeration leak per v3.2). When the wiring lands,
 // re-introduce the alert tests here.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// #370: Google button gated off while the Supabase provider is disabled
+// ---------------------------------------------------------------------------
+
+describe("<LoginForm /> — Google OAuth button gated off (default)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs(); // NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED unset
+  });
+
+  it("does not render the Google button in email-only mode", () => {
+    render(<LoginForm />);
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.continueWithGoogleButton })
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render the Google button when the flag is any non-'true' value", () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "1");
+    render(<LoginForm />);
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.continueWithGoogleButton })
+    ).not.toBeInTheDocument();
+  });
+});
