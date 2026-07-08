@@ -131,7 +131,10 @@ describe("createInviteAction — rate-limit scope (#107)", () => {
 
     const { createInviteAction: action } = await import("@/lib/actions/invites");
 
-    await action({ tripId: VALID_UUID, usesLeft: null, expiresAt: null });
+    await action(
+      { tripId: VALID_UUID, usesLeft: null, expiresAt: null },
+      "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c99"
+    );
 
     // rateLimitedAction must be called with "mintInvite" scope specifically.
     // (RATE_LIMIT_SCOPES.MINT_INVITE === "mintInvite")
@@ -158,13 +161,62 @@ describe("createInviteAction — rate-limit scope (#107)", () => {
     );
 
     const { createInviteAction: action } = await import("@/lib/actions/invites");
-    const result = await action({
-      tripId: VALID_UUID,
-      usesLeft: null,
-      expiresAt: null,
-    });
+    const result = await action(
+      { tripId: VALID_UUID, usesLeft: null, expiresAt: null },
+      "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c99"
+    );
 
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+
+  // #366: the guard index shipped in M4 Delta 2 but the action never
+  // populated the column — organizer double-tap minted duplicate invites.
+  it("returns validation_failed for a malformed idempotency key", async () => {
+    primeAuth("u-1");
+    createClientMock.mockResolvedValue({
+      auth: { getUser: getUserMock },
+      from: vi.fn(),
+    });
+
+    const { createInviteAction: action } = await import("@/lib/actions/invites");
+    const result = await action(
+      { tripId: VALID_UUID, usesLeft: null, expiresAt: null },
+      "not-a-uuid"
+    );
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("threads the idempotency key into the insert payload", async () => {
+    primeAuth("u-1");
+
+    const KEY = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c99";
+    const insertMock = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: {
+            token: "tok-1",
+            trip_id: VALID_UUID,
+            created_by: "u-1",
+            expires_at: null,
+            uses_left: null,
+            created_at: new Date().toISOString(),
+          },
+          error: null,
+        }),
+      }),
+    });
+    createClientMock.mockResolvedValue({
+      auth: { getUser: getUserMock },
+      from: vi.fn().mockReturnValue({ insert: insertMock }),
+    });
+
+    const { createInviteAction: action } = await import("@/lib/actions/invites");
+    await action({ tripId: VALID_UUID, usesLeft: null, expiresAt: null }, KEY);
+
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotency_key: KEY })
+    );
   });
 });
 
