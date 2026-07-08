@@ -73,11 +73,57 @@ describe("lib/db/invites.ts", () => {
       });
       expect(preview).toEqual({
         trip_name: "Vegas",
-        starts_at: "2026-06-01T00:00:00Z",
-        ends_at: "2026-06-04T00:00:00Z",
+        // #364: the RPC's timestamptz strings are normalized back to the
+        // date-only values they encode — see the normalization tests below.
+        starts_at: "2026-06-01",
+        ends_at: "2026-06-04",
         host_display_name: "Dave",
         attendee_count_bucket: "small-crew",
       });
+    });
+
+    // #364 regression: invite_preview casts the `date` columns to
+    // timestamptz at midnight UTC. Passing that through to parseDateOnly/
+    // parseISO renders one calendar day early anywhere west of UTC. The
+    // boundary must hand consumers date-only strings.
+    it("normalizes timestamptz starts_at/ends_at to date-only strings", async () => {
+      const { client } = makeBuilder([
+        {
+          trip_name: "Tahoe",
+          starts_at: "2026-07-28T00:00:00+00:00",
+          ends_at: "2026-07-31T00:00:00+00:00",
+          host_display_name: "Dave",
+          attendee_count_bucket: "small-crew",
+        },
+      ]);
+
+      const preview = await getInvitePreview(
+        client as unknown as SupabaseClient,
+        "abc-token"
+      );
+
+      expect(preview?.starts_at).toBe("2026-07-28");
+      expect(preview?.ends_at).toBe("2026-07-31");
+    });
+
+    it("passes through date-only values and nulls untouched", async () => {
+      const { client } = makeBuilder([
+        {
+          trip_name: "Tahoe",
+          starts_at: "2026-07-28",
+          ends_at: null,
+          host_display_name: "Dave",
+          attendee_count_bucket: "small-crew",
+        },
+      ]);
+
+      const preview = await getInvitePreview(
+        client as unknown as SupabaseClient,
+        "abc-token"
+      );
+
+      expect(preview?.starts_at).toBe("2026-07-28");
+      expect(preview?.ends_at).toBeNull();
     });
 
     it("returns null when the RPC returns an empty array", async () => {

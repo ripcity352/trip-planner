@@ -43,6 +43,19 @@ function isAttendeeCountBucket(s: string): s is AttendeeCountBucket {
 }
 
 /**
+ * #364: `invite_preview()` casts trips' `date` columns to timestamptz at
+ * midnight UTC (a "signature alignment" choice documented in the M2
+ * migration). Rendering that string through parseISO/parseDateOnly lands
+ * one calendar day early anywhere west of UTC. Truncating to the first 10
+ * chars recovers exactly the calendar date the cast encoded, so this
+ * boundary only ever hands out `YYYY-MM-DD`. See notes/design-system.md
+ * "Parsing axis (date-only columns)" — transport rule.
+ */
+function toDateOnly(value: string | null): string | null {
+  return value === null ? null : value.slice(0, 10);
+}
+
+/**
  * Calls the `invite_preview(p_token)` RPC. Returns the first row
  * (preview shape) or `null` when the invite is missing / expired /
  * exhausted / the trip is soft-deleted. Safe to call with an anonymous
@@ -85,8 +98,8 @@ export async function getInvitePreview(
 
   return {
     trip_name: row.trip_name,
-    starts_at: row.starts_at,
-    ends_at: row.ends_at,
+    starts_at: toDateOnly(row.starts_at),
+    ends_at: toDateOnly(row.ends_at),
     host_display_name: row.host_display_name,
     attendee_count_bucket: row.attendee_count_bucket,
   } satisfies InvitePreview;
