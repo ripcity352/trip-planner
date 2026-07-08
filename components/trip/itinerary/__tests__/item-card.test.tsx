@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ItemCard } from "../item-card";
 import type {
+  ItineraryItemMemberFlag,
   ItineraryItem,
   ItineraryItemRsvpStatus,
   LodgingAssignment,
@@ -34,8 +35,18 @@ vi.mock("../item-rsvp-chip", () => ({
   ),
 }));
 vi.mock("../item-flag-form", () => ({
-  ItemFlagForm: ({ itemId }: { itemId: string }) => (
-    <div data-testid="flag-form" data-item-id={itemId}>
+  ItemFlagForm: ({
+    itemId,
+    initialFlags,
+  }: {
+    itemId: string;
+    initialFlags?: ReadonlyArray<string>;
+  }) => (
+    <div
+      data-testid="flag-form"
+      data-item-id={itemId}
+      data-initial-flags={JSON.stringify(initialFlags ?? [])}
+    >
       flags
     </div>
   ),
@@ -120,7 +131,21 @@ const baseProps = {
   tripMembers: [] as TripMember[],
   // W2b: tripTimezone required by EditItemFormSheet
   tripTimezone: "America/New_York",
+  // #365: member flags for this item (organizer read surface / rehydrate)
+  itemFlags: [] as ItineraryItemMemberFlag[],
 };
+
+const makeFlag = (
+  overrides: Partial<ItineraryItemMemberFlag> = {}
+): ItineraryItemMemberFlag => ({
+  id: "flag-1",
+  item_id: "item-1",
+  trip_member_id: "member-1",
+  flag: "Vegetarian",
+  note: null,
+  created_at: "2026-05-20T00:00:00Z",
+  ...overrides,
+});
 
 describe("ItemCard", () => {
   it("renders the item title", () => {
@@ -292,5 +317,51 @@ describe("ItemCard", () => {
     const roster = screen.getByTestId("lodging-roster");
     expect(roster).toBeInTheDocument();
     expect(roster).toHaveAttribute("data-assignment-count", "0");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #365: organizer read surface for member flags
+// ---------------------------------------------------------------------------
+
+describe("ItemCard — member flags (#365)", () => {
+  it("shows submitted flags with the member's name to organizers", () => {
+    render(
+      <ItemCard
+        {...baseProps}
+        item={makeItem()}
+        isOrganizer
+        tripMembers={[makeMember()]}
+        itemFlags={[makeFlag(), makeFlag({ id: "flag-2", flag: "Sober" })]}
+      />
+    );
+    expect(screen.getByText("Vegetarian")).toBeInTheDocument();
+    expect(screen.getByText("Sober")).toBeInTheDocument();
+    expect(screen.getByText("Dave")).toBeInTheDocument();
+  });
+
+  it("stays quiet for organizers when nobody has flagged anything", () => {
+    render(
+      <ItemCard {...baseProps} item={makeItem()} isOrganizer itemFlags={[]} />
+    );
+    // No per-card empty-state noise at 375px — the surface only appears
+    // when there is something to read.
+    expect(
+      screen.queryByText("No heads-ups from anyone yet.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("rehydrates the member's own flags into the flag form", () => {
+    render(
+      <ItemCard
+        {...baseProps}
+        item={makeItem()}
+        itemFlags={[makeFlag({ flag: "Late arrival" })]}
+      />
+    );
+    const form = screen.getByTestId("flag-form");
+    expect(form.getAttribute("data-initial-flags")).toBe(
+      JSON.stringify(["Late arrival"])
+    );
   });
 });

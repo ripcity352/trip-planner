@@ -17,13 +17,17 @@ import { MemberFlagPicker } from "./member-flag-picker";
 
 export interface ItemFlagFormProps {
   itemId: string;
+  /** #365: flags the member already saved — pre-selects the chips so a
+   * second visit shows (and can edit) what was sent, not a blank form. */
+  initialFlags?: ReadonlyArray<string>;
   className?: string;
 }
 
-export function ItemFlagForm({ itemId, className }: ItemFlagFormProps) {
+export function ItemFlagForm({ itemId, initialFlags, className }: ItemFlagFormProps) {
   return (
     <MemberFlagPicker
       itemId={itemId}
+      initialFlags={initialFlags}
       className={cn(className)}
     />
   );
