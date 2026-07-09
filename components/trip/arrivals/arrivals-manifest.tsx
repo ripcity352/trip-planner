@@ -14,7 +14,8 @@
  *   - `myTripMemberId` — resolved by the page to gate edit affordances
  *   - `tripMembers` — for display names on each card
  *   - `tripTimezone` — IANA tz string threaded to TravelLegCard so all
- *     departure/arrival times render in trip-local time (#254)
+ *     departure/arrival times render in trip-local time (#254), and to
+ *     TravelLegFormSheet so form input parses as trip-local time (#382)
  */
 
 import { useRouter } from "next/navigation";
@@ -72,7 +73,11 @@ export function ArrivalsManifest({
       )}
 
       {/* Add a leg CTA — always visible so any member can log their travel */}
-      <TravelLegFormSheet tripId={tripId} onMutated={handleMutated} />
+      <TravelLegFormSheet
+        tripId={tripId}
+        tripTimezone={tripTimezone}
+        onMutated={handleMutated}
+      />
     </div>
   );
 }

@@ -22,7 +22,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
-import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/utils/datetime";
+// #382: trip-TZ input pair (not lib/utils/datetime) — datetime-local values
+// are wall-clock time in the TRIP's timezone, matching the itinerary
+// datetime-field contract and the trip-TZ render on TravelLegCard.
+import {
+  toLocalInputValue,
+  fromLocalInputValue,
+  timezoneCityLabel,
+} from "@/lib/utils/format-trip-tz";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { upsertTravelLeg, deleteTravelLeg } from "@/lib/actions/travel-legs";
@@ -62,6 +69,12 @@ export interface TravelLegFormProps {
   tripId: string;
   /** Present in edit mode; omit for add mode. */
   leg?: TravelLeg;
+  /**
+   * IANA timezone from `trips.timezone` (e.g. `"America/Los_Angeles"`).
+   * Leave/Arrive inputs are parsed and rendered as wall clock in this
+   * timezone — never the device's (#382).
+   */
+  tripTimezone: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -69,6 +82,7 @@ export interface TravelLegFormProps {
 export function TravelLegForm({
   tripId,
   leg,
+  tripTimezone,
   onSuccess,
   onCancel,
 }: TravelLegFormProps) {
@@ -88,8 +102,8 @@ export function TravelLegForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       kind: leg?.kind ?? "flight",
-      departAt: toDatetimeLocal(leg?.depart_at),
-      arriveAt: toDatetimeLocal(leg?.arrive_at),
+      departAt: toLocalInputValue(leg?.depart_at, tripTimezone),
+      arriveAt: toLocalInputValue(leg?.arrive_at, tripTimezone),
       carrier: leg?.carrier ?? "",
       confirmationCode: leg?.confirmation_code ?? "",
       notes: leg?.notes ?? "",
@@ -118,8 +132,8 @@ export function TravelLegForm({
       {
         tripId,
         kind: values.kind,
-        departAt: fromDatetimeLocal(values.departAt),
-        arriveAt: fromDatetimeLocal(values.arriveAt),
+        departAt: fromLocalInputValue(values.departAt ?? "", tripTimezone),
+        arriveAt: fromLocalInputValue(values.arriveAt ?? "", tripTimezone),
         carrier: values.carrier || null,
         confirmationCode: values.confirmationCode || null,
         notes: values.notes || null,
@@ -215,6 +229,14 @@ export function TravelLegForm({
           disabled={isBusy}
           className={inputClass}
         />
+        {/* #382: datetime-local carries no TZ — both time fields above are
+            trip-local wall clock, so say which clock the user is typing on. */}
+        <p className="text-muted-foreground mt-1 text-xs">
+          {M3_UI_STRINGS.arrivals_leg_form_tz_caption_template.replace(
+            "{city}",
+            timezoneCityLabel(tripTimezone)
+          )}
+        </p>
       </div>
 
       {/* Carrier — AirlinePicker for flights; plain text for all other kinds */}
