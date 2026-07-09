@@ -5,6 +5,51 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-09 — #349/#400 — Realtime subscriptions authenticate before subscribe; castDateVote exits the F2 exclusion
+
+**Gap named (two axes missing from the spec):**
+
+1. **Client-layer realtime auth (#349).** "Subscribe to a channel" was
+   treated as auth-neutral. It isn't: supabase-js 2.108's
+   `_handleTokenChanged` only forwards SIGNED_IN / TOKEN_REFRESHED to
+   `realtime.setAuth()` — never INITIAL_SESSION — so every
+   fresh-page-load subscription joins with **anon** JWT claims, and the
+   `TO authenticated` RLS on the subscribed tables fail-closed-filters
+   every `postgres_changes` frame while the channel reports SUBSCRIBED
+   (fail-closed: no leak; just silent non-delivery — which also made the
+   PulsePoll stale badge lie, since it keys off channel status).
+
+   **New rule:** every browser-side `channel.subscribe()` is preceded by
+   `await ensureRealtimeAuth(client)` (`lib/supabase/realtime-auth.ts`).
+   The helper awaits a **no-arg** `realtime.setAuth()` — pulls the
+   session token through the client's accessToken callback; a manual
+   token would pin and disable supabase-js's own refresh propagation —
+   and registers a one-time INITIAL_SESSION listener per client so a
+   late session upgrades already-joined channels. Applied at both
+   subscription sites (announcement feed, PulsePoll).
+
+   *Alternative rejected:* the `accessToken` client option (supabase-js
+   sets realtime auth eagerly under it) makes every `supabase.auth.*`
+   access throw (third-party-auth mode) — unusable here.
+
+2. **castDateVote exits the F2 exclusion (#400).** The 2026-07-06 F2
+   entry left `castDateVoteAction` out of the revalidatePath contract
+   ("already-optimistic vote UI"). That reasoning covered the voter's
+   chip, not the aggregate yes/no tally on the voter's own page, which
+   stayed frozen until reload — chip and count contradicted each other
+   on every vote. Overturned: `castDateVoteAction` now calls
+   `revalidatePath("/trips", "layout")` on success (idempotency-key
+   handling unchanged), and `_member-view.tsx` threads PulsePoll's
+   `refetch` via `onMutated` exactly as `_celebrant-view.tsx` does.
+   **No mutation server action is F2-exempt anymore.**
+
+Regression: `e2e/realtime-announcements.spec.ts` (two-context — watcher
+sees a fresh announcement without reload). Follow-up left on #349: the
+prod publication check, and a per-surface freshness contract for
+/expenses + /itinerary (no subscription at all today).
+
+---
+
 ## 2026-07-08 — Feature session: audit → backlog → build (operator-directed, M6 gate LIFTED for approved features)
 
 Three-phase operator-directed session (ultracode). Phase 1: full-repo +
