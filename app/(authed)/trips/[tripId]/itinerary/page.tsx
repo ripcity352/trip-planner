@@ -69,7 +69,7 @@ export default async function ItineraryPage({ params }: PageProps) {
   const [items, myRsvps, lodgingAssignmentsMap, tripMembers, allFlags] =
     await Promise.all([
       getItineraryByTrip(supabase, trip.id),
-      getMyItemRsvps(supabase, trip.id),
+      getMyItemRsvps(supabase, trip.id, viewer.id),
       getLodgingAssignmentsByTrip(supabase, trip.id),
       getTripMembers(supabase, trip.id),
       getItemFlagsForOrganizer(supabase, trip.id),

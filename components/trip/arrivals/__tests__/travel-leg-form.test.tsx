@@ -4,7 +4,7 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { TravelLegForm } from "../travel-leg-form";
 import type { TravelLeg } from "@/lib/db/types";
@@ -46,6 +46,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
@@ -65,6 +66,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
@@ -82,6 +84,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
@@ -96,6 +99,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={onCancel}
       />
@@ -113,6 +117,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={onSuccess}
         onCancel={vi.fn()}
       />
@@ -135,6 +140,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={onSuccess}
         onCancel={vi.fn()}
       />
@@ -156,6 +162,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
@@ -172,6 +179,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
@@ -191,6 +199,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ kind: "train" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -211,6 +220,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ kind: "train" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -225,6 +235,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg()}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -242,6 +253,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ id: "leg-99" })}
         onSuccess={onSuccess}
         onCancel={vi.fn()}
@@ -265,6 +277,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg()}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -284,6 +297,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ id: "leg-42" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -304,6 +318,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ airline_iata: "AA", flight_number: "1234" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -324,6 +339,7 @@ describe("TravelLegForm — edit mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ id: "leg-55", airline_iata: "DL", flight_number: "200" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -357,6 +373,7 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ kind: "flight" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -373,6 +390,7 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ kind: "drive" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -389,6 +407,7 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ kind: "train" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -403,6 +422,7 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({ kind: "other" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -417,6 +437,7 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
@@ -453,6 +474,7 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({
           id: "leg-77",
           kind: "flight",
@@ -494,6 +516,7 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({
           id: "leg-99",
           kind: "drive",
@@ -525,6 +548,7 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
     render(
       <TravelLegForm
         tripId="trip-1"
+        tripTimezone="UTC"
         leg={makeLeg({
           id: "leg-78",
           kind: "flight",
@@ -548,5 +572,89 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
         expect.any(String)
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #382: trip-TZ datetime contract — the form parses and renders Leave/Arrive
+// as wall-clock time in the TRIP's timezone, never the device's. Repro from
+// the issue: an EDT device (TZ stubbed) on a Pacific trip.
+// ---------------------------------------------------------------------------
+
+describe("TravelLegForm — trip-TZ datetime contract (#382)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("pre-populates Leave/Arrive as trip-local wall clock, not device-local", () => {
+    vi.stubEnv("TZ", "America/New_York"); // off-TZ device
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        tripTimezone="America/Los_Angeles"
+        leg={makeLeg({
+          depart_at: "2026-08-01T18:00:00Z", // 11:00 PDT
+          arrive_at: "2026-08-01T21:30:00Z", // 14:30 PDT
+        })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect((screen.getByLabelText("Leave") as HTMLInputElement).value).toBe(
+      "2026-08-01T11:00"
+    );
+    expect((screen.getByLabelText("Arrive") as HTMLInputElement).value).toBe(
+      "2026-08-01T14:30"
+    );
+  });
+
+  it("submits a typed wall-clock time as a trip-TZ instant (EDT-device round-trip)", async () => {
+    vi.stubEnv("TZ", "America/New_York");
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        tripTimezone="America/Los_Angeles"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    // Types the arrival straight off the boarding pass — trip-local 10:45.
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-01T10:45" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        // 10:45 PDT = 17:45 UTC. The buggy device-TZ parse gave 14:45 UTC.
+        expect.objectContaining({ arriveAt: "2026-08-01T17:45:00.000Z" }),
+        expect.any(String)
+      );
+    });
+  });
+
+  it("shows the trip-time caption naming the trip's city", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        tripTimezone="America/Los_Angeles"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByText(
+        "Times are Los Angeles time — no matter where you're flying from."
+      )
+    ).toBeInTheDocument();
   });
 });
