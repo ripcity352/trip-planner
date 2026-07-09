@@ -12,6 +12,7 @@ import {
   createInviteRecord,
   getInvitePreview,
   getTripInvites,
+  isInviteDead,
 } from "../invites";
 
 /**
@@ -318,5 +319,68 @@ describe("lib/db/invites.ts", () => {
 
       expect(out).toEqual(existing);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #385 — isInviteDead: the dead-link predicate
+// ---------------------------------------------------------------------------
+
+describe("isInviteDead (#385)", () => {
+  // `revokeInvite` clamps expires_at to now() and keeps the row precisely
+  // so the UI can say "this link is dead" — this predicate is what makes
+  // that promise real. Dead = past/at expiry OR zero uses left. `now` is
+  // an explicit parameter so the caller (a Server Component) computes it
+  // once with the server clock — no SSR/client drift, and the tests stay
+  // deterministic.
+
+  const NOW = new Date("2026-07-09T12:00:00Z");
+
+  const base = { expires_at: null, uses_left: null };
+
+  it("is alive with no expiry and unlimited uses", () => {
+    expect(isInviteDead(base, NOW)).toBe(false);
+  });
+
+  it("is dead when expires_at is in the past (revoked or naturally expired)", () => {
+    expect(
+      isInviteDead(
+        { ...base, expires_at: "2026-07-08T12:00:00Z" },
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  it("is dead when expires_at equals now exactly (revoke clamps to now())", () => {
+    expect(
+      isInviteDead({ ...base, expires_at: NOW.toISOString() }, NOW),
+    ).toBe(true);
+  });
+
+  it("is alive when expires_at is in the future", () => {
+    expect(
+      isInviteDead(
+        { ...base, expires_at: "2026-07-10T12:00:00Z" },
+        NOW,
+      ),
+    ).toBe(false);
+  });
+
+  it("is dead when uses_left is 0, even with a future expiry", () => {
+    expect(
+      isInviteDead(
+        { expires_at: "2026-07-10T12:00:00Z", uses_left: 0 },
+        NOW,
+      ),
+    ).toBe(true);
+  });
+
+  it("is alive when uses_left is positive and expiry is future", () => {
+    expect(
+      isInviteDead(
+        { expires_at: "2026-07-10T12:00:00Z", uses_left: 3 },
+        NOW,
+      ),
+    ).toBe(false);
   });
 });

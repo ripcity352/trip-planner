@@ -31,6 +31,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "travel_leg_delete_failed",
   "lodging_assign_failed",
   "invite_mint_failed",
+  // #397 — shim fail-closed mint denial (deployment config gap, not a
+  // throttle; retrying can't fix it)
+  "invite_mint_unconfigured",
   "invite_revoke_failed",
   // M4 keys (Wave 0a)
   "address_lookup_failed",

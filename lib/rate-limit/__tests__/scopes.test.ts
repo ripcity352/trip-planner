@@ -106,6 +106,87 @@ describe("MINT_INVITE — shim fail-closed (W0c)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// A2. Denial reason (#397) — shim fail-closed vs genuine budget exhaustion
+// ---------------------------------------------------------------------------
+
+describe("RateLimitError.reason (#397) — shim fail-closed vs budget exceeded", () => {
+  // On an Upstash-less deployment every MINT_INVITE is denied (fail-closed,
+  // the deliberate CARRY posture). Before #397 that denial was
+  // indistinguishable from a real 10/h throttle, so the UI told the
+  // organizer to retry something that can never succeed until env config
+  // changes. The fix: the shim fail-closed branch tags its RateLimitError
+  // with a distinct `reason` so the action layer can map it to a
+  // config-gap error key instead of the transient rate-limit copy.
+  // The fail-closed posture itself is unchanged — only the framing is.
+
+  beforeEach(() => {
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    __setLimiterForTest(null);
+  });
+
+  it("shim fail-closed denial carries reason 'shim_fail_closed'", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.resetModules();
+    const {
+      rateLimitedAction: fresh,
+      RATE_LIMIT_SCOPES: SCOPES,
+      RateLimitError: FreshRateLimitError,
+    } = await import("@/lib/rate-limit");
+
+    const fn = vi.fn();
+    let caught: unknown;
+    try {
+      await fresh(SCOPES.MINT_INVITE, "organizer-1", fn);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(FreshRateLimitError);
+    expect((caught as InstanceType<typeof FreshRateLimitError>).reason).toBe(
+      "shim_fail_closed",
+    );
+    // Fail-closed posture unchanged: the wrapped fn never runs.
+    expect(fn).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("a genuine budget denial carries reason 'budget_exceeded'", async () => {
+    __setLimiterForTest({
+      limit: vi.fn().mockResolvedValue({
+        success: false,
+        limit: 10,
+        remaining: 0,
+        reset: Date.now() + 3_600_000,
+        pending: Promise.resolve(),
+      }),
+    });
+
+    const fn = vi.fn();
+    let caught: unknown;
+    try {
+      await rateLimitedAction(RATE_LIMIT_SCOPES.MINT_INVITE, "organizer-1", fn);
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(RateLimitError);
+    expect((caught as RateLimitError).reason).toBe("budget_exceeded");
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("RateLimitError defaults reason to 'budget_exceeded' (back-compat)", () => {
+    // Existing throw sites construct without a reason — they must keep
+    // meaning "you actually hit the throttle".
+    const err = new RateLimitError("mintInvite", { remaining: 0, reset: 0 });
+    expect(err.reason).toBe("budget_exceeded");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // B. Allow-with-warning scopes still pass on shim (regression guard)
 // ---------------------------------------------------------------------------
 

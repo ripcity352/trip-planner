@@ -194,6 +194,36 @@ describe("createInviteAction — rate-limit scope (#107)", () => {
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
   });
 
+  // #397: on an Upstash-less deployment the shim fail-closed denial used to
+  // surface as the transient rate-limit copy ("Easy, tiger…"), telling the
+  // organizer to retry something that can never succeed until env config
+  // changes. The action must map the tagged reason to the dedicated
+  // config-gap key instead.
+  it("returns invite_mint_unconfigured when the denial is shim fail-closed (#397)", async () => {
+    primeAuth("u-1");
+    createClientMock.mockResolvedValue({
+      auth: { getUser: getUserMock },
+      from: vi.fn(),
+    });
+
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError(
+        "mintInvite",
+        { remaining: 0, reset: 0 },
+        "shim_fail_closed",
+      ),
+    );
+
+    const { createInviteAction: action } = await import("@/lib/actions/invites");
+    const result = await action(
+      { tripId: VALID_UUID, usesLeft: null, expiresAt: null },
+      "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c99"
+    );
+
+    expect(result).toEqual({ ok: false, errorKey: "invite_mint_unconfigured" });
+  });
+
   // #366: the guard index shipped in M4 Delta 2 but the action never
   // populated the column — organizer double-tap minted duplicate invites.
   it("returns validation_failed for a malformed idempotency key", async () => {
