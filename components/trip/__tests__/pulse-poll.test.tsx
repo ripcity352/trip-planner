@@ -40,7 +40,13 @@ function buildFakeChannel(): FakeChannel {
   return ch;
 }
 
-function buildFakeClient(channel: FakeChannel) {
+function buildFakeClient(
+  channel: FakeChannel,
+  // #349: injection seam for the auth-before-subscribe ordering test —
+  // lets a test hold the setAuth promise open and observe that
+  // .subscribe() waits for it.
+  setAuthImpl: () => Promise<void> = async () => {}
+) {
   // Supabase channel shape — only the methods PulsePoll touches.
   const channelObj = {
     on: vi.fn((event: string, filter: unknown, handler: () => void) => {
@@ -59,6 +65,11 @@ function buildFakeClient(channel: FakeChannel) {
   return {
     channel: vi.fn(() => channelObj),
     removeChannel: vi.fn(),
+    // #349: PulsePoll authenticates the realtime connection via
+    // ensureRealtimeAuth before subscribing.
+    auth: { onAuthStateChange: vi.fn() },
+    realtime: { setAuth: vi.fn(setAuthImpl) },
+    _channelObj: channelObj,
   };
 }
 
@@ -227,6 +238,46 @@ describe("<PulsePoll />", () => {
     );
     expect(client.channel).toHaveBeenCalledTimes(1);
     expect(client.removeChannel).not.toHaveBeenCalled();
+  });
+
+  // #349 — the subscription must join with authenticated claims. On a
+  // fresh page load supabase-js never pushes the session token to the
+  // realtime connection (INITIAL_SESSION is skipped by
+  // _handleTokenChanged), so an eager subscribe joins with anon claims
+  // and RLS silently filters every postgres_changes frame. PulsePoll
+  // must await the realtime auth upgrade BEFORE calling .subscribe().
+  it("authenticates the realtime connection before subscribing (#349)", async () => {
+    const ch = buildFakeChannel();
+    let releaseSetAuth: () => void = () => {};
+    const setAuthGate = new Promise<void>((resolve) => {
+      releaseSetAuth = resolve;
+    });
+    const client = buildFakeClient(ch, () => setAuthGate);
+    render(
+      <PulsePoll<string>
+        channelKey="k"
+        initialData="v"
+        fetchData={async () => "v"}
+        subscribeTableConfig={[{ table: "t1" }]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        __supabaseClient={client as any}
+        render={(d) => <span>{d}</span>}
+      />
+    );
+
+    // The effect has run: handlers are bound and setAuth is in flight,
+    // but the channel must NOT have joined yet.
+    await act(async () => {});
+    expect(client.realtime.setAuth).toHaveBeenCalled();
+    expect(client._channelObj.subscribe).not.toHaveBeenCalled();
+
+    // Release the auth upgrade — only now may the channel join.
+    await act(async () => {
+      releaseSetAuth();
+    });
+    await waitFor(() => {
+      expect(client._channelObj.subscribe).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("calls removeChannel on unmount", () => {

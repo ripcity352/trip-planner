@@ -12,11 +12,11 @@
  *   - the propose action enforces the MAX_CANDIDATES_PER_TRIP cap
  *   - the vote action does NOT spoof trip_member_id — it looks up
  *     the caller's own id from trip_members
- *   - F2/#110: proposeDateCandidatesAction + setCelebrantMarkAction call
- *     revalidatePath on success and never on a failure branch —
- *     castDateVoteAction is deliberately excluded (already-optimistic
- *     vote UI; see notes/decisions.md "F2 — the #110 mutation contract
- *     extends…")
+ *   - F2/#110: every date-poll mutation action calls revalidatePath on
+ *     success and never on a failure branch. castDateVoteAction was
+ *     originally excluded ("already-optimistic vote UI") — #400
+ *     overturned that: the optimistic chip covered the voter's chip,
+ *     not the aggregate tally, which stayed frozen until reload.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -550,11 +550,54 @@ describe("castDateVoteAction", () => {
     expect(payload.trip_member_id).toBe(VALID_MEMBER_ID);
     expect(payload.vote).toBe(true);
     expect(payload.idempotency_key).toBe(VALID_IDEMPOTENCY_KEY);
-    // F2 / #110 — deliberately excluded: castDateVoteAction does NOT
-    // call revalidatePath. The member-vote UI is already fully
-    // optimistic (mirrors RsvpToggle) and this is the highest-tap path
-    // on the page; see notes/decisions.md "F2 — the #110 mutation
-    // contract extends…" for the full reasoning.
+    // F2 / #400 — castDateVoteAction joins the revalidatePath contract.
+    // The optimistic chip only covers the voter's own chip; the
+    // aggregate tally on the voter's page stayed frozen until a manual
+    // reload, so the exclusion carved out by the original F2 pass is
+    // overturned (see notes/decisions.md 2026-07-09 entry).
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("does NOT call revalidatePath on rls_denied (F2/#400)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: null,
+      error: null,
+    }));
+    const { castDateVoteAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await castDateVoteAction(
+      { candidateId: VALID_CANDIDATE_ID, vote: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call revalidatePath when the upsert fails (F2/#400)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: { trip_id: VALID_TRIP_ID },
+      error: null,
+    }));
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("date_poll_votes", () => ({
+      data: null,
+      error: { code: "P0001", message: "candidate is vetoed" },
+    }));
+    const { castDateVoteAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await castDateVoteAction(
+      { candidateId: VALID_CANDIDATE_ID, vote: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 

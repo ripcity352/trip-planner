@@ -26,7 +26,9 @@ import {
   useImperativeHandle,
   useState,
 } from "react";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/browser";
+import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import { AnnouncementCard } from "./announcement-card";
 import { EMPTY_STATES } from "@/lib/copy/empty-states";
@@ -85,23 +87,38 @@ export const AnnouncementList = forwardRef<
   useEffect(() => {
     const supabase = createClient();
 
-    const channel = subscribeToAnnouncements(
-      supabase,
-      tripId,
-      (newAnnouncement) => {
-        setAnnouncements((prev) =>
-          // Prepend then re-sort so pinned state is honoured. De-dupe
-          // against our own optimistic `prepend()` (F2) landing first.
-          prev.some((a) => a.id === newAnnouncement.id)
-            ? prev
-            : sortAnnouncements([newAnnouncement, ...prev])
-        );
-      },
-      memberUserMap
-    );
+    // #349: the subscription must join with authenticated claims. On a
+    // fresh page load supabase-js never pushes the session token to the
+    // realtime connection (INITIAL_SESSION is skipped), so subscribing
+    // eagerly joins with anon claims and RLS silently filters every
+    // postgres_changes INSERT — the channel still reports SUBSCRIBED.
+    // Await the auth upgrade, THEN join. `ensureRealtimeAuth` never
+    // rejects; `cancelled` covers an unmount racing the upgrade.
+    let channel: RealtimeChannel | null = null;
+    let cancelled = false;
+    void ensureRealtimeAuth(supabase).then(() => {
+      if (cancelled) return;
+      channel = subscribeToAnnouncements(
+        supabase,
+        tripId,
+        (newAnnouncement) => {
+          setAnnouncements((prev) =>
+            // Prepend then re-sort so pinned state is honoured. De-dupe
+            // against our own optimistic `prepend()` (F2) landing first.
+            prev.some((a) => a.id === newAnnouncement.id)
+              ? prev
+              : sortAnnouncements([newAnnouncement, ...prev])
+          );
+        },
+        memberUserMap
+      );
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [tripId, memberUserMap]);
 

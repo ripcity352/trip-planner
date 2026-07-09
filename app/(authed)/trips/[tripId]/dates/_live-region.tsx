@@ -89,7 +89,7 @@ export function LiveRegion({
             {isCelebrant ? (
               <CelebrantView candidates={visible} onMutated={refetch} />
             ) : (
-              <MemberView candidates={visible} />
+              <MemberView candidates={visible} onMutated={refetch} />
             )}
             {isOrganizer || isCelebrant ? (
               <AddWindowForm
