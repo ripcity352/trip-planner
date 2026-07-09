@@ -106,6 +106,28 @@ export async function getInvitePreview(
 }
 
 /**
+ * #385 — dead-link predicate. An invite is dead when its expiry has
+ * passed (which includes revoked links: `revokeInvite` clamps
+ * `expires_at` to `now()` and keeps the row precisely so the UI can say
+ * "this link is dead") or when its uses are exhausted.
+ *
+ * Pure function — `now` is an explicit parameter so a Server Component
+ * computes it once with the server clock (no SSR/client drift) and tests
+ * stay deterministic. `<=` matches the revoke clamp: a link revoked this
+ * instant is already dead.
+ */
+export function isInviteDead(
+  invite: Pick<Invite, "expires_at" | "uses_left">,
+  now: Date
+): boolean {
+  const expired =
+    invite.expires_at !== null &&
+    new Date(invite.expires_at).getTime() <= now.getTime();
+  const exhausted = invite.uses_left === 0;
+  return expired || exhausted;
+}
+
+/**
  * Lists every invite for a trip, newest first. SELECT RLS on `invites`
  * is gated by `is_trip_organizer(trip_id)` (organizers + co-organizers)
  * since 20260610051214_carry_invites_select_organizers_only.sql (#155)

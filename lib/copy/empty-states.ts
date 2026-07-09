@@ -326,6 +326,11 @@ export const M3_UI_STRINGS = {
   invitesPage_copied: "Copied — paste in the group chat.",
   invitesPage_revoke_cta: "Revoke",
   invitesPage_revoke_confirm: "Revoke this link? Anyone with it can't join.",
+  // #385 — muted status label on revoked / expired / used-up links. One
+  // label for all three: the organizer doesn't need forensics, just
+  // "don't paste this one in the group chat". Voice: what you'd actually
+  // say ("that link's dead"), not a SaaS badge ("INACTIVE").
+  invitesPage_dead_label: "Link's dead — mint a fresh one.",
   invitesPage_empty: "No links out yet. Mint one and start texting it around.",
   invitesForm_max_uses_label: "Max uses",
   invitesForm_max_uses_placeholder: "Leave blank for no cap",

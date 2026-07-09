@@ -94,3 +94,65 @@ describe("InviteList", () => {
     expect(screen.queryByText(/\d+ left/i)).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// #385 — dead links (revoked / expired / used-up) must not look live
+// ---------------------------------------------------------------------------
+
+describe("InviteList — dead links (#385)", () => {
+  // revokeInvite clamps expires_at to now() and keeps the row so the UI
+  // can say "this link is dead" — these tests pin that the row actually
+  // says it: muted label from lib/copy, no Copy link, no Revoke.
+
+  const PAST = new Date(Date.now() - 60_000).toISOString();
+  const FUTURE = new Date(Date.now() + 86_400_000).toISOString();
+
+  it("renders an expired/revoked invite with the dead label and no actions", () => {
+    render(
+      <InviteList invites={[makeInvite({ expires_at: PAST })]} />,
+    );
+    // M3_UI_STRINGS.invitesPage_dead_label = "Link's dead"
+    expect(screen.getByText(/link's dead/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("copy-link-btn")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /revoke/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a used-up invite (uses_left = 0) as dead even with future expiry", () => {
+    render(
+      <InviteList
+        invites={[makeInvite({ uses_left: 0, expires_at: FUTURE })]}
+      />,
+    );
+    expect(screen.getByText(/link's dead/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("copy-link-btn")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /revoke/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the dead row visible with its token still legible", () => {
+    render(
+      <InviteList invites={[makeInvite({ token: "tok-dead", expires_at: PAST })]} />,
+    );
+    // The row stays in the list (audit trail) — token still rendered.
+    expect(screen.getByText("tok-dead")).toBeInTheDocument();
+  });
+
+  it("leaves live invites untouched (Copy link + Revoke still offered)", () => {
+    render(
+      <InviteList
+        invites={[
+          makeInvite({ token: "tok-live", expires_at: FUTURE, uses_left: 3 }),
+          makeInvite({ token: "tok-dead", expires_at: PAST }),
+        ]}
+      />,
+    );
+    // Exactly ONE live row: one copy button, one revoke button.
+    expect(screen.getAllByTestId("copy-link-btn")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /revoke/i })).toHaveLength(1);
+    // And exactly one dead label.
+    expect(screen.getAllByText(/link's dead/i)).toHaveLength(1);
+  });
+});

@@ -18,7 +18,9 @@ import { format } from "date-fns";
 
 import { Identifier } from "@/components/ui/identifier";
 import { EMPTY_STATES, M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { isInviteDead } from "@/lib/db/invites";
 import type { Invite } from "@/lib/db/types";
+import { cn } from "@/lib/utils";
 import { CopyLinkButton } from "./copy-link-button";
 import { RevokeButton } from "./revoke-button";
 
@@ -35,16 +37,25 @@ export function InviteList({ invites }: InviteListProps) {
     );
   }
 
+  // #385: dead-state computed ONCE per render with a single clock. This is
+  // a Server Component (no client boundary above it), so this is the
+  // server's clock at request time — no SSR/client hydration drift.
+  const now = new Date();
+
   return (
     <ul className="flex flex-col divide-y divide-border">
       {invites.map((invite) => (
-        <InviteRow key={invite.token} invite={invite} />
+        <InviteRow
+          key={invite.token}
+          invite={invite}
+          isDead={isInviteDead(invite, now)}
+        />
       ))}
     </ul>
   );
 }
 
-function InviteRow({ invite }: { invite: Invite }) {
+function InviteRow({ invite, isDead }: { invite: Invite; isDead: boolean }) {
   const usesLine =
     invite.uses_left !== null
       ? M3_UI_STRINGS.invitesPage_uses_template.replace(
@@ -62,17 +73,27 @@ function InviteRow({ invite }: { invite: Invite }) {
       : null;
 
   return (
-    <li className="py-3 flex flex-col gap-2">
+    <li className={cn("py-3 flex flex-col gap-2", isDead && "opacity-60")}>
       {/* Token via the <Identifier> primitive — display-only mono render.
           On its own line so it has room to truncate at 375px. Copying is
           CopyLinkButton's job (the full join URL); the raw token isn't
           actionable on its own. */}
       <Identifier value={invite.token} />
 
-      <div className="flex items-center gap-2">
-        <CopyLinkButton token={invite.token} />
-        <RevokeButton token={invite.token} />
-      </div>
+      {/* #385: a dead link (revoked / expired / used up) must not look
+          live — no Copy link (Dave would paste it in the group chat), no
+          Revoke (nothing left to revoke). The row stays visible as an
+          audit trail; the uses/expiry meta below explains why it died. */}
+      {isDead ? (
+        <p className="text-sm text-muted-foreground">
+          {M3_UI_STRINGS.invitesPage_dead_label}
+        </p>
+      ) : (
+        <div className="flex items-center gap-2">
+          <CopyLinkButton token={invite.token} />
+          <RevokeButton token={invite.token} />
+        </div>
+      )}
 
       {(usesLine || expiryLine) && (
         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">

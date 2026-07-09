@@ -49,6 +49,12 @@ export type ErrorKey =
   | "travel_leg_delete_failed"
   | "lodging_assign_failed"
   | "invite_mint_failed"
+  // #397 — MINT_INVITE is fail-closed on the shim: on a deployment with
+  // no Upstash creds every mint is denied by design. That denial is a
+  // config gap, not a throttle — it must NOT reuse the transient
+  // rate_limit copy ("give it a sec"), because retrying can never
+  // succeed until env config changes.
+  | "invite_mint_unconfigured"
   | "invite_revoke_failed"
   // M4 error keys (Wave 0a). Naming follows `<feature>_<verb>_failed`.
   // Voice rule: blame-free, warm, specific — NO "An error occurred",
@@ -118,6 +124,10 @@ export const ERRORS: Record<ErrorKey, string> = {
     "Rooms didn't budge. Tap again — it'll catch.",
   invite_mint_failed:
     "Couldn't mint a link. Try once more — sometimes the server takes a sec.",
+  // #397 — shim fail-closed mint denial. Honest about it being permanent:
+  // no "try again" nudge, because a retry can't fix missing env config.
+  invite_mint_unconfigured:
+    "Invite links are down on this deployment — server setup, not you. Retrying won't fix it.",
   invite_revoke_failed: "Couldn't revoke that link yet. Try once more.",
   expense_add_failed: "That one didn't stick. Log it again in a sec.",
   // M4 error strings — same voice rules. Blame-free, specific, no corporate language.

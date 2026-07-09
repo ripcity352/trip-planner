@@ -276,7 +276,18 @@ export async function createInviteAction(
     return { ok: true, invite };
   } catch (err) {
     if (err instanceof RateLimitError) {
-      return { ok: false, errorKey: "rate_limit" };
+      // #397: MINT_INVITE is fail-closed on the shim — on a deployment
+      // without Upstash creds EVERY mint is denied by design. That's a
+      // config gap, not a throttle; surfacing the transient rate_limit
+      // copy ("give it a sec") would tell the organizer to retry
+      // something that can never succeed until env config changes.
+      return {
+        ok: false,
+        errorKey:
+          err.reason === "shim_fail_closed"
+            ? "invite_mint_unconfigured"
+            : "rate_limit",
+      };
     }
     // RLS rejection surfaces as a Postgres-class error with code 42501.
     // We don't have a typed Supabase error here, so heuristic on

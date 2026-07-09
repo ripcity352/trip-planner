@@ -211,20 +211,39 @@ const GUARDED_PATH_PATTERNS: ReadonlyArray<RegExp> = [
 // --- error -------------------------------------------------------------
 
 /**
+ * Why a denial happened (#397). The distinction matters for the user-facing
+ * copy, NOT for the posture (both deny):
+ *
+ *   - `budget_exceeded`: a genuine throttle (or fail-closed Upstash
+ *     timeout) — transient, retrying later can succeed.
+ *   - `shim_fail_closed`: the scope is in `FAIL_CLOSED_ON_SHIM` and Upstash
+ *     is unconfigured — a deployment config gap; retrying can NEVER succeed
+ *     until env vars change, so the UI must not suggest "try again".
+ */
+export type RateLimitDenialReason = "budget_exceeded" | "shim_fail_closed";
+
+/**
  * Thrown by `rateLimitedAction` when the caller exceeds its budget.
- * Server actions can catch this and translate to a user-facing toast.
+ * Server actions can catch this and translate to a user-facing toast;
+ * `reason` tells them WHICH toast (transient throttle vs config gap).
  */
 export class RateLimitError extends Error {
   readonly scope: string;
   readonly reset: number;
   readonly remaining: number;
+  readonly reason: RateLimitDenialReason;
 
-  constructor(scope: string, response: Pick<RateLimitResult, "reset" | "remaining">) {
-    super(`Rate limit exceeded for scope "${scope}"`);
+  constructor(
+    scope: string,
+    response: Pick<RateLimitResult, "reset" | "remaining">,
+    reason: RateLimitDenialReason = "budget_exceeded",
+  ) {
+    super(`Rate limit exceeded for scope "${scope}" (${reason})`);
     this.name = "RateLimitError";
     this.scope = scope;
     this.reset = response.reset;
     this.remaining = response.remaining;
+    this.reason = reason;
   }
 }
 
@@ -511,10 +530,14 @@ export async function rateLimitedAction<T>(
   // but NOT for MINT_INVITE or PLACES_AUTOCOMPLETE where an unconfigured
   // deployment must not silently open an abuse surface.
   if (isInMemoryShim(limiter) && FAIL_CLOSED_ON_SHIM.has(scope)) {
-    throw new RateLimitError(scope, {
-      remaining: 0,
-      reset: Date.now() + 60_000,
-    });
+    // #397: tag the denial as a config gap, not a throttle, so the action
+    // layer can surface "this deployment isn't configured" instead of the
+    // transient "give it a sec" copy. The deny itself is unchanged.
+    throw new RateLimitError(
+      scope,
+      { remaining: 0, reset: Date.now() + 60_000 },
+      "shim_fail_closed",
+    );
   }
 
   if (!result.success || isTimeoutAllow(result)) {
