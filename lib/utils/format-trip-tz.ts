@@ -80,6 +80,18 @@ export function formatTripDateTime(iso: string, tripTimezone: string): string {
 }
 
 /**
+ * Human-readable city label for an IANA timezone, for microcopy like
+ * "Times are Los Angeles time" (#382 travel-leg form caption).
+ *
+ * Last path segment with underscores as spaces; segment-less zones
+ * ("UTC") fall back to the raw string.
+ */
+export function timezoneCityLabel(tripTimezone: string): string {
+  const segment = tripTimezone.split("/").pop();
+  return segment ? segment.replace(/_/g, " ") : tripTimezone;
+}
+
+/**
  * Parse the YYYY-MM-DDTHH:mm value from `<input type="datetime-local">` —
  * which is a wall-clock time in the trip's timezone — and return an
  * ISO-8601 UTC string.

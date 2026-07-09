@@ -292,6 +292,11 @@ export const M3_UI_STRINGS = {
   arrivals_cancel_cta: "Cancel",
   arrivals_edit_cta: "Edit",
   arrivals_add_cta: "Add your travel",
+  // #382: caption under the travel-leg time fields. {city} comes from
+  // trips.timezone via timezoneCityLabel — the form parses input as
+  // trip-local wall clock, so tell the user which clock they're typing on.
+  arrivals_leg_form_tz_caption_template:
+    "Times are {city} time — no matter where you're flying from.",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   roster_heading: "Who's coming",
