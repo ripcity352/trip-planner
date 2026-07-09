@@ -168,32 +168,92 @@ describe("getItineraryItem", () => {
 // ---------------------------------------------------------------------------
 
 describe("getMyItemRsvps", () => {
-  it("returns rsvps without the join column", async () => {
-    const raw = [
-      {
-        item_id: ITEM_ID,
-        trip_member_id: MEMBER_ID,
-        status: "skipping",
-        idempotency_key: null,
-        updated_at: "2026-05-20T00:00:00.000Z",
-        itinerary_items: { trip_id: TRIP_ID },
+  const OTHER_MEMBER_ID = "44444444-4444-4444-8444-444444444444";
+
+  /**
+   * Filtering mock for the viewer-scope regression (#381): records every
+   * `.eq()` call and applies flat-column predicates to `rows`, simulating
+   * PostgREST filtering. Dotted paths (embedded-resource filters like
+   * `itinerary_items.trip_id`) are recorded but not applied — the plain
+   * `makeClient` proxy can't prove the member predicate reaches the query.
+   */
+  function makeFilteringClient(rows: Record<string, unknown>[]) {
+    const eqCalls: Array<[string, unknown]> = [];
+    const filtered = () =>
+      eqCalls
+        .filter(([column]) => !column.includes("."))
+        .reduce((acc, [column, value]) => acc.filter((row) => row[column] === value), rows);
+    const handler: ProxyHandler<Record<string, unknown>> = {
+      get(_target, prop: string) {
+        if (prop === "then") {
+          return (
+            onfulfilled: (value: { data: unknown; error: unknown }) => unknown
+          ) => Promise.resolve({ data: filtered(), error: null }).then(onfulfilled);
+        }
+        if (prop === "eq") {
+          return (column: string, value: unknown) => {
+            eqCalls.push([column, value]);
+            return proxy;
+          };
+        }
+        return () => proxy;
       },
-    ];
+    };
+    const proxy: Record<string, unknown> = new Proxy({}, handler);
+    const client = { from: vi.fn(() => proxy) } as unknown as SupabaseClient;
+    return { client, eqCalls };
+  }
+
+  const rsvpRow = (memberId: string, status: string) => ({
+    item_id: ITEM_ID,
+    trip_member_id: memberId,
+    status,
+    idempotency_key: null,
+    updated_at: "2026-05-20T00:00:00.000Z",
+    itinerary_items: { trip_id: TRIP_ID },
+  });
+
+  it("returns rsvps without the join column", async () => {
     const client = makeClient({
-      itinerary_item_rsvps: () => ({ data: raw, error: null }),
+      itinerary_item_rsvps: () => ({
+        data: [rsvpRow(MEMBER_ID, "skipping")],
+        error: null,
+      }),
     });
-    const result = await getMyItemRsvps(client, TRIP_ID);
+    const result = await getMyItemRsvps(client, TRIP_ID, MEMBER_ID);
     expect(result).toHaveLength(1);
     expect(result[0].status).toBe("skipping");
     // The join column must be stripped
     expect("itinerary_items" in result[0]).toBe(false);
   });
 
+  it("scopes the query to the caller's trip_member_id (#381)", async () => {
+    const { client, eqCalls } = makeFilteringClient([]);
+    await getMyItemRsvps(client, TRIP_ID, MEMBER_ID);
+    expect(eqCalls).toContainEqual(["trip_member_id", MEMBER_ID]);
+  });
+
+  it("never returns another member's rows (#381)", async () => {
+    // Trip-wide SELECT policy returns every member's rows; the query
+    // predicate must keep Sam's "skipping" out of Nate's map.
+    const { client } = makeFilteringClient([
+      rsvpRow(OTHER_MEMBER_ID, "skipping"),
+      rsvpRow(MEMBER_ID, "going"),
+    ]);
+    const result = await getMyItemRsvps(client, TRIP_ID, MEMBER_ID);
+    expect(result).toHaveLength(1);
+    expect(result[0].trip_member_id).toBe(MEMBER_ID);
+    expect(result[0].status).toBe("going");
+    expect(
+      result.some((r) => r.trip_member_id === OTHER_MEMBER_ID)
+    ).toBe(false);
+  });
+
   it("returns empty array when no rsvps", async () => {
     const client = makeClient({
       itinerary_item_rsvps: () => ({ data: [], error: null }),
     });
-    const result = await getMyItemRsvps(client, TRIP_ID);
+    const result = await getMyItemRsvps(client, TRIP_ID, MEMBER_ID);
     expect(result).toEqual([]);
   });
 
@@ -204,7 +264,7 @@ describe("getMyItemRsvps", () => {
         error: { message: "rls denied" },
       }),
     });
-    await expect(getMyItemRsvps(client, TRIP_ID)).rejects.toThrow(
+    await expect(getMyItemRsvps(client, TRIP_ID, MEMBER_ID)).rejects.toThrow(
       "getMyItemRsvps failed"
     );
   });

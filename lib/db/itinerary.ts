@@ -67,13 +67,18 @@ export async function getItineraryItem(
 }
 
 /**
- * Return all per-item RSVPs for the calling member across a trip.
+ * Return all per-item RSVPs for one member across a trip, scoped to the
+ * caller's own `trip_member_id` (#381 — the trip-wide SELECT policy
+ * returns every member's rows, so the predicate is load-bearing).
  * Absence of a row for an item means the member inherits the day-level RSVP.
- * RLS: trip members can read all RSVPs for items in their trip.
+ *
+ * Passing `memberId` explicitly mirrors `getMyFlagsForItem` — testable
+ * without auth mocks; the page/action layer supplies the viewer's member id.
  */
 export async function getMyItemRsvps(
   supabase: SupabaseClient,
-  tripId: string
+  tripId: string,
+  memberId: string
 ): Promise<ItineraryItemRsvp[]> {
   // We join through itinerary_items to scope by trip_id, since
   // itinerary_item_rsvps only has item_id.
@@ -82,7 +87,8 @@ export async function getMyItemRsvps(
     .select(
       "item_id, trip_member_id, status, idempotency_key, updated_at, itinerary_items!inner(trip_id)"
     )
-    .eq("itinerary_items.trip_id", tripId);
+    .eq("itinerary_items.trip_id", tripId)
+    .eq("trip_member_id", memberId);
 
   if (error) {
     throw new Error(`getMyItemRsvps failed: ${error.message}`);
