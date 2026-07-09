@@ -243,3 +243,78 @@ describe("TravelLegCard", () => {
     expect(screen.queryByText("Window seat please")).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// #396: airline_iata + flight_number are stored by the M4 airline picker but
+// were never rendered — the card read only the free-text carrier column,
+// which the picker path leaves null.
+// ---------------------------------------------------------------------------
+
+describe("TravelLegCard — flight number rendering (#396)", () => {
+  it("renders 'UA 415' from airline_iata + flight_number when carrier is null", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({
+          airline_iata: "UA",
+          flight_number: "415",
+          carrier: null,
+        })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.getByText("UA 415")).toBeInTheDocument();
+  });
+
+  it("prefers the structured pair over the free-text carrier", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({
+          airline_iata: "UA",
+          flight_number: "415",
+          carrier: "Southwest",
+        })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.getByText("UA 415")).toBeInTheDocument();
+    expect(screen.queryByText("Southwest")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the free-text carrier when the pair is null", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({
+          airline_iata: null,
+          flight_number: null,
+          carrier: "Amtrak",
+          kind: "train",
+        })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.getByText("Amtrak")).toBeInTheDocument();
+  });
+
+  it("renders nothing on the kind row when both the pair and carrier are null", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({
+          airline_iata: null,
+          flight_number: null,
+          carrier: null,
+        })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.queryByText(/UA/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Southwest")).not.toBeInTheDocument();
+  });
+});

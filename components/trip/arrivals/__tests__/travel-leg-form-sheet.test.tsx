@@ -14,13 +14,19 @@ vi.mock("../travel-leg-form", () => ({
   TravelLegForm: ({
     onCancel,
     leg,
+    tripTimezone,
   }: {
     tripId: string;
     leg?: TravelLeg;
+    tripTimezone: string;
     onSuccess: () => void;
     onCancel: () => void;
   }) => (
-    <div data-testid="travel-leg-form" data-has-leg={!!leg}>
+    <div
+      data-testid="travel-leg-form"
+      data-has-leg={!!leg}
+      data-trip-timezone={tripTimezone}
+    >
       <button onClick={onCancel}>Cancel</button>
     </div>
   ),
@@ -28,25 +34,25 @@ vi.mock("../travel-leg-form", () => ({
 
 describe("TravelLegFormSheet — add mode (no leg prop)", () => {
   it("renders the 'Add a leg' CTA button initially", () => {
-    render(<TravelLegFormSheet tripId="trip-1" />);
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
     expect(
       screen.getByRole("button", { name: /add your travel/i })
     ).toBeInTheDocument();
   });
 
   it("form is not visible initially", () => {
-    render(<TravelLegFormSheet tripId="trip-1" />);
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
     expect(screen.queryByTestId("travel-leg-form")).not.toBeInTheDocument();
   });
 
   it("shows the form when CTA is clicked", () => {
-    render(<TravelLegFormSheet tripId="trip-1" />);
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
     fireEvent.click(screen.getByRole("button", { name: /add your travel/i }));
     expect(screen.getByTestId("travel-leg-form")).toBeInTheDocument();
   });
 
   it("hides the form when cancel is clicked inside the form", () => {
-    render(<TravelLegFormSheet tripId="trip-1" />);
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
     fireEvent.click(screen.getByRole("button", { name: /add your travel/i }));
     expect(screen.getByTestId("travel-leg-form")).toBeInTheDocument();
 
@@ -71,22 +77,39 @@ describe("TravelLegFormSheet — edit mode (leg prop present)", () => {
   };
 
   it("renders the edit CTA button", () => {
-    render(<TravelLegFormSheet tripId="trip-1" leg={leg} />);
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" leg={leg} />);
     expect(
       screen.getByRole("button", { name: /edit/i })
     ).toBeInTheDocument();
   });
 
   it("form is not visible initially in edit mode", () => {
-    render(<TravelLegFormSheet tripId="trip-1" leg={leg} />);
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" leg={leg} />);
     expect(screen.queryByTestId("travel-leg-form")).not.toBeInTheDocument();
   });
 
   it("shows the form with leg data when edit CTA is clicked", () => {
-    render(<TravelLegFormSheet tripId="trip-1" leg={leg} />);
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" leg={leg} />);
     fireEvent.click(screen.getByRole("button", { name: /edit/i }));
     const form = screen.getByTestId("travel-leg-form");
     expect(form).toBeInTheDocument();
     expect(form).toHaveAttribute("data-has-leg", "true");
+  });
+
+  // #382: the sheet must forward the trip's timezone so the form parses
+  // datetime-local input as trip-local wall clock.
+  it("forwards tripTimezone to the form", () => {
+    render(
+      <TravelLegFormSheet
+        tripId="trip-1"
+        tripTimezone="America/Los_Angeles"
+        leg={leg}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }));
+    expect(screen.getByTestId("travel-leg-form")).toHaveAttribute(
+      "data-trip-timezone",
+      "America/Los_Angeles"
+    );
   });
 });

@@ -1,9 +1,10 @@
 /**
  * TravelLegCard — renders a single travel leg in the arrivals manifest.
  *
- * Server Component. Displays kind label, depart/arrive datetimes, carrier,
- * confirmation code, notes. Owner sees an edit affordance (TravelLegFormSheet);
- * non-owners see read-only card.
+ * Server Component. Displays kind label + flight designator (airline_iata +
+ * flight_number, falling back to free-text carrier — #396), depart/arrive
+ * datetimes, confirmation code, notes. Owner sees an edit affordance
+ * (TravelLegFormSheet); non-owners see read-only card.
  *
  * Visibility rule: All trip members can read all legs (RLS allows trip-wide
  * SELECT). Edit is owner-only — the UI hides the affordance as a UX detail;
@@ -60,6 +61,13 @@ export function TravelLegCard({
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
 
+  // #396: the M4 airline picker stores airline_iata + flight_number and
+  // leaves free-text carrier null — prefer the structured pair ("UA 415"),
+  // fall back to carrier for the free-text path (train/drive/other).
+  const carrierLabel =
+    [leg.airline_iata, leg.flight_number].filter(Boolean).join(" ") ||
+    leg.carrier;
+
   return (
     <article className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
       {/* Header: kind icon + label + owner name + edit affordance */}
@@ -75,11 +83,18 @@ export function TravelLegCard({
           );
         })()}
         <span className="text-sm font-semibold">{KIND_LABELS[leg.kind]}</span>
+        {carrierLabel ? (
+          <span className="text-muted-foreground text-sm">{carrierLabel}</span>
+        ) : null}
         <span className="text-muted-foreground ml-auto text-xs">
           {ownerName}
         </span>
         {isOwner ? (
-          <TravelLegFormSheet tripId={leg.trip_id} leg={leg} />
+          <TravelLegFormSheet
+            tripId={leg.trip_id}
+            leg={leg}
+            tripTimezone={tripTimezone}
+          />
         ) : null}
       </div>
 
@@ -107,11 +122,6 @@ export function TravelLegCard({
             </div>
           ) : null}
         </div>
-      ) : null}
-
-      {/* Carrier */}
-      {leg.carrier ? (
-        <p className="text-sm">{leg.carrier}</p>
       ) : null}
 
       {/* Confirmation code */}

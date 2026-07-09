@@ -24,6 +24,8 @@ export interface TravelLegFormSheetProps {
   tripId: string;
   /** Present for edit mode; omit for add mode. */
   leg?: TravelLeg;
+  /** IANA timezone from `trips.timezone` — forwarded to TravelLegForm (#382). */
+  tripTimezone: string;
   /** Called after a successful save or delete to trigger a page refresh. */
   onMutated?: () => void;
 }
@@ -31,6 +33,7 @@ export interface TravelLegFormSheetProps {
 export function TravelLegFormSheet({
   tripId,
   leg,
+  tripTimezone,
   onMutated,
 }: TravelLegFormSheetProps) {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -51,6 +54,7 @@ export function TravelLegFormSheet({
         <TravelLegForm
           tripId={tripId}
           leg={leg}
+          tripTimezone={tripTimezone}
           onSuccess={handleSuccess}
           onCancel={handleCancel}
         />

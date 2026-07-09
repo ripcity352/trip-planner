@@ -19,7 +19,12 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { toLocalInputValue, fromLocalInputValue, formatTripDateTime } from "../format-trip-tz";
+import {
+  toLocalInputValue,
+  fromLocalInputValue,
+  formatTripDateTime,
+  timezoneCityLabel,
+} from "../format-trip-tz";
 
 // -------------------------------------------------------------------------
 // toLocalInputValue
@@ -131,6 +136,77 @@ describe("fromLocalInputValue", () => {
     const local = toLocalInputValue(originalUtc, "America/New_York");
     const recovered = fromLocalInputValue(local, "America/New_York");
     expect(recovered).toBe(originalUtc);
+  });
+});
+
+// -------------------------------------------------------------------------
+// #382 — travel-leg trip-TZ contract. A member on an off-TZ device typing a
+// wall-clock time straight off the boarding pass (trip-local) must see the
+// same wall clock back — never the device-TZ reinterpretation that shifted
+// "10:45" to "7:45 am" for an EDT device on a Pacific trip.
+// -------------------------------------------------------------------------
+
+describe("trip-TZ round-trip is device-TZ-independent (#382)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("EDT device: trip-local input parses to the trip-TZ instant, not the device's", () => {
+    vi.stubEnv("TZ", "America/New_York"); // the off-TZ device
+    // User types 14:30 off the boarding pass — Pacific (trip) time.
+    const stored = fromLocalInputValue(
+      "2026-08-01T14:30",
+      "America/Los_Angeles"
+    );
+    // 14:30 PDT = 21:30 UTC. The buggy device-TZ parse stored 18:30 UTC.
+    expect(stored).toBe("2026-08-01T21:30:00.000Z");
+  });
+
+  it("EDT device: the stored instant renders back as the same trip-local wall clock", () => {
+    vi.stubEnv("TZ", "America/New_York");
+    const localAgain = toLocalInputValue(
+      "2026-08-01T21:30:00.000Z",
+      "America/Los_Angeles"
+    );
+    expect(localAgain).toBe("2026-08-01T14:30");
+  });
+
+  it("full round-trip: identical wall clock out for any ambient device TZ", () => {
+    for (const deviceTz of ["America/New_York", "UTC", "Asia/Tokyo"]) {
+      vi.stubEnv("TZ", deviceTz);
+      const stored = fromLocalInputValue(
+        "2026-08-01T10:45",
+        "America/Los_Angeles"
+      );
+      expect(stored).toBe("2026-08-01T17:45:00.000Z");
+      expect(toLocalInputValue(stored, "America/Los_Angeles")).toBe(
+        "2026-08-01T10:45"
+      );
+    }
+  });
+});
+
+// -------------------------------------------------------------------------
+// timezoneCityLabel — feeds the #382 "times are {city} time" form caption
+// -------------------------------------------------------------------------
+
+describe("timezoneCityLabel", () => {
+  it("extracts the city from an IANA zone, underscores become spaces", () => {
+    expect(timezoneCityLabel("America/Los_Angeles")).toBe("Los Angeles");
+  });
+
+  it("handles single-word cities", () => {
+    expect(timezoneCityLabel("America/Denver")).toBe("Denver");
+  });
+
+  it("uses the last segment of multi-segment zones", () => {
+    expect(timezoneCityLabel("America/Argentina/Buenos_Aires")).toBe(
+      "Buenos Aires"
+    );
+  });
+
+  it("falls back to the raw string for segment-less zones", () => {
+    expect(timezoneCityLabel("UTC")).toBe("UTC");
   });
 });
 
