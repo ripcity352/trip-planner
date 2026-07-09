@@ -9,9 +9,12 @@
  *
  * Optimistic UI: clicking a vote chip flips local state immediately
  * and queues the server action. On success we keep the optimistic
- * value (realtime will refresh anyway). On failure we roll back
- * and surface an inline alert. If the realtime channel is `isStale`
- * the parent renders a small "syncing…" badge — passed in here.
+ * value AND call `onMutated` (PulsePoll's `refetch`, F2/#400) so the
+ * voter's own aggregate tally updates without depending on the
+ * Realtime channel — mirroring `_celebrant-view.tsx`. On failure we
+ * roll back and surface an inline alert. If the realtime channel is
+ * `isStale` the parent renders a small "syncing…" badge — passed in
+ * here.
  */
 
 import * as React from "react";
@@ -29,9 +32,11 @@ import { formatDateRange } from "./_format";
 
 interface MemberViewProps {
   candidates: ReadonlyArray<DatePollCandidateView>;
+  /** F2/#400: PulsePoll's `refetch`, called after a successful vote. */
+  onMutated?: () => void;
 }
 
-export function MemberView({ candidates }: MemberViewProps) {
+export function MemberView({ candidates, onMutated }: MemberViewProps) {
   if (candidates.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -43,14 +48,20 @@ export function MemberView({ candidates }: MemberViewProps) {
     <ul className="flex flex-col gap-3">
       {candidates.map((row) => (
         <li key={row.candidate.id}>
-          <CandidateMemberCard row={row} />
+          <CandidateMemberCard row={row} onMutated={onMutated} />
         </li>
       ))}
     </ul>
   );
 }
 
-function CandidateMemberCard({ row }: { row: DatePollCandidateView }) {
+function CandidateMemberCard({
+  row,
+  onMutated,
+}: {
+  row: DatePollCandidateView;
+  onMutated?: () => void;
+}) {
   // Optimistic vote pattern: keep a transient "pending override" that
   // wins over `row.my_vote` while the server action is in flight or
   // after a failure. Once the parent's PulsePoll refetch lands a new
@@ -91,6 +102,13 @@ function CandidateMemberCard({ row }: { row: DatePollCandidateView }) {
           // the override remains harmless until cleared by the next
           // distinct user click. (Drift between override and props
           // is fine because both encode the same vote.)
+          //
+          // F2/#400: pull a fresh copy now — don't wait on the
+          // Realtime channel. This is what moves the voter's own
+          // yes/no tally; a `postgres_changes` event for the same
+          // write may also fire and trigger a second (idempotent)
+          // refetch.
+          onMutated?.();
         } catch (err) {
           console.error("[date-poll] castDateVote threw:", err);
           setPendingVote(null);
@@ -98,7 +116,7 @@ function CandidateMemberCard({ row }: { row: DatePollCandidateView }) {
         }
       });
     },
-    [displayVote, row.candidate.id]
+    [displayVote, row.candidate.id, onMutated]
   );
 
   const isEffortFlag = row.mark === "works-with-effort";

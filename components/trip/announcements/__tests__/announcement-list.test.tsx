@@ -30,8 +30,24 @@ vi.mock("@/lib/db/announcements", () => ({
   }),
 }));
 
+// #349: the list must authenticate the realtime connection before
+// subscribing — mock the helper so the ordering is observable.
+vi.mock("@/lib/supabase/realtime-auth", () => ({
+  ensureRealtimeAuth: vi.fn(async () => {}),
+}));
+
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import { createClient } from "@/lib/supabase/browser";
+import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
+
+/**
+ * The subscription is gated behind `await ensureRealtimeAuth(...)` (#349),
+ * so it lands a microtask after mount. Flush it before asserting on
+ * anything subscription-dependent.
+ */
+async function flushSubscription() {
+  await act(async () => {});
+}
 
 /** Empty map satisfies the required memberUserMap prop in most tests. */
 const EMPTY_MAP = new Map<string, string | null>();
@@ -86,8 +102,9 @@ describe("AnnouncementList", () => {
     expect(cards[1].textContent).toContain("Regular update.");
   });
 
-  it("calls subscribeToAnnouncements on mount with the correct tripId", () => {
+  it("calls subscribeToAnnouncements on mount with the correct tripId", async () => {
     render(<AnnouncementList tripId="trip-42" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    await flushSubscription();
     // W1c: subscribeToAnnouncements now takes 4 args (supabase, tripId, onInsert, memberUserMap)
     expect(subscribeToAnnouncements).toHaveBeenCalledWith(
       expect.anything(),
@@ -97,8 +114,25 @@ describe("AnnouncementList", () => {
     );
   });
 
-  it("adds a new announcement to the list when the realtime callback fires", () => {
+  it("authenticates the realtime connection before subscribing (#349)", async () => {
+    // On a fresh page load supabase-js never pushes the session token to
+    // the realtime connection (INITIAL_SESSION is skipped by
+    // _handleTokenChanged), so an eager subscribe joins with anon claims
+    // and RLS silently filters every postgres_changes frame. The list
+    // must await ensureRealtimeAuth BEFORE opening the channel.
     render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    await flushSubscription();
+    expect(ensureRealtimeAuth).toHaveBeenCalledTimes(1);
+    const authOrder =
+      vi.mocked(ensureRealtimeAuth).mock.invocationCallOrder[0];
+    const subscribeOrder =
+      vi.mocked(subscribeToAnnouncements).mock.invocationCallOrder[0];
+    expect(authOrder).toBeLessThan(subscribeOrder);
+  });
+
+  it("adds a new announcement to the list when the realtime callback fires", async () => {
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    await flushSubscription();
 
     const newItem = makeAnnouncement({ id: "ann-realtime", body: "Live update!" });
     act(() => {
@@ -108,11 +142,12 @@ describe("AnnouncementList", () => {
     expect(screen.getByText("Live update!")).toBeInTheDocument();
   });
 
-  it("prepends new realtime announcements before existing ones", () => {
+  it("prepends new realtime announcements before existing ones", async () => {
     const existing = makeAnnouncement({ id: "ann-existing", body: "Existing." });
     render(
       <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
     );
+    await flushSubscription();
 
     const incoming = makeAnnouncement({ id: "ann-new", body: "New one!" });
     act(() => {
@@ -129,10 +164,11 @@ describe("AnnouncementList", () => {
     expect(newIdx).toBeLessThan(existIdx);
   });
 
-  it("calls removeChannel on unmount to clean up the subscription", () => {
+  it("calls removeChannel on unmount to clean up the subscription", async () => {
     const { unmount } = render(
       <AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />
     );
+    await flushSubscription();
     unmount();
     const supabase = vi.mocked(createClient)();
     expect(supabase.removeChannel).toHaveBeenCalledWith(mockChannel);
@@ -144,7 +180,7 @@ describe("AnnouncementList", () => {
     expect(screen.queryByText(/all quiet/i)).not.toBeInTheDocument();
   });
 
-  it("places a pinned realtime arrival above an existing non-pinned item", () => {
+  it("places a pinned realtime arrival above an existing non-pinned item", async () => {
     const existing = makeAnnouncement({
       id: "ann-existing",
       body: "Regular update.",
@@ -154,6 +190,7 @@ describe("AnnouncementList", () => {
     render(
       <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
     );
+    await flushSubscription();
 
     const pinnedIncoming = makeAnnouncement({
       id: "ann-pinned",

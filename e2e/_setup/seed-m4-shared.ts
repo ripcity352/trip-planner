@@ -258,13 +258,20 @@ export async function upsertMember(
 /**
  * Derives the Supabase project ref from the project URL.
  * URL shape: https://<project-ref>.supabase.co
- * Local shape: http://127.0.0.1:54321 → falls back to "local"
+ * Local shape: http://127.0.0.1:54321 → "127"
+ *
+ * Must mirror supabase-js's own derivation exactly — the client reads
+ * `sb-${hostname.split(".")[0]}-auth-token` (see `defaultStorageKey`
+ * in @supabase/supabase-js) — so the injected cookie is the one the
+ * app's middleware actually looks for. The previous "local"
+ * special-case for IP hostnames produced `sb-local-auth-token`, which
+ * the app never reads: every M4 persona fixture silently failed auth
+ * against the local stack (caught while running the #349 realtime
+ * regression spec). `e2e/_setup/auth.setup.ts` already used this
+ * derivation.
  */
 export function getProjectRef(supabaseUrl: string): string {
-  const hostname = new URL(supabaseUrl).hostname;
-  // Local Supabase has an IP hostname — use "local" as a stable ref
-  if (/^\d/.test(hostname)) return "local";
-  return hostname.split(".")[0];
+  return new URL(supabaseUrl).hostname.split(".")[0];
 }
 
 /**

@@ -86,6 +86,12 @@ export async function getAnnouncements(
  * only receives events for their trip. RLS is honored at the DB level —
  * rows invisible to the subscriber are not broadcast.
  *
+ * #349 precondition: callers MUST `await ensureRealtimeAuth(supabase)`
+ * (`lib/supabase/realtime-auth.ts`) before invoking this factory. The
+ * subscription's RLS pass uses the claims the connection joined with;
+ * on a fresh page load those are anon claims (supabase-js skips
+ * INITIAL_SESSION), which silently filters every frame.
+ *
  * W1c (#239): accepts a `memberUserMap` (keyed by user_id → display_name)
  * to enrich each INSERT payload with `authorDisplayName` before invoking
  * onInsert. The map is captured at subscription time — if member list changes

@@ -449,6 +449,12 @@ export async function castDateVoteAction(
             errorKey: mapDbError(upsertError),
           };
         }
+        // F2 / #400: revalidate only on a genuine success. The original
+        // F2 pass excluded this action ("already-optimistic vote UI"),
+        // but the optimistic chip never covered the aggregate tally on
+        // the voter's own page — frozen until reload. No mutation
+        // action is F2-exempt anymore.
+        revalidatePath("/trips", "layout");
         return { ok: true as const, vote };
       }
     );

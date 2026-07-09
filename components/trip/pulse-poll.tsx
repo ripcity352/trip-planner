@@ -38,6 +38,7 @@ import * as React from "react";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/browser";
+import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
 
 // =============================================================
 // Types
@@ -226,29 +227,41 @@ export function PulsePoll<T>({
       );
     }
 
-    channel.subscribe((status) => {
-      if (status === "SUBSCRIBED") {
-        if (wasDisconnectedRef.current) {
-          // Post-reconnect refetch — we may have missed events while
-          // the channel was down.
-          wasDisconnectedRef.current = false;
-          void refresh();
+    // #349: the subscription must join with authenticated claims. On a
+    // fresh page load supabase-js never pushes the session token to the
+    // realtime connection (INITIAL_SESSION is skipped), so subscribing
+    // eagerly joins with anon claims and RLS silently filters every
+    // postgres_changes frame — the channel still reports SUBSCRIBED.
+    // Await the auth upgrade, THEN join. `ensureRealtimeAuth` never
+    // rejects; `cancelled` covers an unmount racing the upgrade.
+    let cancelled = false;
+    void ensureRealtimeAuth(client).then(() => {
+      if (cancelled) return;
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          if (wasDisconnectedRef.current) {
+            // Post-reconnect refetch — we may have missed events while
+            // the channel was down.
+            wasDisconnectedRef.current = false;
+            void refresh();
+          }
+        } else if (
+          // #116: `TIMED_OUT` is the slow-heartbeat path; Supabase emits
+          // it alongside `CLOSED` / `CHANNEL_ERROR` when the connection
+          // goes quiet. Treat as a disconnect so the post-reconnect
+          // refetch fires on recovery.
+          status === "CLOSED" ||
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT"
+        ) {
+          wasDisconnectedRef.current = true;
+          setIsStale(true);
         }
-      } else if (
-        // #116: `TIMED_OUT` is the slow-heartbeat path; Supabase emits
-        // it alongside `CLOSED` / `CHANNEL_ERROR` when the connection
-        // goes quiet. Treat as a disconnect so the post-reconnect
-        // refetch fires on recovery.
-        status === "CLOSED" ||
-        status === "CHANNEL_ERROR" ||
-        status === "TIMED_OUT"
-      ) {
-        wasDisconnectedRef.current = true;
-        setIsStale(true);
-      }
+      });
     });
 
     return () => {
+      cancelled = true;
       // Best-effort teardown. `removeChannel` is the supported API; if
       // it errors during HMR or fast-refresh we swallow it.
       try {
