@@ -20,6 +20,10 @@ const MEMBERS = [
   { memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c03", name: "Pete" },
 ];
 
+const ORGANIZER = { isOrganizer: true, isCelebrant: false };
+const PLAIN_MEMBER = { isOrganizer: false, isCelebrant: false };
+const CELEBRANT = { isOrganizer: false, isCelebrant: true };
+
 describe("dollarsToCents", () => {
   it("converts without float drift", () => {
     expect(dollarsToCents("120")).toBe(12000);
@@ -38,8 +42,14 @@ describe("AddExpenseSheet", () => {
     addExpenseActionMock.mockResolvedValue({ ok: true, expense: { id: "e-1" } });
   });
 
-  function openSheet() {
-    render(<AddExpenseSheet tripId="a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d" members={MEMBERS} />);
+  function openSheet(viewer = ORGANIZER) {
+    render(
+      <AddExpenseSheet
+        tripId="a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        members={MEMBERS}
+        viewer={viewer}
+      />
+    );
     fireEvent.click(screen.getByRole("button", { name: "Log a spend" }));
   }
 
@@ -114,5 +124,46 @@ describe("AddExpenseSheet", () => {
       );
     });
     expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  describe("role-filtered visibility options (#384)", () => {
+    function optionValues() {
+      return Array.from(
+        screen.getByLabelText("Who sees this?").querySelectorAll("option")
+      ).map((o) => (o as HTMLOptionElement).value);
+    }
+
+    it("organizer sees all three options", () => {
+      openSheet(ORGANIZER);
+      expect(optionValues()).toEqual([
+        "everyone",
+        "organizers_only",
+        "hide_from_celebrant",
+      ]);
+    });
+
+    it("plain member never sees 'Just organizers' (it would self-hide)", () => {
+      openSheet(PLAIN_MEMBER);
+      expect(optionValues()).toEqual(["everyone", "hide_from_celebrant"]);
+    });
+
+    it("celebrant gets no visibility select at all — everyone is implied", async () => {
+      openSheet(CELEBRANT);
+      expect(screen.queryByLabelText("Who sees this?")).toBeNull();
+
+      // The submit still carries the default 'everyone'.
+      fireEvent.change(screen.getByLabelText("What was it?"), {
+        target: { value: "Karaoke" },
+      });
+      fireEvent.change(screen.getByLabelText("How much?"), {
+        target: { value: "80" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Log it" }));
+      await waitFor(() => expect(addExpenseActionMock).toHaveBeenCalled());
+      const [input] = addExpenseActionMock.mock.calls[0] as [
+        { visibility: string },
+      ];
+      expect(input.visibility).toBe("everyone");
+    });
   });
 });

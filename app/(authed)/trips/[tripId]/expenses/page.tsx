@@ -18,9 +18,11 @@ import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
 import { getExpensesByTrip, getSplitsByTrip } from "@/lib/db/expenses";
 import { resolveMemberName } from "@/lib/utils/member-display";
 import { formatCents } from "@/lib/utils/format-cents";
+import { isOrganizerRole } from "@/lib/utils/expense-visibility";
 import { EMPTY_STATES, M5_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ExpenseCard } from "@/components/trip/expenses/expense-card";
 import { AddExpenseSheet } from "@/components/trip/expenses/add-expense-sheet";
+import { EditExpenseSheet } from "@/components/trip/expenses/edit-expense-sheet";
 
 type PageProps = {
   params: Promise<{ tripId: string }>;
@@ -82,6 +84,13 @@ export default async function ExpensesPage({ params }: PageProps) {
     name: resolveMemberName(memberMap, m.id),
   }));
 
+  // Viewer seat for the composer sheets (#384): visibility options are
+  // filtered to what this member could still read.
+  const viewerContext = {
+    isOrganizer: isOrganizerRole(viewer.role),
+    isCelebrant: viewer.is_celebrant,
+  };
+
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-6">
@@ -116,11 +125,15 @@ export default async function ExpensesPage({ params }: PageProps) {
         <ol className="flex flex-col gap-3">
           {expenses.map((expense) => {
             const payerMemberId = memberIdByUserId.get(expense.payer_id);
+            const expenseSplits = splitsByExpense.get(expense.id) ?? [];
+            // Mirrors the #383 RLS scope: payer or (co-)organizer.
+            const canEdit =
+              expense.payer_id === user.id || viewerContext.isOrganizer;
             return (
               <li key={expense.id}>
                 <ExpenseCard
                   expense={expense}
-                  splits={splitsByExpense.get(expense.id) ?? []}
+                  splits={expenseSplits}
                   payerName={
                     payerMemberId
                       ? resolveMemberName(memberMap, payerMemberId)
@@ -128,6 +141,18 @@ export default async function ExpensesPage({ params }: PageProps) {
                   }
                   viewerMemberId={viewer.id}
                 />
+                {canEdit ? (
+                  <EditExpenseSheet
+                    tripId={trip.id}
+                    expense={expense}
+                    members={splitCandidates}
+                    initialSplitMemberIds={expenseSplits.map(
+                      (s) => s.trip_member_id
+                    )}
+                    viewer={viewerContext}
+                    className="mt-2"
+                  />
+                ) : null}
               </li>
             );
           })}
@@ -135,7 +160,11 @@ export default async function ExpensesPage({ params }: PageProps) {
       )}
 
       <div className="mt-8">
-        <AddExpenseSheet tripId={trip.id} members={splitCandidates} />
+        <AddExpenseSheet
+          tripId={trip.id}
+          members={splitCandidates}
+          viewer={viewerContext}
+        />
       </div>
     </section>
   );

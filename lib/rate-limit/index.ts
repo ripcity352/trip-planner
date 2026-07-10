@@ -118,6 +118,11 @@ export const RATE_LIMIT_SCOPES = {
   // surface; own bucket so a burst doesn't starve other budgets.
   // Fail-OPEN on shim (it's a ledger entry, not credential minting).
   ADD_EXPENSE: "addExpense",
+  // #383 — correctable money: edit/delete mirror ADD_EXPENSE (own
+  // bucket, fail-OPEN on shim, default 30/60s budget) so a burst of
+  // corrections can't starve fresh logging or vice versa.
+  UPDATE_EXPENSE: "updateExpense",
+  DELETE_EXPENSE: "deleteExpense",
   // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
   // Isolated bucket so a burst of typeahead requests doesn't starve
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED

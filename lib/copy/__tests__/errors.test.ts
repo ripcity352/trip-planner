@@ -40,6 +40,10 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "datetime_invalid",
   "expense_add_failed",
   "places_proxy_failed",
+  // #383/#384 — correctable money (edit/delete + the visibility backstop)
+  "expense_update_failed",
+  "expense_delete_failed",
+  "expense_visibility_self_hidden",
   // M5 auth keys (PR2)
   "auth_wrong_password",
   "auth_code_invalid",
