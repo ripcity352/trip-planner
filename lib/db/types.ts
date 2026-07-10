@@ -61,8 +61,6 @@ export interface InvitePreview {
 
 export type RsvpStatus = "pending" | "going" | "maybe" | "declined";
 
-export type AvailabilityStatus = "yes" | "no" | "maybe";
-
 export type TripKind = "bachelor";
 
 export type TripVisibility =
@@ -117,14 +115,6 @@ export interface Invite {
   created_at: string;
   // M4 addition (Delta 2)
   idempotency_key?: string | null;
-}
-
-export interface Availability {
-  trip_member_id: string;
-  date: string;
-  status: AvailabilityStatus;
-  updated_at: string;
-  idempotency_key: string | null;
 }
 
 // Announcement is defined in the M3 section below with `created_by` added.
