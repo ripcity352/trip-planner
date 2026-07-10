@@ -43,13 +43,14 @@ function isAttendeeCountBucket(s: string): s is AttendeeCountBucket {
 }
 
 /**
- * #364: `invite_preview()` casts trips' `date` columns to timestamptz at
- * midnight UTC (a "signature alignment" choice documented in the M2
- * migration). Rendering that string through parseISO/parseDateOnly lands
- * one calendar day early anywhere west of UTC. Truncating to the first 10
- * chars recovers exactly the calendar date the cast encoded, so this
- * boundary only ever hands out `YYYY-MM-DD`. See notes/design-system.md
- * "Parsing axis (date-only columns)" — transport rule.
+ * #364 belt-and-braces: `invite_preview` v2 returns the `date` columns
+ * natively (`YYYY-MM-DD`), so this is normally a no-op. It stays because
+ * the Vercel deploy and CI's `db push` land from the same merge on
+ * different clocks — if the app briefly runs against the v1 function
+ * (timestamptz at midnight UTC), truncating to the first 10 chars still
+ * recovers exactly the calendar date, and this boundary only ever hands
+ * out `YYYY-MM-DD`. See notes/design-system.md "Parsing axis (date-only
+ * columns)" — transport rule.
  */
 function toDateOnly(value: string | null): string | null {
   return value === null ? null : value.slice(0, 10);
@@ -78,13 +79,17 @@ export async function getInvitePreview(
   }
 
   // RPC returns `setof record` — Supabase deserializes as an array. The
-  // function emits exactly one row or none, so we read [0].
+  // function emits exactly one row or none, so we read [0]. The v2
+  // columns (#367) are optional in the runtime shape so a v1 function
+  // (deploy/migrate race) degrades to the fail-closed defaults below.
   const row = data[0] as {
     trip_name: string;
     starts_at: string | null;
     ends_at: string | null;
     host_display_name: string;
     attendee_count_bucket: string;
+    viewer_is_member?: boolean | null;
+    trip_slug?: string | null;
   };
 
   // Narrow the bucket from `text` → typed union at the data boundary.
@@ -102,6 +107,11 @@ export async function getInvitePreview(
     ends_at: toDateOnly(row.ends_at),
     host_display_name: row.host_display_name,
     attendee_count_bucket: row.attendee_count_bucket,
+    // #367: membership fails CLOSED — anything but an explicit `true`
+    // (v1 function, null, drift) renders the plain accept form, which
+    // stays a safe no-op for members via accept_invite's re-claim path.
+    viewer_is_member: row.viewer_is_member === true,
+    trip_slug: row.viewer_is_member === true ? (row.trip_slug ?? null) : null,
   } satisfies InvitePreview;
 }
 

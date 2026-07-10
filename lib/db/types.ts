@@ -44,12 +44,18 @@ export type AttendeeCountBucket =
   | "big-group";
 
 /**
- * Logged-out-safe payload returned by `public.invite_preview(token)`.
+ * Logged-out-safe payload returned by `public.invite_preview(token)` (v2,
+ * 20260709170100_invite_preview_v2.sql).
  *
- * `starts_at`/`ends_at` are ISO date strings at midnight UTC (the
- * underlying columns are `date`; the SECURITY DEFINER function casts
- * to `timestamptz` for forward-compatibility with feature tables that
- * use `timestamptz` natively).
+ * `starts_at`/`ends_at` are date-only `YYYY-MM-DD` strings — the RPC
+ * returns the `date` columns natively (#364; transport rule in
+ * notes/design-system.md "Parsing axis"), and the lib/db boundary
+ * truncates any timestamp-shaped stragglers as belt-and-braces.
+ *
+ * `viewer_is_member` is true iff the CALLING client carried a session
+ * whose user is a trip_member of the invite's trip (#367). Anon calls
+ * always yield false. `trip_slug` is disclosed only alongside
+ * `viewer_is_member === true` — anon disclosure is unchanged from v1.
  */
 export interface InvitePreview {
   trip_name: string;
@@ -57,6 +63,8 @@ export interface InvitePreview {
   ends_at: string | null;
   host_display_name: string;
   attendee_count_bucket: AttendeeCountBucket;
+  viewer_is_member: boolean;
+  trip_slug: string | null;
 }
 
 export type RsvpStatus = "pending" | "going" | "maybe" | "declined";
