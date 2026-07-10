@@ -21,6 +21,7 @@ import {
   sanitizeHost,
   buildOgCardText,
   buildInviteH1,
+  buildInviteMetadata,
   formatOgDates,
   OG_CARD_FALLBACK,
 } from "@/lib/og/invite-card";
@@ -303,5 +304,81 @@ describe("formatOgDates", () => {
   it("returns null when only end date is provided", () => {
     // No starts_at -> no date to show
     expect(formatOgDates(null, "2026-06-17")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildInviteMetadata (#402)
+// ---------------------------------------------------------------------------
+
+describe("buildInviteMetadata (#402)", () => {
+  it("builds og:title from the trip name and og:description from dates + host hook", () => {
+    const meta = buildInviteMetadata({
+      tripName: "Tahoe Send-Off",
+      host: "Dave",
+      starts_at: "2026-07-28",
+      ends_at: "2026-07-31",
+    });
+    expect(meta).toEqual({
+      title: "You're invited — Tahoe Send-Off",
+      description: "Jul 28 - Jul 31 — Dave wants you on this one.",
+    });
+  });
+
+  it("drops the date segment when the trip has no dates yet", () => {
+    const meta = buildInviteMetadata({
+      tripName: "Tahoe Send-Off",
+      host: "Dave",
+      starts_at: null,
+      ends_at: null,
+    });
+    expect(meta?.description).toBe("Dave wants you on this one.");
+  });
+
+  it("falls back to the H1 fallback when host is null", () => {
+    const meta = buildInviteMetadata({
+      tripName: "Tahoe Send-Off",
+      host: null,
+      starts_at: "2026-07-28",
+      ends_at: null,
+    });
+    expect(meta?.description).toBe("Jul 28 — You're on the list.");
+  });
+
+  it("returns null when the trip name is empty after sanitization (caller inherits root defaults)", () => {
+    expect(
+      buildInviteMetadata({
+        tripName: "\r\n  ",
+        host: "Dave",
+        starts_at: null,
+        ends_at: null,
+      })
+    ).toBeNull();
+    expect(
+      buildInviteMetadata({
+        tripName: null,
+        host: "Dave",
+        starts_at: null,
+        ends_at: null,
+      })
+    ).toBeNull();
+  });
+
+  it("applies the #219 injection guard: control chars stripped, oversize clamped", () => {
+    const meta = buildInviteMetadata({
+      tripName: "Tahoe\r\nSend-Off" + "x".repeat(100),
+      host: "Da ve",
+      starts_at: "2026-07-28",
+      ends_at: null,
+    });
+    // Sanitized then clamped to 40 + "..." — same pipeline as the OG image.
+    expect(meta?.title.startsWith("You're invited — Tahoe Send-Off")).toBe(true);
+    expect(meta?.title).not.toMatch(/[\r\n\u2028\u2029]/);
+    expect(meta?.title.length).toBeLessThanOrEqual("You're invited — ".length + 43);
+    expect(meta?.description).toBe("Jul 28 — Da ve wants you on this one.");
+  });
+
+  it("ogInviteTitle template is the pinned spec string", () => {
+    expect(AUTH_COPY.ogInviteTitle).toBe("You're invited — {Trip}");
   });
 });

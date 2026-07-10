@@ -111,6 +111,10 @@ export const M2_UI_STRINGS = {
   dashboard_dates_unset: "Dates not locked in yet.",
   // /invite/[token]
   invitePreview_cta_authed: "Count me in",
+  // #367: a member re-tapping the group-chat link is re-entering the
+  // app, not joining — the accept CTA would lie ("I'm not in yet").
+  // Voice: what the host would text back if you asked "wait, am I in?".
+  invitePreview_cta_member: "You're in — open the trip",
   // #348: optional name capture at accept — no asterisk, no gate.
   invitePreview_name_label: "What should the crew call you?",
   invitePreview_name_placeholder: "First name works",

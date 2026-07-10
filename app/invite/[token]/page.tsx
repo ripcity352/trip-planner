@@ -24,8 +24,20 @@
  *   "X of N going / responded" affordance. A bucketed count is fine;
  *   a bar, score, or ordering is banned. The invite is not a project
  *   with a done state.
+ *
+ * #367: signed-in viewers get a SECOND, cookie-bound call to the same
+ * RPC purely for the `viewer_is_member` verdict — members see a
+ * re-entry link instead of the accept form. The anon call above stays
+ * the only source for everything rendered to logged-out viewers.
+ *
+ * #402: `generateMetadata` reuses the SAME anon preview (React
+ * `cache()` dedupes the RPC within the request) so og:title /
+ * og:description carry the trip name + dates instead of the root-layout
+ * defaults. It discloses nothing the preview / OG image don't already.
  */
 
+import { cache } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { format } from "date-fns";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
@@ -45,12 +57,13 @@ import {
 import { cn } from "@/lib/utils";
 import { getInvitePreview } from "@/lib/db/invites";
 import { invitePreviewPath, inviteAcceptPath } from "@/lib/invites/paths";
+import { resolveInviteCta } from "@/lib/invites/cta";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { parseDateOnly } from "@/lib/utils/date-only";
 import type { InvitePreview } from "@/lib/db/types";
 import { LoginForm } from "@/app/login/_form";
 import { getProfile } from "@/lib/db/profiles";
-import { buildInviteH1 } from "@/lib/og/invite-card";
+import { buildInviteH1, buildInviteMetadata } from "@/lib/og/invite-card";
 
 type PageProps = {
   params: Promise<{ token: string }>;
@@ -82,6 +95,66 @@ function narrowInviteErrorKey(raw: string | undefined): ErrorKey | null {
     : null;
 }
 
+/**
+ * Anonymous preview fetch, shared by the page body and `generateMetadata`
+ * (#402). React `cache()` dedupes it to ONE RPC per request.
+ *
+ * Anonymous client — no cookies, no session. This is the load-bearing
+ * detail: we never want the SSR session leaking into a public route.
+ */
+const fetchAnonPreview = cache(
+  async (token: string): Promise<InvitePreview | null> => {
+    const anon = createAnonClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { persistSession: false } }
+    );
+
+    try {
+      return await getInvitePreview(anon, token);
+    } catch (err) {
+      // Log so a real outage surfaces in our logs / Sentry — the user
+      // still sees the generic "invite not found" view (anti-enumeration).
+      console.error("[invite] getInvitePreview failed:", err);
+      return null;
+    }
+  }
+);
+
+/**
+ * #402 — trip-specific og:title / og:description for the group-chat
+ * unfurl, sourced ONLY from the anon `invite_preview` RPC (same #219
+ * injection guard as the OG image; `buildInviteMetadata` sanitizes and
+ * clamps). Missing / dead invites and empty trip names return `{}` so
+ * the page inherits the generic root-layout metadata — the unfurl never
+ * distinguishes not-found from expired (anti-enumeration), and never
+ * discloses anything the preview itself doesn't.
+ */
+export async function generateMetadata({
+  params,
+}: Pick<PageProps, "params">): Promise<Metadata> {
+  const { token } = await params;
+  const preview = await fetchAnonPreview(token);
+  if (!preview) return {};
+
+  const meta = buildInviteMetadata({
+    tripName: preview.trip_name,
+    host: preview.host_display_name,
+    starts_at: preview.starts_at,
+    ends_at: preview.ends_at,
+  });
+  if (!meta) return {};
+
+  return {
+    title: meta.title,
+    description: meta.description,
+    openGraph: {
+      title: meta.title,
+      description: meta.description,
+    },
+  };
+}
+
 export default async function InvitePreviewPage({
   params,
   searchParams,
@@ -90,23 +163,7 @@ export default async function InvitePreviewPage({
   const { error: errorKeyRaw } = await searchParams;
   const errorKey = narrowInviteErrorKey(errorKeyRaw);
 
-  // Anonymous client — no cookies, no session. This is the load-bearing
-  // detail: we never want the SSR session leaking into a public route.
-  const anon = createAnonClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false } }
-  );
-
-  let preview: InvitePreview | null = null;
-  try {
-    preview = await getInvitePreview(anon, token);
-  } catch (err) {
-    // Log so a real outage surfaces in our logs / Sentry — the user
-    // still sees the generic "invite not found" view (anti-enumeration).
-    console.error("[invite] getInvitePreview failed:", err);
-    preview = null;
-  }
+  const preview = await fetchAnonPreview(token);
 
   if (!preview) {
     return <InviteMissing />;
@@ -121,10 +178,30 @@ export default async function InvitePreviewPage({
   } = await sessionClient.auth.getUser();
   const isSignedIn = Boolean(user);
 
-  // #348: prefill the accept-form name input from the durable profile
-  // name when one exists (RLS: own-profile read).
-  let viewerDisplayName: string | null = null;
+  // #367: a second, cookie-bound call to the SAME RPC purely for the
+  // membership verdict (+ the member-only trip slug). Kept separate from
+  // the anon call above so the logged-out render path stays untouched.
+  // Fails CLOSED: any error just re-renders the accept form, which is a
+  // safe no-op for members (accept_invite's idempotent re-claim path).
+  let viewerIsMember = false;
+  let memberTripSlug: string | null = null;
   if (user) {
+    try {
+      const memberPreview = await getInvitePreview(sessionClient, token);
+      viewerIsMember = memberPreview?.viewer_is_member ?? false;
+      memberTripSlug = memberPreview?.trip_slug ?? null;
+    } catch (err) {
+      console.error("[invite] member-scoped invite_preview failed:", err);
+    }
+  }
+
+  const cta = resolveInviteCta({ isSignedIn, viewerIsMember });
+
+  // #348: prefill the accept-form name input from the durable profile
+  // name when one exists (RLS: own-profile read). Members skip straight
+  // to the trip, so the prefill lookup only runs for the accept form.
+  let viewerDisplayName: string | null = null;
+  if (user && cta === "accept") {
     try {
       const profile = await getProfile(sessionClient, user.id);
       viewerDisplayName = profile?.display_name ?? null;
@@ -179,7 +256,20 @@ export default async function InvitePreviewPage({
             </p>
           ) : null}
 
-          {isSignedIn ? (
+          {cta === "open-trip" ? (
+            // #367: already a member — the group-chat link is a re-entry
+            // point, not an invitation. Micro-affordance, not a gate
+            // (rule 11): a warm "you're in" link, never an error or a
+            // second accept. Slug is disclosed by the RPC only alongside
+            // a confirmed membership; the bare /trips fallback covers a
+            // null slug defensively.
+            <Link
+              href={memberTripSlug ? `/trips/${memberTripSlug}` : "/trips"}
+              className={cn(buttonVariants({ size: "lg" }), "w-full")}
+            >
+              {M2_UI_STRINGS.invitePreview_cta_member}
+            </Link>
+          ) : cta === "accept" ? (
             // Authenticated viewer — submit the accept handler directly.
             // The POST route does the actual mutation and redirects.
             // #348: optional display name so the roster shows a person,

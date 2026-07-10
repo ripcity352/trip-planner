@@ -173,6 +173,15 @@ export const AUTH_COPY = {
   ogCard: "You're invited — {Trip} · {dates}.",
 
   /**
+   * og:title template for the invite preview page's generateMetadata
+   * (#402). Interpolates {Trip} (sanitized + ~40-char clamp — same #219
+   * injection-guard pipeline as ogCard). The og:description is composed
+   * from the date range + inviteH1; no separate template needed.
+   * Consumers: lib/og/invite-card.ts `buildInviteMetadata`.
+   */
+  ogInviteTitle: "You're invited — {Trip}",
+
+  /**
    * Primary H1 for the invite preview page.
    * Consumer interpolates {Host} (~30-char clamp + ellipsis).
    * Used when host is non-null and host !== trip celebrant name.
