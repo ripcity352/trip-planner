@@ -63,6 +63,13 @@ export type ErrorKey =
   // lib/copy/__tests__/m4-voice-locks.test.ts.
   // #372 — expenses MVP.
   | "expense_add_failed"
+  // #383/#384 — correctable money. `expense_visibility_self_hidden` is the
+  // action-level backstop for an actor-unreadable visibility pick: a
+  // DETERMINISTIC rejection, so the copy must not be retry-framed (the
+  // #384 bug was a permanent failure wearing "log it again in a sec").
+  | "expense_update_failed"
+  | "expense_delete_failed"
+  | "expense_visibility_self_hidden"
   | "address_lookup_failed"
   | "datetime_invalid"
   | "places_proxy_failed"
@@ -130,6 +137,12 @@ export const ERRORS: Record<ErrorKey, string> = {
     "Invite links are down on this deployment — server setup, not you. Retrying won't fix it.",
   invite_revoke_failed: "Couldn't revoke that link yet. Try once more.",
   expense_add_failed: "That one didn't stick. Log it again in a sec.",
+  // #383/#384 — correctable money. Same voice rules; the visibility one is
+  // deliberately retry-free (deterministic rejection, not a flaky save).
+  expense_update_failed: "Change didn't stick. Give it another go in a sec.",
+  expense_delete_failed: "Couldn't take that one off the tab. Try once more.",
+  expense_visibility_self_hidden:
+    "That'd hide it from you too. Pick one you'd still see.",
   // M4 error strings — same voice rules. Blame-free, specific, no corporate language.
   // "Couldn't pull" / "snoozing" / "Type the address instead" — casual, actionable.
   address_lookup_failed:

@@ -1,29 +1,54 @@
 "use server";
 
 /**
- * Server actions for expenses (#372 — expenses MVP).
+ * Server actions for expenses (#372 — MVP; #383/#384 — correctable money).
  *
- *   - `addExpenseAction(input, idempotencyKey)` validates, authenticates,
- *     rate-limits (ADD_EXPENSE), computes a deterministic even split via
- *     `evenSplitCents`, and writes through `createExpenseWithSplits`.
+ *   - `addExpenseAction(input, idempotencyKey)` — validates,
+ *     authenticates, rate-limits (ADD_EXPENSE), computes a deterministic
+ *     even split via `evenSplitCents`, and writes through the atomic
+ *     `create_expense_with_splits` RPC.
+ *   - `updateExpenseAction(input, idempotencyKey)` — same shape, plus
+ *     the expense id; recomputes the split and rewrites the rows.
+ *     Payer-or-organizer via RLS (UPDATE policy, #383).
+ *   - `deleteExpenseAction(input, idempotencyKey)` — payer-or-organizer
+ *     via RLS (DELETE policy, #383). The key is accepted per rule 9 and
+ *     validated; deletes are idempotent by nature so it isn't persisted.
  *
- * Deliberately absent: update/delete — `expenses` has no UPDATE/DELETE
- * RLS policies yet (migration-gated batch, see #372/#371 notes). Payer
- * is always `auth.uid()` (the INSERT policy enforces it); logging an
- * expense someone else paid is out of MVP scope.
+ * Visibility guard (#384 backstop): any mutation carrying a visibility
+ * the ACTOR could not read back (celebrant + non-everyone, plain member
+ * + organizers_only) is rejected with `expense_visibility_self_hidden`
+ * — warm, retry-free copy. The role-filtered composer is the first
+ * line; this holds when the composer is bypassed.
  *
- * Split membership is the CALLER'S choice per rule 8 — the action never
- * assumes "everyone splits"; the UI decides its own preselection.
+ * Error mapping is by `error.code` via `ExpenseDbError` — NEVER message
+ * text (#384: the old mapper grepped for "RLS"/"42501" and the real
+ * Postgres message contains neither).
+ *
+ * Payer is always `auth.uid()` (the INSERT policy enforces it); logging
+ * an expense someone else paid is out of scope. Split membership is the
+ * CALLER'S choice per rule 8 — the action never assumes "everyone
+ * splits"; the UI decides its own preselection.
  */
 
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import {
+  EXPENSE_NO_ROW,
+  ExpenseDbError,
   createExpenseWithSplits,
+  deleteExpense,
+  updateExpenseWithSplits,
   type CreateExpenseInput,
+  type UpdateExpenseInput,
 } from "@/lib/db/expenses";
+import { getViewerMember } from "@/lib/db/trips";
 import { evenSplitCents } from "@/lib/utils/split-cents";
+import {
+  canViewerReadVisibility,
+  isOrganizerRole,
+  type ExpenseVisibilityOption,
+} from "@/lib/utils/expense-visibility";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -31,6 +56,7 @@ import {
 } from "@/lib/rate-limit";
 import type { ErrorKey } from "@/lib/copy/errors";
 import type { Expense } from "@/lib/db/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
 
@@ -52,11 +78,63 @@ const addExpenseSchema = z.object({
   splitMemberIds: z.array(z.string().uuid()).min(1).max(50),
 });
 
+const updateExpenseSchema = addExpenseSchema.extend({
+  expenseId: z.string().uuid(),
+});
+
+const deleteExpenseSchema = z.object({
+  tripId: z.string().uuid(),
+  expenseId: z.string().uuid(),
+});
+
 export type AddExpenseActionInput = z.infer<typeof addExpenseSchema>;
+export type UpdateExpenseActionInput = z.infer<typeof updateExpenseSchema>;
+export type DeleteExpenseActionInput = z.infer<typeof deleteExpenseSchema>;
 
 export type AddExpenseResult =
   | { ok: true; expense: Expense }
   | { ok: false; errorKey: ErrorKey };
+
+export type UpdateExpenseResult = { ok: true } | { ok: false; errorKey: ErrorKey };
+export type DeleteExpenseResult = { ok: true } | { ok: false; errorKey: ErrorKey };
+
+/**
+ * #384 backstop: reject a visibility the acting member couldn't read
+ * back. Returns an ErrorKey to short-circuit with, or null to proceed.
+ * Skips the lookup on the `everyone` fast path.
+ */
+async function guardActorReadableVisibility(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string,
+  visibility: ExpenseVisibilityOption
+): Promise<ErrorKey | null> {
+  if (visibility === "everyone") {
+    return null;
+  }
+  const viewer = await getViewerMember(supabase, tripId, userId);
+  if (!viewer) {
+    return "rls_denied";
+  }
+  const readable = canViewerReadVisibility(visibility, {
+    isOrganizer: isOrganizerRole(viewer.role),
+    isCelebrant: viewer.is_celebrant,
+  });
+  return readable ? null : "expense_visibility_self_hidden";
+}
+
+/** Shared catch-block mapping — by `error.code`, never message text (#384). */
+function mapExpenseError(err: unknown, fallback: ErrorKey): ErrorKey {
+  if (err instanceof RateLimitError) {
+    return "rate_limit";
+  }
+  if (err instanceof ExpenseDbError) {
+    if (err.code === "42501" || err.code === EXPENSE_NO_ROW) {
+      return "rls_denied";
+    }
+  }
+  return fallback;
+}
 
 export async function addExpenseAction(
   input: AddExpenseActionInput,
@@ -78,6 +156,16 @@ export async function addExpenseAction(
     return { ok: false, errorKey: "auth_failed" };
   }
   const userId = authData.user.id;
+
+  const guardKey = await guardActorReadableVisibility(
+    supabase,
+    parsed.data.tripId,
+    userId,
+    parsed.data.visibility
+  );
+  if (guardKey) {
+    return { ok: false, errorKey: guardKey };
+  }
 
   const splits = evenSplitCents(
     parsed.data.amountCents,
@@ -102,14 +190,104 @@ export async function addExpenseAction(
     );
     return { ok: true, expense };
   } catch (err) {
-    if (err instanceof RateLimitError) {
-      return { ok: false, errorKey: "rate_limit" };
+    const errorKey = mapExpenseError(err, "expense_add_failed");
+    if (errorKey === "expense_add_failed") {
+      console.error("[expenses] addExpenseAction unexpected:", err);
     }
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("RLS") || message.includes("42501")) {
-      return { ok: false, errorKey: "rls_denied" };
+    return { ok: false, errorKey };
+  }
+}
+
+export async function updateExpenseAction(
+  input: UpdateExpenseActionInput,
+  idempotencyKey: string
+): Promise<UpdateExpenseResult> {
+  const parsed = updateExpenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  const guardKey = await guardActorReadableVisibility(
+    supabase,
+    parsed.data.tripId,
+    userId,
+    parsed.data.visibility
+  );
+  if (guardKey) {
+    return { ok: false, errorKey: guardKey };
+  }
+
+  const splits = evenSplitCents(
+    parsed.data.amountCents,
+    parsed.data.splitMemberIds
+  );
+
+  const updateInput: UpdateExpenseInput = {
+    expense_id: parsed.data.expenseId,
+    amount_cents: parsed.data.amountCents,
+    description: parsed.data.description,
+    ...(parsed.data.occurredOn ? { occurred_on: parsed.data.occurredOn } : {}),
+    visibility: parsed.data.visibility,
+    idempotency_key: keyParse.data,
+  };
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.UPDATE_EXPENSE, userId, () =>
+      updateExpenseWithSplits(supabase, updateInput, splits)
+    );
+    return { ok: true };
+  } catch (err) {
+    const errorKey = mapExpenseError(err, "expense_update_failed");
+    if (errorKey === "expense_update_failed") {
+      console.error("[expenses] updateExpenseAction unexpected:", err);
     }
-    console.error("[expenses] addExpenseAction unexpected:", err);
-    return { ok: false, errorKey: "expense_add_failed" };
+    return { ok: false, errorKey };
+  }
+}
+
+export async function deleteExpenseAction(
+  input: DeleteExpenseActionInput,
+  idempotencyKey: string
+): Promise<DeleteExpenseResult> {
+  const parsed = deleteExpenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.DELETE_EXPENSE, userId, () =>
+      deleteExpense(supabase, parsed.data.expenseId)
+    );
+    return { ok: true };
+  } catch (err) {
+    const errorKey = mapExpenseError(err, "expense_delete_failed");
+    if (errorKey === "expense_delete_failed") {
+      console.error("[expenses] deleteExpenseAction unexpected:", err);
+    }
+    return { ok: false, errorKey };
   }
 }

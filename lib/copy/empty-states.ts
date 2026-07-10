@@ -428,4 +428,15 @@ export const M5_UI_STRINGS = {
   expensesForm_visibility_label: "Who sees this?",
   expensesForm_submit: "Log it",
   expensesForm_cancel: "Never mind",
+  // #383 — correctable money. Edit/delete on the expense card. Same
+  // voice test; delete confirm is two-step (tap again), so it asks the
+  // question out loud instead of raising a modal.
+  expenses_edit_cta: "Edit",
+  expensesForm_submit_edit: "Save it",
+  // Edit-sheet date semantics differ from add ("today if blank" would
+  // be a lie — a cleared date keeps the stored one), so it gets its own
+  // truthful label.
+  expensesForm_date_label_edit: "When?",
+  expensesForm_delete: "Delete",
+  expensesForm_delete_confirm: "Take this off the tab? Can't undo.",
 } as const;

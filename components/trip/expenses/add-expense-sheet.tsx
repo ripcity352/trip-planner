@@ -23,11 +23,17 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { addExpenseAction } from "@/lib/actions/expenses";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
-import { M3_UI_STRINGS, M5_UI_STRINGS } from "@/lib/copy/empty-states";
+import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
+import {
+  readableVisibilityOptions,
+  type ViewerVisibilityContext,
+} from "@/lib/utils/expense-visibility";
+import { EXPENSE_VISIBILITY_LABELS } from "./visibility-labels";
 
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
 
-const formSchema = z.object({
+/** Shared with EditExpenseSheet — same fields, prefilled there (#383). */
+export const expenseFormSchema = z.object({
   description: z.string().trim().min(1).max(200),
   amountDollars: z
     .string()
@@ -42,7 +48,7 @@ const formSchema = z.object({
   visibility: z.enum(["everyone", "organizers_only", "hide_from_celebrant"]),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+export type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
 export interface SplitCandidate {
   /** trip_members.id */
@@ -53,6 +59,12 @@ export interface SplitCandidate {
 export interface AddExpenseSheetProps {
   tripId: string;
   members: SplitCandidate[];
+  /**
+   * Viewer's seat (#384): the visibility options are filtered to what
+   * this member could still read — the celebrant never sees the hiding
+   * mechanism aimed at them (rule 11).
+   */
+  viewer: ViewerVisibilityContext;
 }
 
 /** Dollars string (pre-validated by AMOUNT_RE) → integer cents. */
@@ -61,8 +73,13 @@ export function dollarsToCents(dollars: string): number {
   return parseInt(whole, 10) * 100 + parseInt(frac.padEnd(2, "0") || "0", 10);
 }
 
-export function AddExpenseSheet({ tripId, members }: AddExpenseSheetProps) {
+export function AddExpenseSheet({
+  tripId,
+  members,
+  viewer,
+}: AddExpenseSheetProps) {
   const router = useRouter();
+  const visibilityOptions = readableVisibilityOptions(viewer);
   const [open, setOpen] = React.useState(false);
   const [serverErrorKey, setServerErrorKey] = React.useState<ErrorKey | null>(
     null
@@ -77,8 +94,8 @@ export function AddExpenseSheet({ tripId, members }: AddExpenseSheetProps) {
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
-  } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+  } = useForm<ExpenseFormValues>({
+    resolver: zodResolver(expenseFormSchema),
     defaultValues: { visibility: "everyone" },
   });
 
@@ -91,7 +108,7 @@ export function AddExpenseSheet({ tripId, members }: AddExpenseSheetProps) {
     });
   };
 
-  const onSubmit = async (values: FormValues) => {
+  const onSubmit = async (values: ExpenseFormValues) => {
     setServerErrorKey(null);
     if (splitIds.size === 0) {
       setServerErrorKey("validation_failed");
@@ -217,27 +234,29 @@ export function AddExpenseSheet({ tripId, members }: AddExpenseSheetProps) {
         </div>
       </fieldset>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="expense-visibility" className={labelClass}>
-          {M5_UI_STRINGS.expensesForm_visibility_label}
-        </label>
-        <select
-          id="expense-visibility"
-          className={inputClass}
-          disabled={isSubmitting}
-          {...register("visibility")}
-        >
-          <option value="everyone">
-            {M3_UI_STRINGS.itineraryForm_visibility_everyone}
-          </option>
-          <option value="organizers_only">
-            {M3_UI_STRINGS.itineraryForm_visibility_organizers}
-          </option>
-          <option value="hide_from_celebrant">
-            {M3_UI_STRINGS.itineraryForm_visibility_hide_celebrant}
-          </option>
-        </select>
-      </div>
+      {/* A single readable option means "everyone" (the form default) —
+          skip the field entirely rather than render a one-item select.
+          For the celebrant that's the whole point: no hiding mechanism
+          in their own composer (#384 layer 2 / rule 11). */}
+      {visibilityOptions.length > 1 ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="expense-visibility" className={labelClass}>
+            {M5_UI_STRINGS.expensesForm_visibility_label}
+          </label>
+          <select
+            id="expense-visibility"
+            className={inputClass}
+            disabled={isSubmitting}
+            {...register("visibility")}
+          >
+            {visibilityOptions.map((v) => (
+              <option key={v} value={v}>
+                {EXPENSE_VISIBILITY_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       {serverErrorKey ? (
         <p role="alert" className="text-sm">
