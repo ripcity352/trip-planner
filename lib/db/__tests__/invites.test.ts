@@ -89,10 +89,14 @@ describe("lib/db/invites.ts", () => {
       const { client, rpcMock } = makeBuilder([
         {
           trip_name: "Vegas",
-          starts_at: "2026-06-01T00:00:00Z",
-          ends_at: "2026-06-04T00:00:00Z",
+          // invite_preview v2 returns `date` columns as-is — date-only
+          // strings, never timestamptz (#364 closure).
+          starts_at: "2026-06-01",
+          ends_at: "2026-06-04",
           host_display_name: "Dave",
           attendee_count_bucket: "small-crew",
+          viewer_is_member: false,
+          trip_slug: null,
         },
       ]);
 
@@ -106,19 +110,69 @@ describe("lib/db/invites.ts", () => {
       });
       expect(preview).toEqual({
         trip_name: "Vegas",
-        // #364: the RPC's timestamptz strings are normalized back to the
-        // date-only values they encode — see the normalization tests below.
         starts_at: "2026-06-01",
         ends_at: "2026-06-04",
         host_display_name: "Dave",
         attendee_count_bucket: "small-crew",
+        viewer_is_member: false,
+        trip_slug: null,
       });
     });
 
-    // #364 regression: invite_preview casts the `date` columns to
-    // timestamptz at midnight UTC. Passing that through to parseDateOnly/
-    // parseISO renders one calendar day early anywhere west of UTC. The
-    // boundary must hand consumers date-only strings.
+    // #367: v2 returns viewer_is_member (auth.uid() is a member of the
+    // invite's trip) and, only in that case, the trip slug so the page can
+    // link "You're in — open the trip" straight to the dashboard.
+    it("surfaces viewer_is_member and trip_slug for a member viewer", async () => {
+      const { client } = makeBuilder([
+        {
+          trip_name: "Tahoe",
+          starts_at: "2026-07-28",
+          ends_at: "2026-07-31",
+          host_display_name: "Dave",
+          attendee_count_bucket: "small-crew",
+          viewer_is_member: true,
+          trip_slug: "walk-tahoe",
+        },
+      ]);
+
+      const preview = await getInvitePreview(
+        client as unknown as SupabaseClient,
+        "abc-token"
+      );
+
+      expect(preview?.viewer_is_member).toBe(true);
+      expect(preview?.trip_slug).toBe("walk-tahoe");
+    });
+
+    // Deploy/migrate race guard: the Vercel deploy and CI's `db push` land
+    // from the same merge but on different clocks. If the app briefly runs
+    // against the v1 function (no v2 columns), membership must fail CLOSED
+    // (false / null) — the viewer just sees the idempotent accept form.
+    it("defaults viewer_is_member=false and trip_slug=null when the RPC omits them (v1 function)", async () => {
+      const { client } = makeBuilder([
+        {
+          trip_name: "Tahoe",
+          starts_at: "2026-07-28T00:00:00+00:00",
+          ends_at: "2026-07-31T00:00:00+00:00",
+          host_display_name: "Dave",
+          attendee_count_bucket: "small-crew",
+        },
+      ]);
+
+      const preview = await getInvitePreview(
+        client as unknown as SupabaseClient,
+        "abc-token"
+      );
+
+      expect(preview?.viewer_is_member).toBe(false);
+      expect(preview?.trip_slug).toBeNull();
+    });
+
+    // #364 belt-and-braces: v2 returns `date` natively, but the boundary
+    // still truncates a midnight-UTC timestamp back to its date part so a
+    // stale function (or any future timestamp-typed transport) can never
+    // re-ship the day-early bug. See the transport rule in
+    // notes/design-system.md "Parsing axis (date-only columns)".
     it("normalizes timestamptz starts_at/ends_at to date-only strings", async () => {
       const { client } = makeBuilder([
         {
@@ -147,6 +201,8 @@ describe("lib/db/invites.ts", () => {
           ends_at: null,
           host_display_name: "Dave",
           attendee_count_bucket: "small-crew",
+          viewer_is_member: false,
+          trip_slug: null,
         },
       ]);
 

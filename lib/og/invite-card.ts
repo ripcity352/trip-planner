@@ -130,3 +130,45 @@ export function buildInviteH1(hostRaw: string | null | undefined): string {
   if (!sanitized) return AUTH_COPY.inviteH1Fallback;
   return AUTH_COPY.inviteH1.replace("{Host}", sanitized);
 }
+
+export interface InviteMetadataFields {
+  tripName: string | null;
+  host: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+}
+
+export interface InviteMetadata {
+  title: string;
+  description: string;
+}
+
+/**
+ * #402 — og:title / og:description for the invite preview page's
+ * `generateMetadata`, built from the SAME anon `invite_preview` fields
+ * the OG image uses, under the same #219 injection guard (sanitize +
+ * clamp; date strings are date-fns output, not user input).
+ *
+ * Returns `null` when the trip name is empty after sanitization — the
+ * caller then emits nothing and the page inherits the root-layout
+ * defaults, exactly like the OG image's generic fallback card. The
+ * description composes the date range with the inviteH1 hook so the
+ * unfurl text matches the page's own voice; when dates are unset the
+ * hook stands alone (no dangling separator, no "Dates TBD" in a chat
+ * unfurl).
+ */
+export function buildInviteMetadata(
+  fields: InviteMetadataFields,
+): InviteMetadata | null {
+  if (!fields.tripName) return null;
+  const trip = sanitizeTripName(fields.tripName);
+  if (!trip) return null;
+
+  const dates = formatOgDates(fields.starts_at, fields.ends_at);
+  const hook = buildInviteH1(fields.host);
+
+  return {
+    title: AUTH_COPY.ogInviteTitle.replace("{Trip}", trip),
+    description: dates ? `${dates} — ${hook}` : hook,
+  };
+}
