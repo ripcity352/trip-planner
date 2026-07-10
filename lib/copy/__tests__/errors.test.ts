@@ -62,6 +62,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "poll_vote_failed",
   "poll_closed",
   "poll_visibility_self_hidden",
+  // #388 — day-scoped attendance chip save failure
+  "member_day_save_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

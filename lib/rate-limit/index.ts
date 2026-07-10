@@ -128,6 +128,11 @@ export const RATE_LIMIT_SCOPES = {
   // burst can't starve other budgets. Fail-OPEN on shim (it's an ack,
   // not credential minting). Default 30/60s budget.
   TOGGLE_REACTION: "toggleReaction",
+  // #388 — day-scoped attendance: the /me day chips are a tap-toggle
+  // surface (same drunk-double-tap profile as SET_RSVP). Own bucket so
+  // a burst of day taps can't starve the RSVP budget or vice versa.
+  // Default 30/60s; fail-OPEN on shim (attendance rows, not credentials).
+  SET_MEMBER_DAY: "setMemberDay",
   // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
   // Isolated bucket so a burst of typeahead requests doesn't starve
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED

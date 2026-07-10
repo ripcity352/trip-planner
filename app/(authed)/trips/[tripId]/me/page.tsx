@@ -17,13 +17,20 @@
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { eachDayOfInterval, format } from "date-fns";
 
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug } from "@/lib/db/trips";
 import { getViewerMember } from "@/lib/db/trips";
+import { getMemberDays } from "@/lib/db/trip-member-days";
 import { signOut } from "@/lib/actions/auth";
-import { M4_UI_STRINGS } from "@/lib/copy/empty-states";
+import { M4_UI_STRINGS, MEMBER_DAYS_UI_STRINGS } from "@/lib/copy/empty-states";
 import { AUTH_COPY } from "@/lib/copy/auth";
+import { parseDateOnly } from "@/lib/utils/date-only";
+import {
+  DayAttendanceChips,
+  type DayChip,
+} from "@/components/trip/day-attendance-chips";
 
 type PageProps = {
   params: Promise<{ tripId: string }>;
@@ -54,8 +61,26 @@ export default async function MePage({ params }: PageProps) {
     notFound();
   }
 
-  const displayName = member.display_name ?? user.email ?? M4_UI_STRINGS.me_display_name_fallback;
+  const displayName =
+    member.display_name ?? user.email ?? M4_UI_STRINGS.me_display_name_fallback;
   const email = user.email ?? "";
+
+  // #388 — day-scoped attendance chips. One chip per trip date; the
+  // member's stored rows overlay onto the range (null = never seeded,
+  // e.g. rsvp maybe/pending — the chips upsert from empty). Date-less
+  // trips skip the section entirely.
+  let dayChips: DayChip[] = [];
+  if (trip.starts_at !== null && trip.ends_at !== null) {
+    const rows = await getMemberDays(supabase, member.id);
+    const statusByDate = new Map(rows.map((r) => [r.date, r.status]));
+    dayChips = eachDayOfInterval({
+      start: parseDateOnly(trip.starts_at),
+      end: parseDateOnly(trip.ends_at),
+    }).map((d) => {
+      const iso = format(d, "yyyy-MM-dd");
+      return { date: iso, status: statusByDate.get(iso) ?? null };
+    });
+  }
 
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
@@ -66,29 +91,42 @@ export default async function MePage({ params }: PageProps) {
       </header>
 
       <div className="flex flex-col gap-4">
-        <div className="rounded-md border border-border bg-card p-4 shadow-sm">
+        <div className="border-border bg-card rounded-md border p-4 shadow-sm">
           <dl className="flex flex-col gap-3">
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {M4_UI_STRINGS.me_label_name}
               </dt>
-              <dd className="mt-0.5 text-sm text-foreground">{displayName}</dd>
+              <dd className="text-foreground mt-0.5 text-sm">{displayName}</dd>
             </div>
             {email ? (
               <div>
-                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                   {M4_UI_STRINGS.me_label_email}
                 </dt>
-                <dd className="mt-0.5 text-sm text-foreground">{email}</dd>
+                <dd className="text-foreground mt-0.5 text-sm">{email}</dd>
               </div>
             ) : null}
           </dl>
         </div>
 
+        {/* #388 — which days are you around? (rule 8: opt-in framing) */}
+        {dayChips.length > 0 ? (
+          <div className="border-border bg-card rounded-md border p-4 shadow-sm">
+            <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              {MEMBER_DAYS_UI_STRINGS.memberDays_heading}
+            </h2>
+            <p className="text-muted-foreground mt-0.5 mb-3 text-sm">
+              {MEMBER_DAYS_UI_STRINGS.memberDays_subhead}
+            </p>
+            <DayAttendanceChips tripId={trip.id} days={dayChips} />
+          </div>
+        ) : null}
+
         {/* Sign-in & security navigation link (M5/PR4) */}
         <Link
           href="/account/sign-in-and-security"
-          className="focus-visible:ring-ring flex w-full items-center justify-between rounded-md border border-border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-sm hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          className="focus-visible:ring-ring border-border bg-card text-foreground hover:bg-muted/40 flex w-full items-center justify-between rounded-md border px-4 py-3 text-sm font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <span>{AUTH_COPY.accountSecurity_meNavLink}</span>
           <svg
@@ -110,7 +148,7 @@ export default async function MePage({ params }: PageProps) {
         <form action={signOut}>
           <button
             type="submit"
-            className="focus-visible:ring-ring w-full rounded-xs border border-border bg-muted px-5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            className="focus-visible:ring-ring border-border bg-muted text-muted-foreground hover:bg-muted/80 w-full rounded-xs border px-5 py-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             {M4_UI_STRINGS.me_sign_out_cta}
           </button>
