@@ -6,8 +6,6 @@
 
 import { describe, expectTypeOf, it } from "vitest";
 import type {
-  Availability,
-  AvailabilityStatus,
   ExpenseSplit,
   Profile,
   RsvpStatus,
@@ -28,7 +26,6 @@ describe("lib/db types", () => {
     expectTypeOf<RsvpStatus>().toEqualTypeOf<
       "pending" | "going" | "maybe" | "declined"
     >();
-    expectTypeOf<AvailabilityStatus>().toEqualTypeOf<"yes" | "no" | "maybe">();
   });
 
   it("Trip carries non-nullable identity + audit fields", () => {
@@ -78,11 +75,7 @@ describe("lib/db types", () => {
     expectTypeOf<TripMember["email"]>().toEqualTypeOf<string | null>();
   });
 
-  it("Availability and ExpenseSplit are now FK-retargeted", () => {
-    expectTypeOf<Availability["trip_member_id"]>().toBeString();
-    expectTypeOf<Availability["idempotency_key"]>().toEqualTypeOf<
-      string | null
-    >();
+  it("ExpenseSplit is FK-retargeted", () => {
     expectTypeOf<ExpenseSplit["trip_member_id"]>().toBeString();
     expectTypeOf<ExpenseSplit["currency"]>().toBeString();
   });
