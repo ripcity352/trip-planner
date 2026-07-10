@@ -26,6 +26,14 @@ vi.mock("../copy-numbers-button", () => ({
   ),
 }));
 
+// #386 — the member-manage client component has its own suite; here we
+// only assert WHICH rows get the affordance.
+vi.mock("../member-manage", () => ({
+  MemberManage: ({ memberId }: { memberId: string }) => (
+    <button data-testid={`manage-${memberId}`}>manage</button>
+  ),
+}));
+
 const sampleMembers: RosterMember[] = [
   {
     id: "m1",
@@ -122,5 +130,114 @@ describe("RosterList", () => {
     render(<RosterList members={withViewer} tripName="Test Trip" />);
     expect(screen.getByText("You")).toBeInTheDocument();
     expect(screen.queryByText("Guest")).not.toBeInTheDocument();
+  });
+
+  // #387 — quiet per-name RSVP state. Anti-shame boundary is BINDING:
+  // 'going' renders NOTHING (default row is unmarked); maybe/pending get
+  // a hairline chip; declined only surfaces when the view let it through
+  // (organizer viewer or own row); a null status (redacted decline)
+  // renders exactly like going.
+  describe("per-name RSVP chips (#387)", () => {
+    const rsvpMembers: RosterMember[] = [
+      { id: "m1", displayName: "Alice", phone: null, role: "attendee", isCelebrant: false, rsvp: "going" },
+      { id: "m2", displayName: "Sam", phone: null, role: "attendee", isCelebrant: false, rsvp: "maybe" },
+      { id: "m3", displayName: "Nate", phone: null, role: "attendee", isCelebrant: false, rsvp: "pending" },
+      { id: "m4", displayName: "Kevin", phone: null, role: "attendee", isCelebrant: false, rsvp: "declined" },
+      // Redacted decline — the view nulled it for this (non-organizer) viewer.
+      { id: "m5", displayName: "Quinn", phone: null, role: "attendee", isCelebrant: false, rsvp: null },
+    ];
+
+    it("renders a Maybe chip for maybe and an Invited chip for pending", () => {
+      render(<RosterList members={rsvpMembers} tripName="Test Trip" />);
+      expect(screen.getByText("Maybe")).toBeInTheDocument();
+      expect(screen.getByText("Invited")).toBeInTheDocument();
+    });
+
+    it("renders nothing for going — the default row stays unmarked", () => {
+      render(<RosterList members={rsvpMembers} tripName="Test Trip" />);
+      const aliceRow = screen.getByText("Alice").closest("li");
+      expect(aliceRow?.textContent).toBe("Alice");
+    });
+
+    it("renders the declined chip only when the status made it through the view", () => {
+      render(<RosterList members={rsvpMembers} tripName="Test Trip" />);
+      // Kevin's declined status was visible to this viewer → chip.
+      expect(screen.getByText("Can't make it")).toBeInTheDocument();
+      // Quinn's was redacted to null → row is unmarked, same as going.
+      const quinnRow = screen.getByText("Quinn").closest("li");
+      expect(quinnRow?.textContent).toBe("Quinn");
+    });
+
+    it("renders no chip when rsvp is not provided (callers that don't thread it)", () => {
+      render(<RosterList members={sampleMembers} tripName="Test Trip" />);
+      expect(screen.queryByText("Maybe")).not.toBeInTheDocument();
+      expect(screen.queryByText("Invited")).not.toBeInTheDocument();
+    });
+  });
+
+  // #386 — organizer-only member management affordance, per-row gating.
+  describe("member-manage affordance gating (#386)", () => {
+    const TRIP_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+    const crew: RosterMember[] = [
+      // The viewer (an organizer) — never manageable.
+      { id: "m1", displayName: "Dave", phone: null, role: "organizer", isCelebrant: false, isViewer: true },
+      // The celebrant — never manageable.
+      { id: "m2", displayName: "Mike", phone: null, role: "attendee", isCelebrant: true },
+      // A co-organizer — manageable (demote / remove).
+      { id: "m3", displayName: "Rob", phone: null, role: "co_organizer", isCelebrant: false },
+      // A plain attendee — manageable.
+      { id: "m4", displayName: "Kevin", phone: null, role: "attendee", isCelebrant: false },
+    ];
+
+    it("renders the affordance only on non-self, non-celebrant, non-founder rows for an organizer viewer", () => {
+      render(
+        <RosterList
+          members={crew}
+          tripName="Test Trip"
+          tripId={TRIP_ID}
+          viewerRole="organizer"
+        />
+      );
+      expect(screen.queryByTestId("manage-m1")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("manage-m2")).not.toBeInTheDocument();
+      expect(screen.getByTestId("manage-m3")).toBeInTheDocument();
+      expect(screen.getByTestId("manage-m4")).toBeInTheDocument();
+    });
+
+    it("never renders the founder's row as manageable, even for a co-organizer viewer", () => {
+      const withFounder: RosterMember[] = [
+        { id: "m0", displayName: "Dave", phone: null, role: "organizer", isCelebrant: false },
+        { id: "m3", displayName: "Rob", phone: null, role: "co_organizer", isCelebrant: false, isViewer: true },
+      ];
+      render(
+        <RosterList
+          members={withFounder}
+          tripName="Test Trip"
+          tripId={TRIP_ID}
+          viewerRole="co_organizer"
+        />
+      );
+      expect(screen.queryByTestId("manage-m0")).not.toBeInTheDocument();
+    });
+
+    it("renders no affordance for a plain member viewer (roster unchanged)", () => {
+      render(
+        <RosterList
+          members={crew}
+          tripName="Test Trip"
+          tripId={TRIP_ID}
+          viewerRole="attendee"
+        />
+      );
+      expect(screen.queryByTestId("manage-m3")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("manage-m4")).not.toBeInTheDocument();
+    });
+
+    it("renders no affordance when tripId is not threaded (defensive)", () => {
+      render(
+        <RosterList members={crew} tripName="Test Trip" viewerRole="organizer" />
+      );
+      expect(screen.queryByTestId("manage-m4")).not.toBeInTheDocument();
+    });
   });
 });

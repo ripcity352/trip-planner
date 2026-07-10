@@ -166,6 +166,88 @@ export async function getTripMembers(
 }
 
 /**
+ * Targeted fetch of one trip_member row, scoped by BOTH trip_id and id
+ * (multi-tenant rule 6 — a member id from another trip must miss). Used
+ * by the #386 member-management actions to run their guards (self /
+ * celebrant / founder) against the CURRENT row before mutating.
+ */
+export async function getTripMemberById(
+  supabase: SupabaseClient,
+  tripId: string,
+  memberId: string
+): Promise<TripMember | null> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .select(
+      "id, trip_id, user_id, role, rsvp_status, joined_at, is_celebrant, display_name, phone_e164, email, idempotency_key"
+    )
+    .eq("trip_id", tripId)
+    .eq("id", memberId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getTripMemberById failed: ${error.message}`);
+  }
+
+  return data as TripMember | null;
+}
+
+/**
+ * Write a member's role (attendee ↔ co_organizer) plus the mutation's
+ * idempotency_key (#386, rule 9). RLS ("organizers can update any trip
+ * member") is the real gate; we chain `.select(...).maybeSingle()` so a
+ * policy-swallowed zero-row update is detectable — returns false instead
+ * of lying about success.
+ *
+ * Deliberately NOT settable to 'organizer': the founder seat is assigned
+ * once, by `create_trip_with_organizer`, never through this path.
+ */
+export async function updateTripMemberRole(
+  supabase: SupabaseClient,
+  memberId: string,
+  role: Extract<TripRole, "attendee" | "co_organizer">,
+  idempotencyKey: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .update({ role, idempotency_key: idempotencyKey })
+    .eq("id", memberId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`updateTripMemberRole failed: ${error.message}`);
+  }
+
+  return data !== null;
+}
+
+/**
+ * Delete a trip_member row (#386 remove-from-trip). Returns the number
+ * of rows actually deleted so the action can distinguish "removed" (1)
+ * from "RLS swallowed it / already gone" (0). Participation rows keyed
+ * on trip_member_id (travel legs, lodging, item RSVPs, flags, votes)
+ * cascade by schema design; authored content keys on auth.users and
+ * survives with the resolveMemberName fallback.
+ */
+export async function deleteTripMember(
+  supabase: SupabaseClient,
+  memberId: string
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .delete()
+    .eq("id", memberId)
+    .select("id");
+
+  if (error) {
+    throw new Error(`deleteTripMember failed: ${error.message}`);
+  }
+
+  return (data ?? []).length;
+}
+
+/**
  * Input shape for creating a trip. `created_by` is filled in server-side
  * from `auth.uid()` inside the RPC, so the userId argument is no longer
  * passed by the caller — the M1 stub signature is preserved here only

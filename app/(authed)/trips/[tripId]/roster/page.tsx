@@ -12,6 +12,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
+import { getVisibleRsvpByMemberId } from "@/lib/db/rsvp";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { RosterList } from "@/components/trip/roster/roster-list";
 import { DayHeadcount } from "@/components/trip/day-headcount";
@@ -42,9 +43,14 @@ export default async function RosterPage({ params }: PageProps) {
     notFound();
   }
 
-  // Fan out: members list (parallel-safe, only one query here but consistent
-  // with itinerary page pattern — easy to extend later)
-  const rawMembers = await getTripMembers(supabase, trip.id);
+  // Fan out: members list + viewer-visible RSVP (#387). The RSVP read
+  // MUST come from the trip_members_visible_rsvp view, never the raw
+  // rsvp_status on trip_members — the view's case-when (declining
+  // whispers) decides whether this viewer may see a declined status.
+  const [rawMembers, visibleRsvp] = await Promise.all([
+    getTripMembers(supabase, trip.id),
+    getVisibleRsvpByMemberId(supabase, trip.id),
+  ]);
 
   // Map to the RosterMember shape the component expects. isViewer flags the
   // signed-in user's own row so RosterList can render "You" instead of the
@@ -56,6 +62,8 @@ export default async function RosterPage({ params }: PageProps) {
     role: m.role,
     isCelebrant: m.is_celebrant,
     isViewer: m.id === viewer.id,
+    // undefined only if the view somehow missed the row — renders nothing.
+    rsvp: visibleRsvp.get(m.id) ?? null,
   }));
 
   return (
@@ -79,6 +87,7 @@ export default async function RosterPage({ params }: PageProps) {
         members={members}
         tripName={trip.name}
         tripSlug={slug}
+        tripId={trip.id}
         viewerRole={viewer.role}
       />
     </section>

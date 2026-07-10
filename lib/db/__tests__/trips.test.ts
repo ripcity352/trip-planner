@@ -12,6 +12,9 @@ import {
   getTripBySlug,
   createTrip,
   setMemberDisplayName,
+  getTripMemberById,
+  updateTripMemberRole,
+  deleteTripMember,
 } from "../trips";
 
 const M1_COLUMNS = [
@@ -220,5 +223,99 @@ describe("setMemberDisplayName", () => {
     expect(update?.args[0]).toEqual({ display_name: "Nate Newguy" });
     const eq = calls.find((c) => c.method === "eq");
     expect(eq?.args).toEqual(["id", "member-1"]);
+  });
+});
+
+// #386 — organizer member management: targeted fetch + role write + delete.
+describe("getTripMemberById", () => {
+  it("filters by BOTH trip_id and member id (multi-tenant scoping)", async () => {
+    const row = {
+      id: "member-1",
+      trip_id: "trip-1",
+      role: "attendee",
+      is_celebrant: false,
+      idempotency_key: null,
+    };
+    const { calls, client } = makeBuilder(row);
+
+    const result = await getTripMemberById(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      "member-1"
+    );
+
+    expect(result).toEqual(row);
+    const eqCalls = calls.filter((c) => c.method === "eq");
+    const args = eqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
+    expect(args).toContain("trip_id=trip-1");
+    expect(args).toContain("id=member-1");
+  });
+
+  it("returns null when the row is hidden or missing", async () => {
+    const { client } = makeBuilder(null);
+    const result = await getTripMemberById(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      "member-x"
+    );
+    expect(result).toBeNull();
+  });
+});
+
+describe("updateTripMemberRole", () => {
+  it("writes role + idempotency_key scoped to the member row and reports success", async () => {
+    const { calls, client } = makeBuilder({ id: "member-1" });
+
+    const updated = await updateTripMemberRole(
+      client as unknown as SupabaseClient,
+      "member-1",
+      "co_organizer",
+      "11111111-2222-4333-8444-555555555555"
+    );
+
+    expect(updated).toBe(true);
+    const update = calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({
+      role: "co_organizer",
+      idempotency_key: "11111111-2222-4333-8444-555555555555",
+    });
+    const eq = calls.find((c) => c.method === "eq");
+    expect(eq?.args).toEqual(["id", "member-1"]);
+  });
+
+  it("returns false when RLS swallows the update (no row comes back)", async () => {
+    const { client } = makeBuilder(null);
+    const updated = await updateTripMemberRole(
+      client as unknown as SupabaseClient,
+      "member-1",
+      "attendee",
+      "11111111-2222-4333-8444-555555555555"
+    );
+    expect(updated).toBe(false);
+  });
+});
+
+describe("deleteTripMember", () => {
+  it("deletes by member id and returns the deleted-row count", async () => {
+    const { calls, client } = makeBuilder([{ id: "member-1" }]);
+
+    const count = await deleteTripMember(
+      client as unknown as SupabaseClient,
+      "member-1"
+    );
+
+    expect(count).toBe(1);
+    expect(calls.some((c) => c.method === "delete")).toBe(true);
+    const eq = calls.find((c) => c.method === "eq");
+    expect(eq?.args).toEqual(["id", "member-1"]);
+  });
+
+  it("returns 0 when nothing was deleted (already gone or RLS-hidden)", async () => {
+    const { client } = makeBuilder([]);
+    const count = await deleteTripMember(
+      client as unknown as SupabaseClient,
+      "member-1"
+    );
+    expect(count).toBe(0);
   });
 });
