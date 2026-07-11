@@ -64,6 +64,16 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "poll_visibility_self_hidden",
   // #388 — day-scoped attendance chip save failure
   "member_day_save_failed",
+  // #386 — organizer member management (guards are deterministic
+  // rule-explanations; the _failed pair is transient-retry voice)
+  "member_role_save_failed",
+  "member_remove_failed",
+  "member_remove_self",
+  "member_remove_celebrant",
+  "member_role_celebrant",
+  "member_organizer_locked",
+  // fix-first on #416 — money-invariant guard (deterministic, retry-free)
+  "member_remove_has_expenses",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

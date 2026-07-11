@@ -467,6 +467,26 @@ export const M5_UI_STRINGS = {
   polls_closed_tie: "Dead heat. Sort it out over a drink.",
   polls_closed_no_votes: "Nobody weighed in. Organizer's call.",
   polls_option_vote_aria_template: "Vote {label}",
+  // #387 — quiet per-name RSVP chips on the roster. Factual state only —
+  // the anti-shame boundary is BINDING: no lateness ordering, no nudge
+  // copy, no counts of shame. "going" deliberately has NO chip string
+  // (the default row stays unmarked). "Invited" is the pending register
+  // already used by the dashboard count ("{invited} invited").
+  roster_chip_maybe: "Maybe",
+  roster_chip_invited: "Invited",
+  // Matches the dashboard's organizer-only declined register
+  // ("can't make it") — the view decides who gets to see it.
+  roster_chip_declined: "Can't make it",
+  // #386 — organizer member management (quiet overflow → inline panel).
+  // Rule 11: micro-affordances, not admin-panel vibes. The remove confirm
+  // names the object + consequence per the #210 destructive contract.
+  roster_manage_aria_template: "Manage {name}",
+  roster_manage_make_co: "Make co-organizer",
+  roster_manage_back_to_crew: "Back to crew",
+  roster_manage_remove: "Remove from trip",
+  roster_manage_remove_confirm_template:
+    "Remove {name} from the trip? They'd need a new invite to get back in.",
+  roster_manage_close: "Never mind",
 } as const;
 
 /**

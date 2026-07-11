@@ -133,6 +133,15 @@ export const RATE_LIMIT_SCOPES = {
   // a burst of day taps can't starve the RSVP budget or vice versa.
   // Default 30/60s; fail-OPEN on shim (attendance rows, not credentials).
   SET_MEMBER_DAY: "setMemberDay",
+  // #386 — organizer member management (role flip + remove). One bucket
+  // each so a burst of roster edits can't starve other budgets. Default
+  // 30/60s is plenty for a human cleaning a roster. RLS gates WHO may
+  // write; the action layer gates WHAT (role values, seat protections —
+  // DB hardening tracked in #418). NOT in FAIL_CLOSED_ON_SHIM — same
+  // posture as the other authed trip mutations (a bootstrapping deploy
+  // must not brick them).
+  SET_MEMBER_ROLE: "setMemberRole",
+  REMOVE_MEMBER: "removeMember",
   // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
   // Isolated bucket so a burst of typeahead requests doesn't starve
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED

@@ -21,6 +21,7 @@ import {
   deleteExpense,
   getExpensesByTrip,
   getSplitsByTrip,
+  memberHasExpenseTies,
   updateExpenseWithSplits,
 } from "../expenses";
 
@@ -439,6 +440,103 @@ describe("lib/db/expenses.ts", () => {
 
       expect(err).toBeInstanceOf(ExpenseDbError);
       expect((err as ExpenseDbError).code).toBe("42501");
+    });
+  });
+
+  // #386 fix-first — money invariant guard. expense_splits.trip_member_id
+  // is ON DELETE CASCADE, so removing a tied member would silently break
+  // sum(splits) == amount_cents. The action refuses removal while ties
+  // exist; this fn is the head-count read behind that guard.
+  describe("memberHasExpenseTies", () => {
+    it("returns true when the member appears in any expense split", async () => {
+      const { calls, client } = makeSequencedBuilder([
+        { data: null, error: null, count: 2 },
+      ]);
+
+      const tied = await memberHasExpenseTies(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        "member-1",
+        "u-target"
+      );
+
+      expect(tied).toBe(true);
+      expect(client.from).toHaveBeenCalledWith("expense_splits");
+      // Short-circuits — no second (payer) query needed.
+      expect(client.from).toHaveBeenCalledTimes(1);
+      const selectCall = calls.find((c) => c.method === "select");
+      expect(selectCall?.args[1]).toEqual({ count: "exact", head: true });
+      const eqCalls = calls.filter((c) => c.method === "eq");
+      const args = eqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
+      expect(args).toContain("trip_member_id=member-1");
+    });
+
+    it("returns true when the member paid for anything on the trip (payer query is trip-scoped)", async () => {
+      const { calls, client } = makeSequencedBuilder([
+        { data: null, error: null, count: 0 }, // splits: none
+        { data: null, error: null, count: 1 }, // expenses as payer: one
+      ]);
+
+      const tied = await memberHasExpenseTies(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        "member-1",
+        "u-target"
+      );
+
+      expect(tied).toBe(true);
+      expect(client.from).toHaveBeenCalledWith("expenses");
+      const eqCalls = calls.filter((c) => c.method === "eq");
+      const args = eqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
+      expect(args).toContain("trip_id=trip-1");
+      expect(args).toContain("payer_id=u-target");
+    });
+
+    it("returns false when the member has no splits and paid for nothing", async () => {
+      const { client } = makeSequencedBuilder([
+        { data: null, error: null, count: 0 },
+        { data: null, error: null, count: null }, // null count = zero rows
+      ]);
+
+      const tied = await memberHasExpenseTies(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        "member-1",
+        "u-target"
+      );
+
+      expect(tied).toBe(false);
+    });
+
+    it("skips the payer query for an accountless member (user_id null)", async () => {
+      const { client } = makeSequencedBuilder([
+        { data: null, error: null, count: 0 },
+      ]);
+
+      const tied = await memberHasExpenseTies(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        "member-1",
+        null
+      );
+
+      expect(tied).toBe(false);
+      expect(client.from).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws when Supabase reports an error", async () => {
+      const { client } = makeSequencedBuilder([
+        { data: null, error: { message: "boom" }, count: null },
+      ]);
+
+      await expect(
+        memberHasExpenseTies(
+          client as unknown as SupabaseClient,
+          "trip-1",
+          "member-1",
+          "u-target"
+        )
+      ).rejects.toThrow(/memberHasExpenseTies/);
     });
   });
 });

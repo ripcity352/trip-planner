@@ -158,3 +158,33 @@ export async function getOrganizerDeclinedCount(
   // Supabase returns null when the head query matches zero rows.
   return count ?? 0;
 }
+
+/**
+ * Per-member visible RSVP for a trip, keyed by `trip_members.id` (#387).
+ *
+ * Sources from `trip_members_visible_rsvp` — NEVER the raw table — so
+ * the SQL case-when (not app code) decides whether the caller may see a
+ * declined member's status. For a non-organizer viewer a declined
+ * member comes back as `null`, which the roster renders exactly like
+ * `going` (i.e. nothing): declining whispers.
+ */
+export async function getVisibleRsvpByMemberId(
+  supabase: SupabaseClient,
+  tripId: string
+): Promise<ReadonlyMap<string, RsvpStatus | null>> {
+  const { data, error } = await supabase
+    .from("trip_members_visible_rsvp")
+    .select("id, rsvp_status")
+    .eq("trip_id", tripId);
+
+  if (error) {
+    throw new Error(`getVisibleRsvpByMemberId failed: ${error.message}`);
+  }
+
+  const rows = (data ?? []) as ReadonlyArray<{
+    id: string;
+    rsvp_status: RsvpStatus | null;
+  }>;
+
+  return new Map(rows.map((row) => [row.id, row.rsvp_status]));
+}

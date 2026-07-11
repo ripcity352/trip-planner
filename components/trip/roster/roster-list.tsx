@@ -1,20 +1,31 @@
 /**
  * RosterList — Server Component.
  *
- * Renders the member list with display name, role badge, and phone (if
- * present). Includes the two contact-export CTAs (VCardDownloadButton,
- * CopyNumbersButton) at the top.
+ * Renders the member list with display name, role badge, phone (if
+ * present), a quiet per-name RSVP chip (#387), and — for organizer
+ * viewers — the per-row MemberManage affordance (#386). Includes the
+ * two contact-export CTAs (VCardDownloadButton, CopyNumbersButton) at
+ * the top.
  *
  * Phone filtering:
  *   - Members without a phone are shown in the list but excluded from
  *     both export paths.
+ *
+ * RSVP chips (#387 — anti-shame boundary is BINDING):
+ *   - 'going' renders NOTHING — the default row is unmarked.
+ *   - 'maybe' / 'pending' get a hairline chip (member-visible, factual).
+ *   - 'declined' renders a chip only when the visible-rsvp view let the
+ *     status through (organizer viewer or own row); a redacted decline
+ *     arrives as null and renders exactly like going.
+ *   - No ordering by lateness, no nudge copy, no counts.
  */
 
 import Link from "next/link";
-import { M3_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
-import type { TripRole } from "@/lib/db/types";
+import { M3_UI_STRINGS, M5_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
+import type { RsvpStatus, TripRole } from "@/lib/db/types";
 import { VCardDownloadButton } from "./vcard-download-button";
 import { CopyNumbersButton } from "./copy-numbers-button";
+import { MemberManage } from "./member-manage";
 
 export interface RosterMember {
   id: string;
@@ -29,6 +40,13 @@ export interface RosterMember {
    * existing callers/tests that don't thread a viewer id keep working.
    */
   isViewer?: boolean;
+  /**
+   * Viewer-visible RSVP state (#387), sourced from
+   * `trip_members_visible_rsvp` — NEVER the raw table. `null` means the
+   * view redacted a decline for this viewer; `undefined` means the
+   * caller didn't thread RSVP at all. Both render nothing.
+   */
+  rsvp?: RsvpStatus | null;
 }
 
 interface RosterListProps {
@@ -36,8 +54,14 @@ interface RosterListProps {
   tripName: string;
   /** URL slug for the trip — used to build the invite CTA href. */
   tripSlug?: string;
-  /** Viewer's role — determines whether the invite CTA is shown. */
+  /** Viewer's role — gates the invite CTA and the manage affordance. */
   viewerRole?: TripRole;
+  /**
+   * Trip UUID — required by the #386 member-manage actions. The manage
+   * affordance only renders when this is threaded (defensive: existing
+   * callers without it keep the read-only roster).
+   */
+  tripId?: string;
 }
 
 /** Organizer roles that may mint invites. */
@@ -60,11 +84,29 @@ function roleLabel(role: TripRole, isCelebrant: boolean): string | null {
   return null;
 }
 
+/**
+ * #387 chip label per visible RSVP state, or null for "render nothing"
+ * (going, redacted-decline null, and callers that don't thread rsvp).
+ */
+function rsvpChipLabel(rsvp: RsvpStatus | null | undefined): string | null {
+  if (rsvp === "maybe") {
+    return M5_UI_STRINGS.roster_chip_maybe;
+  }
+  if (rsvp === "pending") {
+    return M5_UI_STRINGS.roster_chip_invited;
+  }
+  if (rsvp === "declined") {
+    return M5_UI_STRINGS.roster_chip_declined;
+  }
+  return null;
+}
+
 export function RosterList({
   members,
   tripName,
   tripSlug,
   viewerRole,
+  tripId,
 }: RosterListProps) {
   const canInvite =
     viewerRole !== undefined && ORGANIZER_ROLES.has(viewerRole);
@@ -115,25 +157,58 @@ export function RosterList({
         <ul className="flex flex-col gap-3">
           {members.map((member) => {
             const label = roleLabel(member.role, member.isCelebrant);
+            const chipLabel = rsvpChipLabel(member.rsvp);
+            // #386 — manage only renders for organizer viewers, and never
+            // on your own row, the celebrant, or the founder. The server
+            // action re-checks every guard; hiding here is rule 11
+            // (micro-affordances, not access-denied messages).
+            const manageable =
+              canInvite &&
+              tripId !== undefined &&
+              !member.isViewer &&
+              !member.isCelebrant &&
+              member.role !== "organizer";
             return (
               <li
                 key={member.id}
-                className="flex items-center justify-between rounded-md border border-border px-4 py-3 min-h-11"
+                className="flex flex-wrap items-center justify-between gap-y-2 rounded-md border border-border px-4 py-3 min-h-11"
               >
                 <span className="font-medium text-sm">
                   {member.isViewer
                     ? M3_UI_STRINGS.roster_member_you
                     : member.displayName ?? M3_UI_STRINGS.roster_member_fallback_name}
                 </span>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {/* flex-1 + flex-wrap so the open manage panel (w-full)
+                    wraps onto its own line instead of squeezing the row */}
+                <div className="flex flex-1 flex-wrap items-center justify-end gap-2 text-xs text-muted-foreground">
                   {member.phone && (
                     <span className="tabular-nums">{member.phone}</span>
+                  )}
+                  {chipLabel && (
+                    <span className="rounded-full border border-border px-2 py-0.5 font-medium">
+                      {chipLabel}
+                    </span>
                   )}
                   {label && (
                     <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize">
                       {label}
                     </span>
                   )}
+                  {manageable && tripId ? (
+                    <MemberManage
+                      tripId={tripId}
+                      memberId={member.id}
+                      memberName={
+                        member.displayName ??
+                        M3_UI_STRINGS.roster_member_fallback_name
+                      }
+                      currentRole={
+                        member.role === "co_organizer"
+                          ? "co_organizer"
+                          : "attendee"
+                      }
+                    />
+                  ) : null}
                 </div>
               </li>
             );

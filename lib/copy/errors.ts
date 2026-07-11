@@ -108,7 +108,21 @@ export type ErrorKey =
   | "poll_create_failed"
   | "poll_vote_failed"
   | "poll_closed"
-  | "poll_visibility_self_hidden";
+  | "poll_visibility_self_hidden"
+  // #386 — organizer member management. The three guard keys are
+  // DETERMINISTIC rejections (self / celebrant / founder), so their copy
+  // must explain the rule, never suggest a retry. The two `_failed` keys
+  // follow the `<feature>_<verb>_failed` transient pattern.
+  | "member_role_save_failed"
+  | "member_remove_failed"
+  | "member_remove_self"
+  | "member_remove_celebrant"
+  | "member_role_celebrant"
+  | "member_organizer_locked"
+  // Money-invariant guard (fix-first on PR #416): splits cascade with
+  // the member row, so removal is refused while expense ties exist.
+  // Deterministic rejection — retry-free copy.
+  | "member_remove_has_expenses";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -205,4 +219,19 @@ export const ERRORS: Record<ErrorKey, string> = {
   poll_closed: "Voting's closed on this one. The crew has spoken.",
   poll_visibility_self_hidden:
     "That'd hide it from you too. Pick one you'd still see.",
+  // #386 — member management. Guard strings are rule-explanations
+  // (retry-free); the _failed pair is transient-retry voice.
+  member_role_save_failed: "Role didn't flip. Try once more in a sec.",
+  member_remove_failed:
+    "Couldn't take them off the trip. Try once more.",
+  member_remove_self:
+    "That's you. If you're out, set your RSVP instead.",
+  member_remove_celebrant:
+    "Can't remove the guest of honor — they're the whole point of the trip.",
+  member_role_celebrant:
+    "The guest of honor's seat stays as-is — they're the whole point of the trip.",
+  member_organizer_locked:
+    "That's whoever started this trip. Their seat stays put.",
+  member_remove_has_expenses:
+    "Settle their expenses first — they're on the hook for a few things.",
 };

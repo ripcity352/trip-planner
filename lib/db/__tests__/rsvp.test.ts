@@ -12,7 +12,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getMyRsvp, getRsvpCountsForTrip, getOrganizerDeclinedCount } from "../rsvp";
+import {
+  getMyRsvp,
+  getRsvpCountsForTrip,
+  getOrganizerDeclinedCount,
+  getVisibleRsvpByMemberId,
+} from "../rsvp";
 
 /**
  * Builds an introspectable Supabase client double. Each chained method
@@ -323,6 +328,66 @@ describe("lib/db/rsvp.ts", () => {
       await expect(
         getOrganizerDeclinedCount(client as unknown as SupabaseClient, "trip-1")
       ).rejects.toThrow(/getOrganizerDeclinedCount/);
+    });
+  });
+
+  // #387 — per-name RSVP on the roster. The map MUST source from the
+  // visible-rsvp view so the SQL case-when (not app code) decides whether
+  // the caller may see a declined member's status.
+  describe("getVisibleRsvpByMemberId", () => {
+    it("queries the visible-rsvp view (not raw trip_members) — declining-whispers source", async () => {
+      const { calls, client } = makeBuilder([]);
+
+      await getVisibleRsvpByMemberId(
+        client as unknown as SupabaseClient,
+        "trip-1"
+      );
+
+      expect(client.from).toHaveBeenCalledWith("trip_members_visible_rsvp");
+      const eqCall = calls.find((c) => c.method === "eq");
+      expect(eqCall?.args).toEqual(["trip_id", "trip-1"]);
+    });
+
+    it("returns a member-id-keyed map preserving null (redacted decline) as null", async () => {
+      const { client } = makeBuilder([
+        { id: "tm-1", rsvp_status: "going" },
+        { id: "tm-2", rsvp_status: "maybe" },
+        { id: "tm-3", rsvp_status: "pending" },
+        // Redacted decline: the view nulls the status for non-organizer
+        // viewers. The map must carry the null through — the UI treats
+        // null as "render nothing," identical to going.
+        { id: "tm-4", rsvp_status: null },
+        // Organizer-visible decline: literal status flows through.
+        { id: "tm-5", rsvp_status: "declined" },
+      ]);
+
+      const map = await getVisibleRsvpByMemberId(
+        client as unknown as SupabaseClient,
+        "trip-1"
+      );
+
+      expect(map.get("tm-1")).toBe("going");
+      expect(map.get("tm-2")).toBe("maybe");
+      expect(map.get("tm-3")).toBe("pending");
+      expect(map.get("tm-4")).toBeNull();
+      expect(map.get("tm-5")).toBe("declined");
+      expect(map.size).toBe(5);
+    });
+
+    it("returns an empty map when the view returns no rows", async () => {
+      const { client } = makeBuilder([]);
+      const map = await getVisibleRsvpByMemberId(
+        client as unknown as SupabaseClient,
+        "trip-1"
+      );
+      expect(map.size).toBe(0);
+    });
+
+    it("throws when Supabase reports an error", async () => {
+      const { client } = makeBuilder(null, { message: "boom" });
+      await expect(
+        getVisibleRsvpByMemberId(client as unknown as SupabaseClient, "trip-1")
+      ).rejects.toThrow(/getVisibleRsvpByMemberId/);
     });
   });
 });
