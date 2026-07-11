@@ -98,7 +98,14 @@ export type ErrorKey =
   | "auth_current_password_incorrect"
   | "auth_unauthenticated"
   // M5 PR5 — Google OAuth redirect failure (e.g. Supabase returns no URL).
-  | "oauth_redirect_failed";
+  | "oauth_redirect_failed"
+  // #390 — generic poll primitive. Naming follows `<feature>_<verb>_failed`.
+  // `poll_closed` and `poll_visibility_self_hidden` are DETERMINISTIC
+  // rejections (like expense_visibility_self_hidden) — no retry framing.
+  | "poll_create_failed"
+  | "poll_vote_failed"
+  | "poll_closed"
+  | "poll_visibility_self_hidden";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -186,4 +193,11 @@ export const ERRORS: Record<ErrorKey, string> = {
   // M5 PR5 — returned when supabase.auth.signInWithOAuth() returns no redirect URL.
   // Blame-free, actionable.
   oauth_redirect_failed: "Couldn't start Google sign-in. Try again in a sec.",
+  // #390 — polls. Same voice rules: blame-free, specific, no corporate
+  // language. The closed/self-hidden pair is deliberately retry-free.
+  poll_create_failed: "The poll didn't take. Run it back in a sec.",
+  poll_vote_failed: "That vote didn't land. Tap it again — it'll catch.",
+  poll_closed: "Voting's closed on this one. The crew has spoken.",
+  poll_visibility_self_hidden:
+    "That'd hide it from you too. Pick one you'd still see.",
 };

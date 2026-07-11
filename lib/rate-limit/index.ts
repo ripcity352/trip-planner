@@ -144,6 +144,13 @@ export const RATE_LIMIT_SCOPES = {
   // to cycle through passwords. NOT in FAIL_CLOSED_ON_SHIM — matches
   // AUTH_PASSWORD precedent so a bootstrapping deploy isn't bricked.
   AUTH_CHANGE_PASSWORD: "authChangePassword",
+  // #390 — generic poll primitive. CREATE_POLL is the organizer composer
+  // (low-tap; default budget is plenty). CAST_POLL_VOTE mirrors
+  // CAST_DATE_VOTE: a high-tap surface (drunk user reconsidering on bad
+  // signal) isolated so vote spam can't starve other budgets. Both
+  // fail-OPEN on shim (votes aren't credential minting).
+  CREATE_POLL: "createPoll",
+  CAST_POLL_VOTE: "castPollVote",
 } as const;
 
 export type RateLimitScope =
