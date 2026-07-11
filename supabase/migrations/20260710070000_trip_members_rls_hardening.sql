@@ -63,6 +63,20 @@ comment on function public.is_trip_founder(uuid) is
 -- value under the statement snapshot, letting a WITH CHECK pin a column
 -- to its current value (NEW.col = current_col(id)). Verified locally:
 -- the escalation matrix in the PR proves these read OLD, not NEW.
+--
+-- These are SECURITY DEFINER (bypass RLS), so they must NOT become an
+-- RLS-bypass oracle if reached outside a policy (PostgREST exposes every
+-- executable function as an RPC). Two defenses:
+--   * an embedded membership gate — a value is returned ONLY when
+--     auth.uid() is a member of the TARGET row's trip (mirrors
+--     is_trip_member_by_member_id); a cross-trip probe gets NULL. This
+--     never affects the policy path: in both the self-policy
+--     (USING auth.uid()=user_id) and the organizer-policy
+--     (USING is_trip_organizer(trip_id)) the caller is already a member
+--     of that row's trip, so the gate passes exactly when the WITH CHECK
+--     legitimately evaluates.
+--   * an execute grant trimmed to `authenticated` (below) so anon can't
+--     call them at all — belt-and-suspenders with the gate.
 create or replace function public.trip_member_current_role(p_member_id uuid)
 returns public.trip_role
 language sql
@@ -70,11 +84,18 @@ stable
 security definer
 set search_path = public
 as $$
-  select role from public.trip_members where id = p_member_id;
+  select target.role
+  from public.trip_members target
+  where target.id = p_member_id
+    and exists (
+      select 1 from public.trip_members me
+      where me.trip_id = target.trip_id
+        and me.user_id = auth.uid()
+    );
 $$;
 
 comment on function public.trip_member_current_role(uuid) is
-  'Committed (pre-UPDATE) role of a trip_members row. Lets a WITH CHECK pin/compare against the current value since policies cannot reference OLD (#418).';
+  'Committed (pre-UPDATE) role of a trip_members row, gated so it returns a value ONLY to a member of that row''s trip (NULL otherwise). Lets a WITH CHECK pin/compare against the current value since policies cannot reference OLD (#418).';
 
 create or replace function public.trip_member_current_is_celebrant(p_member_id uuid)
 returns boolean
@@ -83,11 +104,27 @@ stable
 security definer
 set search_path = public
 as $$
-  select is_celebrant from public.trip_members where id = p_member_id;
+  select target.is_celebrant
+  from public.trip_members target
+  where target.id = p_member_id
+    and exists (
+      select 1 from public.trip_members me
+      where me.trip_id = target.trip_id
+        and me.user_id = auth.uid()
+    );
 $$;
 
 comment on function public.trip_member_current_is_celebrant(uuid) is
-  'Committed (pre-UPDATE) is_celebrant of a trip_members row. Pairs with trip_member_current_role for policy-level immutability pins (#418).';
+  'Committed (pre-UPDATE) is_celebrant of a trip_members row, gated to members of that row''s trip (NULL otherwise). Pairs with trip_member_current_role for policy-level immutability pins (#418).';
+
+-- Trim the default PUBLIC execute grant so these SECURITY DEFINER helpers
+-- are never callable by anon as an RPC (mirrors the create_expense_with_splits
+-- precedent). Both UPDATE policies are TO authenticated, so anon never
+-- needs to evaluate the WITH CHECK.
+revoke execute on function public.trip_member_current_role(uuid) from public, anon;
+grant  execute on function public.trip_member_current_role(uuid) to authenticated;
+revoke execute on function public.trip_member_current_is_celebrant(uuid) from public, anon;
+grant  execute on function public.trip_member_current_is_celebrant(uuid) to authenticated;
 
 -- ---- trip_members UPDATE/DELETE hardening --------------------
 drop policy if exists "users can update their own RSVP"     on public.trip_members;
