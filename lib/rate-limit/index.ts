@@ -123,6 +123,11 @@ export const RATE_LIMIT_SCOPES = {
   // corrections can't starve fresh logging or vice versa.
   UPDATE_EXPENSE: "updateExpense",
   DELETE_EXPENSE: "deleteExpense",
+  // #389 — announcement reactions: a whole crew acking a post at once
+  // is the highest-tap surface in the app; own bucket so a reaction
+  // burst can't starve other budgets. Fail-OPEN on shim (it's an ack,
+  // not credential minting). Default 30/60s budget.
+  TOGGLE_REACTION: "toggleReaction",
   // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
   // Isolated bucket so a burst of typeahead requests doesn't starve
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED

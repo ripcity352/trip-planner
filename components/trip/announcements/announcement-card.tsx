@@ -5,6 +5,7 @@
  * relative time, pinned badge, and non-default visibility badge.
  */
 
+import type { ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Announcement } from "@/lib/db/types";
@@ -18,6 +19,12 @@ interface AnnouncementCardProps {
    * context for an anonymous announcement author.
    */
   authorDisplayName?: string | null;
+  /**
+   * Interactive reaction row (#389), rendered inside the card below the
+   * footer. A slot (not a hardwired import) so this leaf stays
+   * server-friendly and presentation-only.
+   */
+  reactionsSlot?: ReactNode;
 }
 
 /** Visibility labels for non-default values — sourced from `M3_UI_STRINGS`. */
@@ -30,6 +37,7 @@ const VISIBILITY_LABEL: Partial<Record<Announcement["visibility"], string>> = {
 export function AnnouncementCard({
   announcement,
   authorDisplayName,
+  reactionsSlot,
 }: AnnouncementCardProps) {
   const relativeTime = formatDistanceToNow(new Date(announcement.created_at), {
     addSuffix: true,
@@ -72,6 +80,9 @@ export function AnnouncementCard({
         <span aria-hidden>·</span>
         <time dateTime={announcement.created_at}>{relativeTime}</time>
       </footer>
+
+      {/* Reaction row (#389) — the ack loop. */}
+      {reactionsSlot}
     </article>
   );
 }

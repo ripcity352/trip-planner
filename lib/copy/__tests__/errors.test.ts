@@ -44,6 +44,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "expense_update_failed",
   "expense_delete_failed",
   "expense_visibility_self_hidden",
+  // #389 — announcement reactions (the ack loop)
+  "reaction_save_failed",
   // M5 auth keys (PR2)
   "auth_wrong_password",
   "auth_code_invalid",

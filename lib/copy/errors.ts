@@ -70,6 +70,8 @@ export type ErrorKey =
   | "expense_update_failed"
   | "expense_delete_failed"
   | "expense_visibility_self_hidden"
+  // #389 — announcement reactions (the ack loop). Same voice rules.
+  | "reaction_save_failed"
   | "address_lookup_failed"
   | "datetime_invalid"
   | "places_proxy_failed"
@@ -143,6 +145,9 @@ export const ERRORS: Record<ErrorKey, string> = {
   expense_delete_failed: "Couldn't take that one off the tab. Try once more.",
   expense_visibility_self_hidden:
     "That'd hide it from you too. Pick one you'd still see.",
+  // #389 — announcement reactions. Blame-free, retry-framed (a toggle on
+  // flaky cell signal is always safe to tap again).
+  reaction_save_failed: "Didn't stick. Give it another tap.",
   // M4 error strings — same voice rules. Blame-free, specific, no corporate language.
   // "Couldn't pull" / "snoozing" / "Type the address instead" — casual, actionable.
   address_lookup_failed:

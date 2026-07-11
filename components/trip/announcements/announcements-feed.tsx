@@ -19,13 +19,18 @@ import {
   AnnouncementList,
   type AnnouncementListHandle,
 } from "./announcement-list";
-import type { Announcement } from "@/lib/db/types";
+import type {
+  Announcement,
+  AnnouncementReactionSummary,
+} from "@/lib/db/types";
 
 interface AnnouncementsFeedProps {
   tripId: string;
   isOrganizer: boolean;
   initialAnnouncements: Announcement[];
   memberUserMap: ReadonlyMap<string, string | null>;
+  /** Per-announcement reaction aggregates (#389), keyed by announcement id. */
+  reactionsByAnnouncement: Record<string, AnnouncementReactionSummary>;
 }
 
 export function AnnouncementsFeed({
@@ -33,6 +38,7 @@ export function AnnouncementsFeed({
   isOrganizer,
   initialAnnouncements,
   memberUserMap,
+  reactionsByAnnouncement,
 }: AnnouncementsFeedProps) {
   const listRef = useRef<AnnouncementListHandle>(null);
 
@@ -51,6 +57,7 @@ export function AnnouncementsFeed({
         tripId={tripId}
         initialAnnouncements={initialAnnouncements}
         memberUserMap={memberUserMap}
+        reactionsByAnnouncement={reactionsByAnnouncement}
       />
     </>
   );
