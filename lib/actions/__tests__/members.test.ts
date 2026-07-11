@@ -4,9 +4,10 @@
  * The db layer is mocked at the module boundary (its query shape has its
  * own suite in lib/db/__tests__/trips.test.ts). Here we pin validation,
  * auth, the organizer-only app-layer check (RLS gates WHO can touch a
- * row; this action layer gates WHAT — role values and seat protections;
- * DB-layer hardening tracked in #418), the #386 guards (self / celebrant / original
- * organizer), idempotency replay, rate-limit scopes, and error mapping.
+ * row and — as of #418 — also WHAT via WITH CHECK; this action layer
+ * mirrors those seat protections with warm copy), the #386 guards
+ * (self / celebrant / original organizer), idempotency replay,
+ * rate-limit scopes, and error mapping.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
