@@ -15,21 +15,33 @@
  * RLS gates every read at the database level:
  *   - `polls`        → can_see_content(trip_id, visibility)
  *   - `poll_options` → visible with their poll
- *   - `poll_votes`   → readable with their poll (celebrant fully blind
- *                      to hide_from_celebrant polls' votes)
+ *   - `poll_votes`   → own-row only (#420): a member reads ONLY their own
+ *                      vote, so per-name votes can't be reconstructed via
+ *                      a direct select. Aggregate counts come from the
+ *                      `get_poll_vote_counts` SECURITY DEFINER RPC, which
+ *                      re-checks can_see_content so the celebrant stays
+ *                      fully blind to hide_from_celebrant polls' votes.
  *
  * The app layer is a thin typed wrapper.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Poll, PollOption, PollOptionView, PollView, PollVote } from "./types";
+import type {
+  MyPollVote,
+  Poll,
+  PollOption,
+  PollOptionView,
+  PollView,
+  PollVoteCount,
+} from "./types";
 
 const POLL_COLUMNS =
   "id, trip_id, question, visibility, closes_on, created_by, idempotency_key, created_at";
 const OPTION_COLUMNS = "id, poll_id, label, position";
-const VOTE_COLUMNS =
-  "poll_id, option_id, trip_member_id, voted_at, idempotency_key";
+// Own-vote read (#420): only the viewer's own poll → option pair. Never
+// selects trip_member_id of other members — the own-row RLS blocks it.
+const MY_VOTE_COLUMNS = "poll_id, option_id";
 
 /**
  * Lists all polls the viewer can see for a trip, newest first (the
@@ -71,13 +83,25 @@ export async function getPollsViewModel(
 
   const pollIds = polls.map((p) => p.id);
 
-  const [optionsResult, votesResult] = await Promise.all([
+  // Aggregate counts come from the SECURITY DEFINER RPC (#420) — it spans
+  // all voters while re-checking can_see_content, so the celebrant stays
+  // blind to hidden polls. The viewer's own votes come from the own-row
+  // poll_votes read (all a member can now see of that table). Options
+  // ride along for order + labels.
+  const [optionsResult, countsResult, myVotesResult] = await Promise.all([
     supabase
       .from("poll_options")
       .select(OPTION_COLUMNS)
       .in("poll_id", pollIds)
       .order("position", { ascending: true }),
-    supabase.from("poll_votes").select(VOTE_COLUMNS).in("poll_id", pollIds),
+    supabase.rpc("get_poll_vote_counts", { p_trip_id: tripId }),
+    viewerTripMemberId
+      ? supabase
+          .from("poll_votes")
+          .select(MY_VOTE_COLUMNS)
+          .eq("trip_member_id", viewerTripMemberId)
+          .in("poll_id", pollIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (optionsResult.error) {
@@ -85,15 +109,20 @@ export async function getPollsViewModel(
       `getPollsViewModel failed: ${optionsResult.error.message}`
     );
   }
-  if (votesResult.error) {
-    throw new Error(`getPollsViewModel failed: ${votesResult.error.message}`);
+  if (countsResult.error) {
+    throw new Error(`getPollsViewModel failed: ${countsResult.error.message}`);
+  }
+  if (myVotesResult.error) {
+    throw new Error(
+      `getPollsViewModel failed: ${myVotesResult.error.message}`
+    );
   }
 
   return buildPollViews(
     polls,
     (optionsResult.data ?? []) as PollOption[],
-    (votesResult.data ?? []) as PollVote[],
-    viewerTripMemberId
+    (countsResult.data ?? []) as PollVoteCount[],
+    (myVotesResult.data ?? []) as MyPollVote[]
   );
 }
 
@@ -103,22 +132,27 @@ export async function getPollsViewModel(
 
 /**
  * Assemble the view-model. Pure — does not mutate inputs. Options are
- * re-sorted by `position` defensively; votes aggregate to counts only
- * (aggregate-only ADR), plus the viewer's own choice.
+ * re-sorted by `position` defensively.
+ *
+ * Aggregate-only per ADR (#420): `counts` is the per-option tally from
+ * the `get_poll_vote_counts` RPC (never carries a trip_member_id), and
+ * `myVotes` is the viewer's OWN votes from the own-row read. The two
+ * sources are kept separate at the DB so peers' votes never reach the
+ * client — this function only maps them onto the view-model.
  */
 export function buildPollViews(
   polls: ReadonlyArray<Poll>,
   options: ReadonlyArray<PollOption>,
-  votes: ReadonlyArray<PollVote>,
-  viewerTripMemberId: string | undefined
+  counts: ReadonlyArray<PollVoteCount>,
+  myVotes: ReadonlyArray<MyPollVote>
 ): PollView[] {
   const countsByOption = new Map<string, number>();
+  for (const c of counts) {
+    countsByOption.set(c.option_id, c.votes);
+  }
   const myOptionByPoll = new Map<string, string>();
-  for (const v of votes) {
-    countsByOption.set(v.option_id, (countsByOption.get(v.option_id) ?? 0) + 1);
-    if (viewerTripMemberId && v.trip_member_id === viewerTripMemberId) {
-      myOptionByPoll.set(v.poll_id, v.option_id);
-    }
+  for (const v of myVotes) {
+    myOptionByPoll.set(v.poll_id, v.option_id);
   }
 
   return polls.map((poll) => {

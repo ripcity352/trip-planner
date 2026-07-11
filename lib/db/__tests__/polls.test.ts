@@ -10,9 +10,12 @@
  *
  *   2. The pure helpers (`buildPollViews`, `isPollClosed`,
  *      `leadingOptions`) — table-driven so the aggregate/deadline
- *      semantics can't drift silently. Aggregate-only per ADR: the
- *      view-model carries counts and the viewer's own choice, never
- *      voter names.
+ *      semantics can't drift silently.
+ *
+ * Aggregate-only at the DB (#420): counts arrive from the
+ * `get_poll_vote_counts` RPC (ids + counts only, no trip_member_id) and
+ * the viewer's own choice from the own-row `poll_votes` read. The two
+ * sources are separate on purpose — peers' votes never reach the client.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -25,13 +28,27 @@ import {
   leadingOptions,
   listPolls,
 } from "../polls";
-import type { Poll, PollOption, PollVote, PollView } from "../types";
+import type {
+  MyPollVote,
+  Poll,
+  PollOption,
+  PollView,
+  PollVoteCount,
+} from "../types";
 
+type Resolved = { data: unknown; error: unknown };
+
+/**
+ * `tableResolvers` drives `.from(table)` reads; `rpcResolvers` drives
+ * `.rpc(name)` calls (the #420 aggregate path). An unmapped table/rpc
+ * resolves to an empty, error-free payload.
+ */
 function makeClient(
-  tableResolvers: Record<string, () => { data: unknown; error: unknown }>
+  tableResolvers: Record<string, () => Resolved>,
+  rpcResolvers: Record<string, () => Resolved> = {}
 ) {
   const buildProxy = (tableName: string): Record<string, unknown> => {
-    const thenable: PromiseLike<{ data: unknown; error: unknown }> = {
+    const thenable: PromiseLike<Resolved> = {
       then(onfulfilled) {
         const result = tableResolvers[tableName]?.() ?? {
           data: [],
@@ -52,6 +69,9 @@ function makeClient(
 
   return {
     from: vi.fn((table: string) => buildProxy(table)),
+    rpc: vi.fn((name: string) =>
+      Promise.resolve(rpcResolvers[name]?.() ?? { data: [], error: null })
+    ),
   } as unknown as SupabaseClient;
 }
 
@@ -79,14 +99,11 @@ const OPT_B: PollOption = {
   position: 1,
 };
 
-function vote(optionId: string, memberId: string): PollVote {
-  return {
-    poll_id: "poll-1",
-    option_id: optionId,
-    trip_member_id: memberId,
-    voted_at: "2026-07-09T11:00:00.000Z",
-    idempotency_key: null,
-  };
+function count(optionId: string, votes: number): PollVoteCount {
+  return { poll_id: "poll-1", option_id: optionId, votes };
+}
+function myVote(optionId: string): MyPollVote {
+  return { poll_id: "poll-1", option_id: optionId };
 }
 
 describe("listPolls", () => {
@@ -109,12 +126,12 @@ describe("listPolls", () => {
 });
 
 describe("buildPollViews (pure)", () => {
-  it("aggregates votes per option and totals, marking the viewer's own choice", () => {
+  it("maps aggregate counts + own choice onto the view-model", () => {
     const views = buildPollViews(
       [POLL],
       [OPT_A, OPT_B],
-      [vote("opt-a", "m1"), vote("opt-a", "m2"), vote("opt-b", "m3")],
-      "m3"
+      [count("opt-a", 2), count("opt-b", 1)],
+      [myVote("opt-b")]
     );
     expect(views).toHaveLength(1);
     const view = views[0] as PollView;
@@ -124,8 +141,8 @@ describe("buildPollViews (pure)", () => {
     expect(view.options.map((o) => o.is_my_vote)).toEqual([false, true]);
   });
 
-  it("zero-buckets options with no votes and null my_option_id for non-voters", () => {
-    const views = buildPollViews([POLL], [OPT_A, OPT_B], [], "m1");
+  it("zero-buckets options with no counts and null my_option_id for non-voters", () => {
+    const views = buildPollViews([POLL], [OPT_A, OPT_B], [], []);
     const view = views[0] as PollView;
     expect(view.total_votes).toBe(0);
     expect(view.my_option_id).toBeNull();
@@ -133,14 +150,14 @@ describe("buildPollViews (pure)", () => {
   });
 
   it("orders options by position regardless of input order", () => {
-    const views = buildPollViews([POLL], [OPT_B, OPT_A], [], undefined);
+    const views = buildPollViews([POLL], [OPT_B, OPT_A], [], []);
     const view = views[0] as PollView;
     expect(view.options.map((o) => o.option.id)).toEqual(["opt-a", "opt-b"]);
   });
 
   it("does not mutate its inputs", () => {
     const options = [OPT_B, OPT_A];
-    buildPollViews([POLL], options, [], undefined);
+    buildPollViews([POLL], options, [], []);
     expect(options).toEqual([OPT_B, OPT_A]);
   });
 });
@@ -187,38 +204,81 @@ describe("leadingOptions (pure)", () => {
 });
 
 describe("getPollsViewModel", () => {
-  it("assembles polls + options + votes into views for the viewer", async () => {
-    const client = makeClient({
-      polls: () => ({ data: [POLL], error: null }),
-      poll_options: () => ({ data: [OPT_A, OPT_B], error: null }),
-      poll_votes: () => ({
-        data: [vote("opt-a", "m1"), vote("opt-b", "m2")],
-        error: null,
-      }),
-    });
+  it("assembles polls + options + aggregate counts + own vote into views", async () => {
+    const client = makeClient(
+      {
+        polls: () => ({ data: [POLL], error: null }),
+        poll_options: () => ({ data: [OPT_A, OPT_B], error: null }),
+        // Own-row read: only the viewer's own vote comes back.
+        poll_votes: () => ({ data: [myVote("opt-b")], error: null }),
+      },
+      {
+        get_poll_vote_counts: () => ({
+          data: [count("opt-a", 1), count("opt-b", 1)],
+          error: null,
+        }),
+      }
+    );
     const views = await getPollsViewModel(client, "trip-1", "m2");
     expect(views).toHaveLength(1);
     expect(views[0]?.total_votes).toBe(2);
     expect(views[0]?.my_option_id).toBe("opt-b");
+    // Aggregate counts must come from the RPC, never a raw all-voter read.
+    expect(client.rpc).toHaveBeenCalledWith("get_poll_vote_counts", {
+      p_trip_id: "trip-1",
+    });
   });
 
-  it("returns [] without touching options/votes when there are no polls", async () => {
+  it("skips the own-vote read for a viewer without a member row", async () => {
+    const client = makeClient(
+      {
+        polls: () => ({ data: [POLL], error: null }),
+        poll_options: () => ({ data: [OPT_A, OPT_B], error: null }),
+      },
+      {
+        get_poll_vote_counts: () => ({
+          data: [count("opt-a", 2), count("opt-b", 0)],
+          error: null,
+        }),
+      }
+    );
+    const views = await getPollsViewModel(client, "trip-1", undefined);
+    expect(views[0]?.total_votes).toBe(2);
+    expect(views[0]?.my_option_id).toBeNull();
+    // No member row → we never touch the votes table at all.
+    expect(client.from).not.toHaveBeenCalledWith("poll_votes");
+  });
+
+  it("returns [] without touching options/counts when there are no polls", async () => {
     const optionsResolver = vi.fn(() => ({ data: [], error: null }));
-    const client = makeClient({
-      polls: () => ({ data: [], error: null }),
-      poll_options: optionsResolver,
-    });
+    const countsResolver = vi.fn(() => ({ data: [], error: null }));
+    const client = makeClient(
+      {
+        polls: () => ({ data: [], error: null }),
+        poll_options: optionsResolver,
+      },
+      { get_poll_vote_counts: countsResolver }
+    );
     const views = await getPollsViewModel(client, "trip-1", "m1");
     expect(views).toEqual([]);
     expect(optionsResolver).not.toHaveBeenCalled();
+    expect(countsResolver).not.toHaveBeenCalled();
   });
 
-  it("throws a scoped error when the votes read fails", async () => {
-    const client = makeClient({
-      polls: () => ({ data: [POLL], error: null }),
-      poll_options: () => ({ data: [OPT_A, OPT_B], error: null }),
-      poll_votes: () => ({ data: null, error: { message: "nope" } }),
-    });
+  it("throws a scoped error when the counts RPC fails", async () => {
+    const client = makeClient(
+      {
+        polls: () => ({ data: [POLL], error: null }),
+        poll_options: () => ({ data: [OPT_A, OPT_B], error: null }),
+        poll_votes: () => ({ data: [], error: null }),
+      },
+      {
+        get_poll_vote_counts: () => ({
+          data: null,
+          error: { message: "nope" },
+        }),
+      }
+    );
     await expect(
       getPollsViewModel(client, "trip-1", "m1")
     ).rejects.toThrow(/getPollsViewModel failed: nope/);
