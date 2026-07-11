@@ -126,6 +126,53 @@ describe("NowNextCard", () => {
     expect(screen.getByText("Check in")).toBeInTheDocument();
   });
 
+  it("carries the day on the up-next line when the next item is on a different calendar day (#404-A)", async () => {
+    const { whatsHappeningNow } = await import(
+      "@/lib/utils/whats-happening-now"
+    );
+    const { format, parseISO } = await import("date-fns");
+    // Far-future day so it always differs from today's real date and is
+    // reliably after `now` (the component reads the real clock).
+    const futureItem = makeItem("a", "2099-07-29", "Welcome dinner");
+    futureItem.start_time = "18:30";
+    vi.mocked(whatsHappeningNow).mockReturnValue({
+      now: null,
+      next: futureItem,
+    });
+
+    const { NowNextCard } = await import("@/components/trip/now-next-card");
+    const trip = makeTrip({ starts_at: "2099-07-29", ends_at: "2099-08-01" });
+
+    render(await NowNextCard({ trip, items: [futureItem] }));
+
+    const expectedDay = format(parseISO("2099-07-29"), "EEE MMM d");
+    expect(
+      screen.getByText(`${expectedDay} · 6:30 PM`)
+    ).toBeInTheDocument();
+  });
+
+  it("shows the countdown line alongside an up-next item when nothing is active (#404-A)", async () => {
+    const { whatsHappeningNow } = await import(
+      "@/lib/utils/whats-happening-now"
+    );
+    // A future item exists but nothing is currently in progress — the old
+    // `!currentItem && !nextItem` gate made this branch unreachable.
+    const futureItem = makeItem("a", "2099-07-29", "Welcome dinner");
+    vi.mocked(whatsHappeningNow).mockReturnValue({
+      now: null,
+      next: futureItem,
+    });
+
+    const { NowNextCard } = await import("@/components/trip/now-next-card");
+    const trip = makeTrip({ starts_at: "2099-07-29", ends_at: "2099-08-01" });
+
+    render(await NowNextCard({ trip, items: [futureItem] }));
+
+    expect(
+      screen.getByText(/Trip starts in \d+ days\./)
+    ).toBeInTheDocument();
+  });
+
   it("shows now and next headings when in-trip", async () => {
     const { whatsHappeningNow } = await import(
       "@/lib/utils/whats-happening-now"

@@ -349,6 +349,48 @@ SQL function signatures return `date`, and any boundary that receives a
 midnight-UTC timestamp for a known date-only value truncates back to the
 date part at the data layer (`lib/db`), never in components.
 
+### Next-item disambiguation axis (#404-A)
+
+A "next up" time renders **bare** (`6:30 pm`) only when the item is on
+**today's** calendar day. When the next item is on a *different* day than
+now — the common planning-phase case, an event weeks out — the render
+**carries the day** (`Wed Jul 29 · 6:30 pm`). A bare time on a
+three-weeks-out item reads as "happening tonight" to a fresh member's
+first scan — the exact ambiguity this axis closes. Consumer:
+`NowNextCard`'s "up next" line. This is the missing axis the M3 DoD's
+"countdown + first item" implied but never specced; the countdown half
+(`Trip starts in N days.`) surfaces whenever nothing is currently active
+and the trip hasn't started, alongside the first item — not only when
+there is no next item.
+
+---
+
+## Form-field error copy axis (#401)
+
+**A client-side field-validation failure must NAME itself in words — a
+border-colour shift alone is not a valid error surface.** The register:
+
+- **Copy source.** The message comes from `lib/copy/field-errors.ts`
+  (`FIELD_ERRORS`), attached to the zod field as its `message` so
+  `formState.errors.<field>.message` renders it verbatim. Never an inline
+  literal, never zod's default ("Body is required" / "Invalid input").
+  `FIELD_ERRORS` is the *client field-validation* register — distinct
+  from `ERRORS` (`lib/copy/errors.ts`), which names *server-action*
+  failures.
+- **`aria-invalid`.** Set on the offending field when (and only when) it
+  has an error, with `aria-describedby` pointing at the message node.
+- **Placement.** One short line immediately below the field, styled with
+  the shared `ERROR_LINE_CLASS` (#209 ink + hairline, never a red flood),
+  `role="alert"`.
+
+Why: at 375px a coral border is easy to miss, and an organizer whose
+"Send it" / "Log it" silently no-ops falls back to the group chat. The
+gap this closes: `AnnouncementComposer` and `AddExpenseSheet` shifted a
+border with `aria-invalid` null and **no text** on empty/whitespace/
+over-length body and on blank-description / zero-amount expense.
+Consumers today: those two composers; any future client-validated form
+binds here.
+
 ---
 
 ## Spacing
