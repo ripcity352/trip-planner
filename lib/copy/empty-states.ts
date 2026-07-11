@@ -468,3 +468,28 @@ export const M5_UI_STRINGS = {
   polls_closed_no_votes: "Nobody weighed in. Organizer's call.",
   polls_option_vote_aria_template: "Vote {label}",
 } as const;
+
+/**
+ * #388 — day-scoped attendance strings. Voice rule unchanged: would you
+ * say it out loud at a pre-trip dinner?
+ *
+ * Rule-8 framing is load-bearing here: the chips ask which days you're
+ * AROUND — the member opts into days, nobody is assumed-in. No nudge,
+ * no "complete your attendance" pressure; "change it whenever" keeps it
+ * a zero-stakes tap.
+ */
+export const MEMBER_DAYS_UI_STRINGS = {
+  // /me — day chips under the profile card
+  memberDays_heading: "Which days are you around?",
+  memberDays_subhead: "Tap yourself in or out. Change it whenever.",
+  // Screen-reader label for the chip group (the visible heading is the
+  // section h2; the group repeats it for AT users who land on the group).
+  memberDays_group_aria: "Which days are you around?",
+  // Roster — organizer-only per-day headcount line
+  memberDays_headcount_heading: "Who's around when",
+  // Screen-reader expansion of the mono "thu 8 · fri 12" line — the
+  // compact register is ambiguous read aloud ("thu 8" could be a date).
+  memberDays_headcount_day_aria_template: "{count} in on {day}",
+} as const;
+
+export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;

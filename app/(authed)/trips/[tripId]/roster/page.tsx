@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { RosterList } from "@/components/trip/roster/roster-list";
+import { DayHeadcount } from "@/components/trip/day-headcount";
 import type { RosterMember } from "@/components/trip/roster/roster-list";
 
 type PageProps = {
@@ -65,6 +66,14 @@ export default async function RosterPage({ params }: PageProps) {
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">{trip.name}</p>
       </header>
+
+      {/* #388 — organizer-only per-day headcount (self-contained; single mount) */}
+      <DayHeadcount
+        tripId={trip.id}
+        viewerRole={viewer.role}
+        startsAt={trip.starts_at}
+        endsAt={trip.ends_at}
+      />
 
       <RosterList
         members={members}
