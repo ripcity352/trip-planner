@@ -10,16 +10,18 @@
  *     validated per rule 9 but not persisted, and a target that is
  *     already gone returns ok.
  *
- * Authz split (accurate — do not overstate): RLS gates WHO can touch a
- * trip_members row ("organizers can update any trip member" UPDATE
- * policy + "organizers can remove members" DELETE policy, M1). These
- * actions gate WHAT may change — the settable role values and the
- * founder/celebrant/self/expense-ties protections live HERE ONLY. The
- * M1 UPDATE policies carry no WITH CHECK on role, so a direct-PostgREST
- * caller inside the policy scope is not blocked from hostile role
- * writes at the DB layer today. DB-layer hardening is tracked in #418;
- * until it lands, this action layer is the load-bearing guard for
- * role-value and seat-protection invariants.
+ * Authz split: RLS gates WHO can touch a trip_members row ("organizers
+ * can update any trip member" UPDATE policy + "organizers can remove
+ * members" DELETE policy). As of #418 (migration
+ * 20260710070000_trip_members_rls_hardening) those policies ALSO carry
+ * WITH CHECK constraints that pin the settable role set
+ * ({attendee, co_organizer}, never 'organizer'), forbid non-founders
+ * from mutating the founder row or flipping is_celebrant, and make the
+ * founder/celebrant seats undeletable — so a direct-PostgREST caller can
+ * no longer self-escalate or delete a protected seat. These actions
+ * mirror those invariants with warm rule-explaining copy and add the
+ * app-only checks (self-removal + expense-ties) that aren't
+ * privilege-escalation vectors.
  *
  * Guards (#386 — deterministic rejections, warm rule-explaining copy):
  *   - can't remove yourself (`member_remove_self`)

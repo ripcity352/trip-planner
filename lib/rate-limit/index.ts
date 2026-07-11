@@ -136,8 +136,8 @@ export const RATE_LIMIT_SCOPES = {
   // #386 — organizer member management (role flip + remove). One bucket
   // each so a burst of roster edits can't starve other budgets. Default
   // 30/60s is plenty for a human cleaning a roster. RLS gates WHO may
-  // write; the action layer gates WHAT (role values, seat protections —
-  // DB hardening tracked in #418). NOT in FAIL_CLOSED_ON_SHIM — same
+  // write and — as of #418 — WHAT (role values + seat protections via
+  // WITH CHECK); the action layer mirrors it. NOT in FAIL_CLOSED_ON_SHIM — same
   // posture as the other authed trip mutations (a bootstrapping deploy
   // must not brick them).
   SET_MEMBER_ROLE: "setMemberRole",

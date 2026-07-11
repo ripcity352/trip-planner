@@ -195,12 +195,13 @@ export async function getTripMemberById(
 /**
  * Write a member's role (attendee ↔ co_organizer) plus the mutation's
  * idempotency_key (#386, rule 9). RLS ("organizers can update any trip
- * member") gates WHO can run this write; it does NOT constrain the role
- * VALUE (no WITH CHECK on role — DB-layer hardening tracked in #418).
- * The value/seat guards live in `lib/actions/members.ts` and are
- * load-bearing. We chain `.select(...).maybeSingle()` so a
- * policy-swallowed zero-row update is detectable — returns false instead
- * of lying about success.
+ * member") gates WHO can run this write; as of #418 its WITH CHECK ALSO
+ * constrains the role VALUE (non-founder → {attendee, co_organizer}) and
+ * protects the founder/celebrant rows, so the seat invariants are now
+ * DB-enforced, not app-only. The app guards in `lib/actions/members.ts`
+ * remain as warm rule-explaining copy + the expense-ties check. We chain
+ * `.select(...).maybeSingle()` so a policy-swallowed zero-row update is
+ * detectable — returns false instead of lying about success.
  *
  * Deliberately NOT settable to 'organizer': the founder seat is assigned
  * once, by `create_trip_with_organizer`, never through this path.
