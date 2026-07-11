@@ -69,6 +69,122 @@ codebase's DEFINER-function idiom (`can_see_content`, `is_trip_member`,
 
 ---
 
+## 2026-07-09/11 — Aggressive feature session: audit → 4-wave build (operator-directed, M6 gate lifted per-item)
+
+Three-phase ultracode session (operator ripcity352). Phase 1: a 9-hunter
+audit workflow (5 persona lifecycle walks @375px + error/edge probe +
+two-client realtime probe + repo sweep + persona-needs diff) against a
+seeded local trip → 90 raw findings → 51-entry reconciliation matrix, with
+every P0/P1 unfiled gap adversarially re-verified. Phase 2: 26 issues filed
+(#381–#406). Phase 3: 18 PRs built across 4 dependency-ordered waves and
+merged on green CI + a full local e2e gate each. Report + matrix live at the
+session scratchpad (`phase1-report.md` / `phase1-matrix.json`).
+
+**GATE DECISION.** The operator lifted the M6 real-trip-retro gate for the
+five features approved at the Phase-2 checkpoint: **roster member
+management (#386)**, **per-name RSVP holdout surface (#387)**, **announcement
+reactions / ack loop (#389)**, **generic poll primitive (#390)**, and
+**day-scoped attendance UI (#388)** — plus three small lifts folded into
+their packs (#392/#394/#368 were NOT built this session; see carry-forward).
+The gate REMAINS in place for the rest of the M5 "Earned post-trip" backlog
+(itemized money pool, proration, comping, nudges, recap, photos, Splitwise,
+templates, retention engine, etc.).
+
+**Landed — 18 PRs, 5 prod migrations:**
+
+- **Wave 1 (bug fixes, no migration):** #407 (#381) item-RSVP read scoped to
+  the caller's `trip_member_id` — the trip-wide SELECT policy was leaking
+  every member's per-item RSVP into the viewer's map (silent-opt-out ADR
+  violation + headcount corruption); #408 (#382+#396) travel-leg times parse
+  in trip TZ (re-pointed to the existing `format-trip-tz` pair) + flight
+  numbers rendered; #410 (#349+#400) realtime subscriptions authenticate
+  before `subscribe()` (supabase-js only calls `setAuth` on
+  SIGNED_IN/TOKEN_REFRESHED, so fresh-load subs joined with anon claims and
+  walrus RLS silently filtered every frame) + `castDateVote` joins the F2
+  revalidate contract; #409 (#385+#397) dead-invite-link row state + distinct
+  shim-fail-closed mint copy.
+- **Wave 2 (migration batch):** #413 (#383+#384) correctable money —
+  expenses UPDATE/DELETE RLS + atomic `create_expense_with_splits` RPC
+  (SECURITY INVOKER, uuid generated inside, no `INSERT..RETURNING` so the
+  author-invisible-visibility 42501 abort is gone) + edit/delete UI +
+  role-filtered visibility composer; #412 (#367+#402) `invite_preview` v2
+  (date-typed returns closing the #364 deferral + `viewer_is_member` +
+  member-only `trip_slug`) + already-member CTA + trip-specific OG metadata;
+  #411 orphaned `availability` table dropped (`trip_member_days` explicitly
+  kept). #414 re-timestamped the expenses migration after an out-of-order
+  merge (see the migration-ordering note below).
+- **Wave 3 (gate-lifted features):** #416 (#386+#387) organizer member
+  management (make/unmake co-organizer, remove — over existing RLS, with a
+  removal guard refusing members who have expense splits or are a payer, so
+  the `sum(splits)==amount_cents` invariant can't be silently broken by a
+  cascade delete) + per-name RSVP chips sourced from
+  `trip_members_visible_rsvp` (maybe/pending member-visible, declined
+  organizer-only, going unmarked — factual, no shame axis); #415 (#388)
+  day-scoped attendance chips on `/me` + organizer DayHeadcount on the roster,
+  over the M1 `trip_member_days` table (kept, not dropped) + a trigger
+  reconcile migration; #419 (#390) generic polls primitive (polls +
+  poll_options 2–4 + poll_votes, atomic RPC, `<PulsePoll>` reused,
+  aggregate-only, `custom` visibility dropped from the action enum); #417
+  (#389) announcement reactions (fixed 6-emoji set, RLS inherits the parent
+  announcement's visibility so a hide_from_celebrant reaction is invisible
+  AND unwritable to the celebrant).
+- **Wave 4 (reconcile + security hardening + polish):** #421 (#369) date-poll
+  reconcile — wired the phantom `lockInCandidateAction`, `isDatePollDecided`
+  as the single source of truth for decided vs live-poll state, fixed the
+  copy-invites-a-missing-action empty state; #422 (#418) DB-enforce the
+  `trip_members` role/founder/celebrant invariants (the self-escalation vuln
+  — a plain attendee could `update({role:'organizer'})` via direct PostgREST
+  because the M1 policy had no WITH CHECK on role); #423 (#420) vote tables
+  made aggregate-only at the DB (own-row SELECT + SECURITY DEFINER count
+  functions), for BOTH the new polls and the pre-existing date poll; #424
+  (#404+#405+#401+#395) polish pack — NowNext date register, identity/voice
+  fixes, composer field-error copy, invite sign-up affordance.
+
+**Load-bearing decisions & things worth keeping:**
+
+- **The adversarial review pass earned its keep twice.** Independent
+  code-review (separate from each builder's own reviewers) caught two real
+  issues the builders' reviewers missed: (1) #416's member-removal cascade
+  silently breaking the expense-split sum invariant (fixed in-PR with a
+  removal guard), and (2) #422's new SECURITY DEFINER accessors shipping with
+  no grant/revoke — an **anon-callable RLS-bypass oracle** leaking any
+  member's role/celebrant status by id (fixed with revoke-from-anon + an
+  in-function membership gate; prod-verified anon EXECUTE is denied). Both
+  are recorded here because the pattern — "a new SECURITY DEFINER function in
+  `public` is a public API endpoint unless you revoke PUBLIC" — will recur.
+- **RLS gates WHO, the app action gates WHAT.** #416 originally claimed "RLS
+  is the real gate; the app check is UX." That was load-bearing FALSE (the M1
+  `trip_members` policies had no column constraints) and was corrected in-PR;
+  #418→#422 then made it true at the DB. Do not re-assert the false framing.
+- **#361 grant-repair vs new REVOKEs interaction.** The local `db reset`
+  grant-repair (blanket `grant all on all functions ... to anon`) re-grants
+  EXECUTE that the expenses-RPC and the new RLS-hardening migrations
+  deliberately REVOKE from anon. The local e2e gate must re-apply those
+  targeted revokes AFTER the grant repair (this session did, per PR). The
+  durable #361 fix must not blanket-grant function EXECUTE to anon, or it
+  will silently re-open every intentional revoke.
+- **Migration ordering under parallel waves.** Out-of-order merges
+  (#411/#412 landing before #413) made main's `supabase db push` refuse a
+  lower-timestamped migration; fixed by re-timestamping (#414). Rule for
+  future parallel migration PRs: **merge strictly in timestamp order**, and
+  when siblings touch shared append-only files (`lib/copy/*`, rate-limit
+  scopes) serialize the rebases (resolve+merge one, rebase the next onto it)
+  rather than rebasing all at once.
+- Celebrant visibility verified leak-free end-to-end at the raw-HTML level
+  across all shipped visibility-touching surfaces (expenses edit/delete,
+  reactions, polls, the named hide-from-celebrant badge).
+
+**Carry-forward (filed, not built):** #418→ (superseded, closed by #422);
+**#420** aggregate-only tightening (shipped as #423); the security follow-up
+**#418** self-escalation (shipped as #422). Still open from Phase 2:
+UX packs #392 (dietary aggregate), #391 (split attendance defaults), #394
+(itinerary cost display), #398 (custom flags render-back), #399 (itinerary
+flags density), #368 (phone capture), #403 (local OTP template drift), #406
+(Next-16 pageerror research), #371 (dead-code sweep); the deferred
+`content_visibility_grants` custom-audience join still unbuilt.
+
+---
+
 ## 2026-07-09 — #349/#400 — Realtime subscriptions authenticate before subscribe; castDateVote exits the F2 exclusion
 
 **Gap named (two axes missing from the spec):**
