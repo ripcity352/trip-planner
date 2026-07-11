@@ -3,8 +3,9 @@
  *
  * The db layer is mocked at the module boundary (its query shape has its
  * own suite in lib/db/__tests__/trips.test.ts). Here we pin validation,
- * auth, the organizer-only app-layer check (RLS is the real gate; this
- * is the UX mirror), the #386 guards (self / celebrant / original
+ * auth, the organizer-only app-layer check (RLS gates WHO can touch a
+ * row; this action layer gates WHAT — role values and seat protections;
+ * DB-layer hardening tracked in #418), the #386 guards (self / celebrant / original
  * organizer), idempotency replay, rate-limit scopes, and error mapping.
  */
 
@@ -36,6 +37,18 @@ vi.mock("@/lib/db/trips", async () => {
       updateTripMemberRoleMock(...(args as [])),
     deleteTripMember: (...args: unknown[]) =>
       deleteTripMemberMock(...(args as [])),
+  };
+});
+
+const memberHasExpenseTiesMock = vi.fn();
+vi.mock("@/lib/db/expenses", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/db/expenses")>(
+    "@/lib/db/expenses"
+  );
+  return {
+    ...actual,
+    memberHasExpenseTies: (...args: unknown[]) =>
+      memberHasExpenseTiesMock(...(args as [])),
   };
 });
 
@@ -99,6 +112,7 @@ function resetMocks() {
   getTripMemberByIdMock.mockReset();
   updateTripMemberRoleMock.mockReset();
   deleteTripMemberMock.mockReset();
+  memberHasExpenseTiesMock.mockReset();
   rateLimitedActionMock.mockClear();
   revalidatePathMock.mockReset();
 
@@ -111,6 +125,7 @@ function resetMocks() {
   getTripMemberByIdMock.mockResolvedValue(ATTENDEE_TARGET);
   updateTripMemberRoleMock.mockResolvedValue(true);
   deleteTripMemberMock.mockResolvedValue(1);
+  memberHasExpenseTiesMock.mockResolvedValue(false);
   vi.spyOn(console, "error").mockImplementation(() => {});
 }
 
@@ -378,6 +393,34 @@ describe("removeMemberAction", () => {
       errorKey: "member_organizer_locked",
     });
     expect(deleteTripMemberMock).not.toHaveBeenCalled();
+  });
+
+  // Money invariant (fix-first on #416): expense_splits.trip_member_id is
+  // ON DELETE CASCADE, so removing a tied member would silently delete
+  // their splits and break sum(splits) == amount_cents. Removal is
+  // refused while ties exist; split rewrite is deliberately out of scope.
+  it("refuses to remove a member who is on the hook for expenses", async () => {
+    memberHasExpenseTiesMock.mockResolvedValue(true);
+    const { removeMemberAction } = await import("@/lib/actions/members");
+    const result = await removeMemberAction(REMOVE_INPUT, KEY);
+
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "member_remove_has_expenses",
+    });
+    expect(deleteTripMemberMock).not.toHaveBeenCalled();
+  });
+
+  it("checks ties against the target's member id AND user id (payer side)", async () => {
+    const { removeMemberAction } = await import("@/lib/actions/members");
+    await removeMemberAction(REMOVE_INPUT, KEY);
+
+    expect(memberHasExpenseTiesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      TRIP_ID,
+      TARGET_MEMBER_ID,
+      "u-target"
+    );
   });
 
   it("removes under the dedicated removeMember scope and revalidates", async () => {

@@ -101,6 +101,59 @@ export async function getSplitsByTrip(
   return (data ?? []).map(({ expenses: _join, ...rest }) => rest) as unknown as ExpenseSplit[];
 }
 
+/**
+ * True when a trip member is financially tied to the trip's ledger:
+ * they appear in any expense split, OR (when they have an account)
+ * they paid for anything on the trip.
+ *
+ * Money-invariant guard for member removal (#386 fix-first on PR #416):
+ * `expense_splits.trip_member_id` is ON DELETE CASCADE, so deleting a
+ * tied member would silently drop their splits and break
+ * `sum(splits) == amount_cents`. The remove action refuses while ties
+ * exist — settle or edit the expenses first. Split-rewrite-on-removal
+ * is deliberately NOT built.
+ *
+ * Head-only exact counts — no row payloads. The payer check is
+ * trip-scoped (rule 6) and skipped for accountless members
+ * (`user_id null` can't be a payer; `payer_id` references auth.users).
+ */
+export async function memberHasExpenseTies(
+  supabase: SupabaseClient,
+  tripId: string,
+  memberId: string,
+  userId: string | null
+): Promise<boolean> {
+  // Splits: trip_member_id is globally unique (PK of trip_members), so
+  // no extra trip filter is needed — the member IS the trip scope.
+  const { count: splitCount, error: splitError } = await supabase
+    .from("expense_splits")
+    .select("expense_id", { count: "exact", head: true })
+    .eq("trip_member_id", memberId);
+
+  if (splitError) {
+    throw new Error(`memberHasExpenseTies failed: ${splitError.message}`);
+  }
+  if ((splitCount ?? 0) > 0) {
+    return true;
+  }
+
+  if (userId === null) {
+    return false;
+  }
+
+  const { count: payerCount, error: payerError } = await supabase
+    .from("expenses")
+    .select("id", { count: "exact", head: true })
+    .eq("trip_id", tripId)
+    .eq("payer_id", userId);
+
+  if (payerError) {
+    throw new Error(`memberHasExpenseTies failed: ${payerError.message}`);
+  }
+
+  return (payerCount ?? 0) > 0;
+}
+
 export interface CreateExpenseInput {
   trip_id: string;
   /**

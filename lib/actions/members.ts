@@ -10,11 +10,16 @@
  *     validated per rule 9 but not persisted, and a target that is
  *     already gone returns ok.
  *
- * Authz: RLS is the real gate ("organizers can update any trip member"
- * UPDATE policy + "organizers can remove members" DELETE policy, both
- * shipped in M1 and unused until now). The app-layer organizer check
- * here is the UX mirror — it lets us return a warm, specific error
- * instead of a silent zero-row write.
+ * Authz split (accurate — do not overstate): RLS gates WHO can touch a
+ * trip_members row ("organizers can update any trip member" UPDATE
+ * policy + "organizers can remove members" DELETE policy, M1). These
+ * actions gate WHAT may change — the settable role values and the
+ * founder/celebrant/self/expense-ties protections live HERE ONLY. The
+ * M1 UPDATE policies carry no WITH CHECK on role, so a direct-PostgREST
+ * caller inside the policy scope is not blocked from hostile role
+ * writes at the DB layer today. DB-layer hardening is tracked in #418;
+ * until it lands, this action layer is the load-bearing guard for
+ * role-value and seat-protection invariants.
  *
  * Guards (#386 — deterministic rejections, warm rule-explaining copy):
  *   - can't remove yourself (`member_remove_self`)
@@ -22,13 +27,17 @@
  *   - can't change the celebrant's role (`member_role_celebrant`)
  *   - the ORIGINAL organizer (role='organizer') can't be demoted or
  *     removed (`member_organizer_locked`)
+ *   - can't remove a member with expense ties — splits cascade with the
+ *     member row and would break sum(splits) == amount_cents
+ *     (`member_remove_has_expenses`; fix-first on PR #416)
  *
  * Removed member's content: authored rows (announcements, itinerary
  * items, expenses) key on auth.users and survive removal — display
  * falls back via `resolveMemberName` ("Guest"/"Someone"). Rows keyed on
  * trip_member_id (travel legs, lodging assignments, item RSVPs, member
- * flags, date votes, expense splits) cascade by schema design — they
- * are participation, not authored content.
+ * flags, date votes) cascade by schema design — they are participation,
+ * not authored content. Expense splits WOULD cascade too, which is
+ * exactly why the ties guard refuses removal instead.
  *
  * Idempotency: `setMemberRoleAction` mirrors `setRsvpAction` — the
  * target row's stored idempotency_key is compared before writing, so a
@@ -45,6 +54,7 @@ import {
   getViewerMember,
   updateTripMemberRole,
 } from "@/lib/db/trips";
+import { memberHasExpenseTies } from "@/lib/db/expenses";
 import { isOrganizerRole } from "@/lib/utils/expense-visibility";
 import {
   RATE_LIMIT_SCOPES,
@@ -238,6 +248,20 @@ export async function removeMemberAction(
     }
     if (target.role === "organizer") {
       return { ok: false, errorKey: "member_organizer_locked" };
+    }
+
+    // Money invariant (fix-first on PR #416): expense_splits cascade
+    // with the member row; deleting a tied member would silently break
+    // sum(splits) == amount_cents. Refuse — settle/edit expenses first.
+    // Split-rewrite-on-removal is deliberately out of scope.
+    const hasTies = await memberHasExpenseTies(
+      supabase,
+      tripId,
+      memberId,
+      target.user_id
+    );
+    if (hasTies) {
+      return { ok: false, errorKey: "member_remove_has_expenses" };
     }
 
     const deletedCount = await rateLimitedAction(

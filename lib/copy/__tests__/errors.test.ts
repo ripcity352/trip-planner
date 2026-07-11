@@ -72,6 +72,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "member_remove_celebrant",
   "member_role_celebrant",
   "member_organizer_locked",
+  // fix-first on #416 — money-invariant guard (deterministic, retry-free)
+  "member_remove_has_expenses",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

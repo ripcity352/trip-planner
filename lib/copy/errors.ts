@@ -118,7 +118,11 @@ export type ErrorKey =
   | "member_remove_self"
   | "member_remove_celebrant"
   | "member_role_celebrant"
-  | "member_organizer_locked";
+  | "member_organizer_locked"
+  // Money-invariant guard (fix-first on PR #416): splits cascade with
+  // the member row, so removal is refused while expense ties exist.
+  // Deterministic rejection — retry-free copy.
+  | "member_remove_has_expenses";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -228,4 +232,6 @@ export const ERRORS: Record<ErrorKey, string> = {
     "The guest of honor's seat stays as-is — they're the whole point of the trip.",
   member_organizer_locked:
     "That's whoever started this trip. Their seat stays put.",
+  member_remove_has_expenses:
+    "Settle their expenses first — they're on the hook for a few things.",
 };

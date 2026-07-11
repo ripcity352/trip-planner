@@ -195,7 +195,10 @@ export async function getTripMemberById(
 /**
  * Write a member's role (attendee ↔ co_organizer) plus the mutation's
  * idempotency_key (#386, rule 9). RLS ("organizers can update any trip
- * member") is the real gate; we chain `.select(...).maybeSingle()` so a
+ * member") gates WHO can run this write; it does NOT constrain the role
+ * VALUE (no WITH CHECK on role — DB-layer hardening tracked in #418).
+ * The value/seat guards live in `lib/actions/members.ts` and are
+ * load-bearing. We chain `.select(...).maybeSingle()` so a
  * policy-swallowed zero-row update is detectable — returns false instead
  * of lying about success.
  *
