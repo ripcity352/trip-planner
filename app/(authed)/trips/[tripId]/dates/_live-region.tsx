@@ -87,9 +87,18 @@ export function LiveRegion({
               </Badge>
             ) : null}
             {isCelebrant ? (
-              <CelebrantView candidates={visible} onMutated={refetch} />
+              <CelebrantView
+                candidates={visible}
+                canLock={isOrganizer}
+                onMutated={refetch}
+              />
             ) : (
-              <MemberView candidates={visible} onMutated={refetch} />
+              <MemberView
+                candidates={visible}
+                canLock={isOrganizer}
+                canPropose={isOrganizer}
+                onMutated={refetch}
+              />
             )}
             {isOrganizer || isCelebrant ? (
               <AddWindowForm

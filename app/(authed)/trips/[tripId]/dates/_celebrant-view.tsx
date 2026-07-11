@@ -32,9 +32,16 @@ import type {
 } from "@/lib/db/types";
 
 import { formatDateRange } from "./_format";
+import { LockInButton } from "./_lock-in-button";
 
 interface CelebrantViewProps {
   candidates: ReadonlyArray<DatePollCandidateView>;
+  /**
+   * #369: organizer-only "Lock it in" affordance per candidate. Only
+   * true when the celebrant is ALSO an organizer — locking stays an
+   * organizer power, never a celebrant one (rule 11).
+   */
+  canLock?: boolean;
   /** F2: PulsePoll's `refetch`, called after a successful mark. */
   onMutated?: () => void;
 }
@@ -53,7 +60,11 @@ const CHIPS: ReadonlyArray<ChipDef> = [
   { mark: "no-go", label: M2_UI_STRINGS.datePoll_celebrant_chip_no_go },
 ];
 
-export function CelebrantView({ candidates, onMutated }: CelebrantViewProps) {
+export function CelebrantView({
+  candidates,
+  canLock = false,
+  onMutated,
+}: CelebrantViewProps) {
   if (candidates.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -66,7 +77,11 @@ export function CelebrantView({ candidates, onMutated }: CelebrantViewProps) {
     <ul className="flex flex-col gap-3">
       {candidates.map((row) => (
         <li key={row.candidate.id}>
-          <CandidateCelebrantCard row={row} onMutated={onMutated} />
+          <CandidateCelebrantCard
+            row={row}
+            canLock={canLock}
+            onMutated={onMutated}
+          />
         </li>
       ))}
     </ul>
@@ -75,9 +90,11 @@ export function CelebrantView({ candidates, onMutated }: CelebrantViewProps) {
 
 function CandidateCelebrantCard({
   row,
+  canLock,
   onMutated,
 }: {
   row: DatePollCandidateView;
+  canLock: boolean;
   onMutated?: () => void;
 }) {
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
@@ -186,6 +203,7 @@ function CandidateCelebrantCard({
             {ERRORS[errorKey]}
           </p>
         ) : null}
+        {canLock ? <LockInButton candidateId={row.candidate.id} /> : null}
       </CardContent>
     </Card>
   );

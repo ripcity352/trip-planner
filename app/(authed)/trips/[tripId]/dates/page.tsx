@@ -24,11 +24,12 @@ import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug } from "@/lib/db/trips";
-import { getDatePollViewModel } from "@/lib/db/date-poll";
+import { getDatePollViewModel, isDatePollDecided } from "@/lib/db/date-poll";
 import { M2_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { TripRole } from "@/lib/db/types";
 
 import { LiveRegion } from "./_live-region";
+import { DecidedView } from "./_decided-view";
 
 type PageProps = {
   params: Promise<{ tripId: string }>;
@@ -71,6 +72,13 @@ export default async function DatePollPage({ params }: PageProps) {
   const isCelebrant = viewer.is_celebrant;
   const isOrganizer =
     viewer.role === "organizer" || viewer.role === "co_organizer";
+
+  // Reconcile (#369): the decided window is the answer — archive the
+  // poll and show the locked dates to every role. `isDatePollDecided`
+  // is the single source of truth (both bounds set on `trips`).
+  if (isDatePollDecided(trip)) {
+    return <DecidedView startsAt={trip.starts_at} endsAt={trip.ends_at} />;
+  }
 
   const initialRows = await getDatePollViewModel(
     supabase,
