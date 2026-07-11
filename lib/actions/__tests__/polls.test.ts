@@ -138,6 +138,14 @@ describe("createPollAction", () => {
     [{ ...VALID_CREATE, question: "" }, "empty question"],
     [{ ...VALID_CREATE, closesOn: "not-a-date" }, "malformed closes_on"],
     [{ ...VALID_CREATE, tripId: "nope" }, "bad trip id"],
+    // "custom" visibility is rejected: no content_visibility_grants join
+    // exists for polls, so can_see_content('custom') falls back to
+    // is_trip_member — an illusion of restriction with none. The action
+    // enum excludes it (the composer never offered it).
+    [
+      { ...VALID_CREATE, visibility: "custom" as never },
+      "custom visibility (no grants join for polls)",
+    ],
   ];
   it.each(invalidInputs)("rejects invalid input (case %#)", async (input) => {
     primeAuth(USER_ID);

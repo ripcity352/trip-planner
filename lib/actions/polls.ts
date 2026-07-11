@@ -58,8 +58,12 @@ const CREATE_POLL_SCHEMA = z.object({
     .min(MIN_OPTIONS)
     .max(MAX_OPTIONS),
   closesOn: ISO_DATE_SCHEMA.nullish(),
+  // "custom" is deliberately excluded: no content_visibility_grants join
+  // exists for polls, so can_see_content('custom') falls back to
+  // is_trip_member — i.e. "everyone" with the illusion of restriction.
+  // The composer already offers only these three; the action enforces it.
   visibility: z
-    .enum(["everyone", "organizers_only", "hide_from_celebrant", "custom"])
+    .enum(["everyone", "organizers_only", "hide_from_celebrant"])
     .optional()
     .default("everyone"),
 });
@@ -79,7 +83,11 @@ export interface CreatePollInput {
   options: string[];
   /** ISO date `YYYY-MM-DD`; omit/null for an open-ended poll. */
   closesOn?: string | null;
-  visibility?: TripVisibility;
+  // "custom" is intentionally absent: polls have no
+  // content_visibility_grants join, so can_see_content('custom') falls
+  // back to "everyone" — an illusion of restriction. The action's zod
+  // enum enforces this too.
+  visibility?: Exclude<TripVisibility, "custom">;
 }
 
 export type CreatePollResult =
