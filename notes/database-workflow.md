@@ -64,6 +64,26 @@ Studio (web UI for the local DB) is at <http://127.0.0.1:54323>.
 To stop: `pnpm dlx supabase stop`. State persists between starts via
 Docker volumes; `supabase stop --no-backup` wipes the volume.
 
+### Base table grants after `db reset` (#361 — now durable)
+
+The pinned local Postgres image ships a competing postgres-owned
+`pg_default_acl` row for `public` tables that grants only
+TRUNCATE/REFERENCES/TRIGGER — so a clean `db reset` used to leave
+`anon`/`authenticated`/`service_role` with **no DML on any table**, and
+every local run needed a manual `grant` repair before the app or e2e could
+touch the DB. That repair is now a migration
+(`20260711180000_restore_base_table_grants.sql`) — a fresh `db reset` comes
+up working, no manual step. It's a no-op on prod (hosted Supabase already
+provisions these grants).
+
+**Do not re-introduce the old blanket `grant ... on all functions to anon`
+repair.** The migration grants **tables + sequences only** and deliberately
+leaves functions alone: SECURITY DEFINER functions that must not be
+anon-callable REVOKE anon in their own migration, and a blanket function
+grant silently re-opens every one of those revokes. If a future change
+needs anon to call a specific new function, grant that one function
+explicitly in its own migration — never all of them.
+
 ## Prod linkage (one-time, per dev machine)
 
 ```bash
