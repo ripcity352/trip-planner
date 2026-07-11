@@ -23,12 +23,12 @@
  * F2 / #110: `proposeDateCandidatesAction` and `setCelebrantMarkAction`
  * call `revalidatePath` on success so the organizer/celebrant's own view
  * never depends on the Realtime channel — see notes/decisions.md
- * "F2 — the #110 mutation contract extends…". `castDateVoteAction` is
- * deliberately left out: the member-vote UI is already fully optimistic
- * (mirrors `RsvpToggle`), and it's the highest-tap path on this page —
- * see the F2 PR body for the full reasoning. `lockInCandidateAction` is
- * unwired stretch scope with no UI consumer, so there's no "actor's own
- * view" to fix.
+ * "F2 — the #110 mutation contract extends…". `castDateVoteAction`
+ * joined the contract in #400 (its aggregate tally was frozen until a
+ * manual reload). `lockInCandidateAction` joins it in #369 now that it
+ * has a UI consumer: locking flips the whole page from the live poll to
+ * the decided state, so the actor's own view MUST revalidate — the
+ * page's Realtime channel carries no "trips row changed" event.
  */
 
 import { z } from "zod";
@@ -468,7 +468,7 @@ export async function castDateVoteAction(
 }
 
 // =============================================================
-// lockInCandidate — STRETCH (deferred if time-boxed)
+// lockInCandidate
 // =============================================================
 
 /**
@@ -477,10 +477,12 @@ export async function castDateVoteAction(
  * organizers to update; we additionally bind the update via the
  * candidate's `trip_id`.
  *
- * Stretch action — not wired into the page in Wave 3. Documented
- * in the PR body as deferred follow-up. Implementing the action
- * surface now keeps the API contract complete; the UI consumer is
- * deferred.
+ * Wired into `/dates` in #369: an organizer taps "Lock it in" on a
+ * candidate window; a non-null `(starts_at, ends_at)` pair is the
+ * source of truth for "dates are decided" (see `isDatePollDecided`),
+ * so this write flips the page from the live poll to the decided
+ * state. F2/#369: revalidate on success so the actor's own view swaps
+ * without a manual reload.
  */
 export async function lockInCandidateAction(
   candidateId: string
@@ -525,6 +527,10 @@ export async function lockInCandidateAction(
     if (!updated) {
       return { ok: false, errorKey: "rls_denied" };
     }
+    // F2/#369: revalidate only on a genuine success — every branch
+    // above returned `ok: false`. Swaps the actor's live-poll view for
+    // the decided state without waiting on a reload.
+    revalidatePath("/trips", "layout");
     return { ok: true, trip: updated as Trip };
   } catch (err) {
     console.error("[date-poll] lockInCandidate unexpected:", err);

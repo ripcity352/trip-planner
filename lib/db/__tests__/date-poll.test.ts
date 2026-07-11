@@ -24,6 +24,7 @@ import {
   getDatePollViewModel,
   getMyVote,
   getVoteCountsByCandidate,
+  isDatePollDecided,
   listCandidates,
   rankCandidates,
 } from "../date-poll";
@@ -393,5 +394,25 @@ describe("filterMemberVisible", () => {
       viewFor(C2, { mark: null }),
     ];
     expect(filterMemberVisible(rows)).toHaveLength(2);
+  });
+});
+
+describe("isDatePollDecided", () => {
+  // #369: the presence of BOTH trip bounds is the single source of
+  // truth for "dates locked". Anything less is still an open poll.
+  it("is decided only when both starts_at and ends_at are set", () => {
+    expect(
+      isDatePollDecided({ starts_at: "2026-07-29", ends_at: "2026-08-01" })
+    ).toBe(true);
+  });
+
+  it("is not decided when either bound is null", () => {
+    expect(isDatePollDecided({ starts_at: "2026-07-29", ends_at: null })).toBe(
+      false
+    );
+    expect(isDatePollDecided({ starts_at: null, ends_at: "2026-08-01" })).toBe(
+      false
+    );
+    expect(isDatePollDecided({ starts_at: null, ends_at: null })).toBe(false);
   });
 });
