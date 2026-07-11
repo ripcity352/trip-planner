@@ -617,3 +617,105 @@ describe("castDateVoteAction", () => {
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
   });
 });
+
+describe("lockInCandidateAction", () => {
+  // #369 wires the (previously phantom) lock-in action into /dates and
+  // pulls it into the F2 revalidate contract. These tests pin the new
+  // call path: a successful lock writes the trip window AND revalidates
+  // so the organizer's own view swaps to the decided state; every
+  // failure branch revalidates nothing.
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    upsertCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  const CANDIDATE_ROW = {
+    trip_id: VALID_TRIP_ID,
+    starts_on: "2026-07-29",
+    ends_on: "2026-08-01",
+  };
+  const TRIP_ROW = {
+    id: VALID_TRIP_ID,
+    starts_at: "2026-07-29",
+    ends_at: "2026-08-01",
+  };
+
+  it("validation_failed on a non-uuid candidateId (no revalidate)", async () => {
+    primeAuth(VALID_USER_ID);
+    const { lockInCandidateAction } = await import("@/lib/actions/date-poll");
+    const result = await lockInCandidateAction("not-a-uuid");
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("auth_failed when there is no user (no revalidate)", async () => {
+    primeAuth(null);
+    const { lockInCandidateAction } = await import("@/lib/actions/date-poll");
+    const result = await lockInCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("rls_denied when the candidate lookup returns nothing (no revalidate)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: null,
+      error: null,
+    }));
+    const { lockInCandidateAction } = await import("@/lib/actions/date-poll");
+    const result = await lockInCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("rls_denied when the trips update returns nothing (no revalidate)", async () => {
+    // A non-organizer's UPDATE is filtered out by RLS → zero rows back.
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: CANDIDATE_ROW,
+      error: null,
+    }));
+    tableResolvers.set("trips", () => ({ data: null, error: null }));
+    const { lockInCandidateAction } = await import("@/lib/actions/date-poll");
+    const result = await lockInCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT revalidate when the trips update errors", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: CANDIDATE_ROW,
+      error: null,
+    }));
+    tableResolvers.set("trips", () => ({
+      data: null,
+      error: { code: "42501", message: "insufficient_privilege" },
+    }));
+    const { lockInCandidateAction } = await import("@/lib/actions/date-poll");
+    const result = await lockInCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path: returns the locked trip and revalidates (F2/#369)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: CANDIDATE_ROW,
+      error: null,
+    }));
+    tableResolvers.set("trips", () => ({ data: TRIP_ROW, error: null }));
+    const { lockInCandidateAction } = await import("@/lib/actions/date-poll");
+    const result = await lockInCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: true, trip: TRIP_ROW });
+    // F2/#369: locking flips the page to the decided state — the actor's
+    // own view must revalidate, not wait on a reload.
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+});

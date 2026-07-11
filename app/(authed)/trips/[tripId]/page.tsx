@@ -53,6 +53,7 @@ import {
 } from "@/lib/db/rsvp";
 import { getItineraryByTrip } from "@/lib/db/itinerary";
 import { getTripNotes } from "@/lib/db/trip-notes";
+import { isDatePollDecided } from "@/lib/db/date-poll";
 import { createClient } from "@/lib/supabase/server";
 import { parseDateOnly } from "@/lib/utils/date-only";
 import {
@@ -214,12 +215,17 @@ export default async function TripDashboardPage({ params }: PageProps) {
         </Card>
 
         {/* Wave 3 link — drops the date-poll surface one click away
-            from the dashboard. Server Component, no client behavior. */}
+            from the dashboard. Server Component, no client behavior.
+            #369: once the dates are locked the CTA stops saying "Pick
+            the dates" — the decision is made; the link now just leads to
+            the decided window. */}
         <Link
           href={`/trips/${trip.slug}/dates`}
           className="text-primary text-sm underline-offset-4 hover:underline"
         >
-          {M2_UI_STRINGS.dashboard_dates_link_label}
+          {isDatePollDecided(trip)
+            ? M2_UI_STRINGS.dashboard_dates_link_label_locked
+            : M2_UI_STRINGS.dashboard_dates_link_label}
         </Link>
       </div>
     </section>

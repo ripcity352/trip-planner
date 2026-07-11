@@ -135,8 +135,12 @@ export const M2_UI_STRINGS = {
   // non-organizers never see per-name decline data.
   dashboard_rsvp_count_template: "{going} going, {maybe} maybe, {invited} invited",
   dashboard_rsvp_count_declined_suffix: " ({count} can't make it)",
-  // /trips/[tripId] — link to the dates page (Wave 3 #75 #76)
+  // /trips/[tripId] — link to the dates page (Wave 3 #75 #76). The
+  // "locked" variant fires once the dates are decided (#369): the poll
+  // is archived and the CTA stops inviting a decision that's already
+  // been made.
   dashboard_dates_link_label: "Pick the dates",
+  dashboard_dates_link_label_locked: "See the dates",
   // /trips/[tripId]/dates — celebrant-weighted poll (Wave 3 #75 #76).
   // Voice test: would I say this out loud at the pre-trip dinner?
   // Mark labels are the celebrant's own voice; vote labels are a
@@ -156,8 +160,21 @@ export const M2_UI_STRINGS = {
     "4 windows is the cap — drop one before adding.",
   datePoll_celebrant_unmarked_badge: "Celebrant hasn't weighed in",
   datePoll_celebrant_effort_badge: "Could work for the celebrant",
+  // Two empty-states (#369): the "drop one" invitation only ships to
+  // someone who can actually drop one (organizer/celebrant — the ones
+  // who see the add-window form). A plain member with no add affordance
+  // gets a passive waiting line instead, so the copy never dangles an
+  // action the screen doesn't render.
   datePoll_no_candidates_yet:
     "No windows proposed yet. Drop one and we'll start voting.",
+  datePoll_no_candidates_member:
+    "No windows yet — the organizers are still working out the dates.",
+  // Decided state (#369): once an organizer locks a window, the poll is
+  // archived and /dates shows the answer, not a live vote.
+  datePoll_decided_heading: "The dates are set",
+  datePoll_decided_subhead: "Block it off. This is when it's happening.",
+  // Organizer-only lock-in affordance on each candidate window (#369).
+  datePoll_lock_in_cta: "Lock it in",
   datePoll_add_form_label_label: "Window name",
   datePoll_add_form_start_label: "From",
   datePoll_add_form_end_label: "To",

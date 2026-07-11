@@ -29,18 +29,38 @@ import { castDateVoteAction } from "@/lib/actions/date-poll";
 import type { DatePollCandidateView } from "@/lib/db/types";
 
 import { formatDateRange } from "./_format";
+import { LockInButton } from "./_lock-in-button";
 
 interface MemberViewProps {
   candidates: ReadonlyArray<DatePollCandidateView>;
+  /**
+   * #369: organizer-only "Lock it in" affordance per candidate. False
+   * for plain members and (non-organizer) celebrants — rule 11.
+   */
+  canLock?: boolean;
+  /**
+   * #369: whether the viewer can actually propose a window (the
+   * add-window form renders for them). Drives the empty-state copy so
+   * "drop one and we'll start voting" never dangles for someone with no
+   * add affordance.
+   */
+  canPropose?: boolean;
   /** F2/#400: PulsePoll's `refetch`, called after a successful vote. */
   onMutated?: () => void;
 }
 
-export function MemberView({ candidates, onMutated }: MemberViewProps) {
+export function MemberView({
+  candidates,
+  canLock = false,
+  canPropose = false,
+  onMutated,
+}: MemberViewProps) {
   if (candidates.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        {M2_UI_STRINGS.datePoll_no_candidates_yet}
+        {canPropose
+          ? M2_UI_STRINGS.datePoll_no_candidates_yet
+          : M2_UI_STRINGS.datePoll_no_candidates_member}
       </p>
     );
   }
@@ -48,7 +68,11 @@ export function MemberView({ candidates, onMutated }: MemberViewProps) {
     <ul className="flex flex-col gap-3">
       {candidates.map((row) => (
         <li key={row.candidate.id}>
-          <CandidateMemberCard row={row} onMutated={onMutated} />
+          <CandidateMemberCard
+            row={row}
+            canLock={canLock}
+            onMutated={onMutated}
+          />
         </li>
       ))}
     </ul>
@@ -57,9 +81,11 @@ export function MemberView({ candidates, onMutated }: MemberViewProps) {
 
 function CandidateMemberCard({
   row,
+  canLock,
   onMutated,
 }: {
   row: DatePollCandidateView;
+  canLock: boolean;
   onMutated?: () => void;
 }) {
   // Optimistic vote pattern: keep a transient "pending override" that
@@ -174,6 +200,7 @@ function CandidateMemberCard({
             {ERRORS[errorKey]}
           </p>
         ) : null}
+        {canLock ? <LockInButton candidateId={row.candidate.id} /> : null}
       </CardContent>
     </Card>
   );

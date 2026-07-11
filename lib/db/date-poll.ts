@@ -29,7 +29,29 @@ import type {
   DatePollCandidateView,
   DatePollCelebrantMark,
   DatePollCelebrantMarkRow,
+  Trip,
 } from "./types";
+
+/**
+ * Source of truth for "the trip's dates are decided" (#369).
+ *
+ * There is no separate poll-open flag or explicit lock column: the
+ * decision IS the presence of both `trips.starts_at` and
+ * `trips.ends_at`. `lockInCandidateAction` writes exactly those two
+ * columns from the winning candidate, so a non-null pair means an
+ * organizer has locked a window and the poll is archived. Undecided
+ * (either bound null) → the live poll runs.
+ *
+ * Pure predicate — no DB round-trip — so both the Server Component
+ * page and the dashboard CTA can branch off one shared rule instead of
+ * re-deriving it inline (the class of drift that let the header show
+ * locked dates while /dates still ran a live poll).
+ */
+export function isDatePollDecided<
+  T extends Pick<Trip, "starts_at" | "ends_at">,
+>(trip: T): trip is T & { starts_at: string; ends_at: string } {
+  return trip.starts_at !== null && trip.ends_at !== null;
+}
 
 const CANDIDATE_COLUMNS =
   "id, trip_id, label, starts_on, ends_on, created_by, created_at";
