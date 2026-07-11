@@ -8,6 +8,7 @@
 import type { ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { hideFromCelebrantBadge } from "@/lib/utils/celebrant-badge";
 import type { Announcement } from "@/lib/db/types";
 
 interface AnnouncementCardProps {
@@ -20,6 +21,12 @@ interface AnnouncementCardProps {
    */
   authorDisplayName?: string | null;
   /**
+   * #405-B — the trip celebrant's display name, threaded from the page so
+   * the `hide_from_celebrant` badge names them ("Hidden from Mike Groom")
+   * instead of the generic register-leak "Hidden from the celebrant".
+   */
+  celebrantName?: string | null;
+  /**
    * Interactive reaction row (#389), rendered inside the card below the
    * footer. A slot (not a hardwired import) so this leaf stays
    * server-friendly and presentation-only.
@@ -27,16 +34,19 @@ interface AnnouncementCardProps {
   reactionsSlot?: ReactNode;
 }
 
-/** Visibility labels for non-default values — sourced from `M3_UI_STRINGS`. */
+/**
+ * Non-celebrant visibility labels. `hide_from_celebrant` is NOT here — it
+ * goes through `hideFromCelebrantBadge` so it can name the celebrant (#405-B).
+ */
 const VISIBILITY_LABEL: Partial<Record<Announcement["visibility"], string>> = {
   organizers_only: M3_UI_STRINGS.announcements_badge_organizers_only,
-  hide_from_celebrant: M3_UI_STRINGS.announcements_badge_hide_celebrant,
   custom: M3_UI_STRINGS.announcements_badge_custom,
 };
 
 export function AnnouncementCard({
   announcement,
   authorDisplayName,
+  celebrantName,
   reactionsSlot,
 }: AnnouncementCardProps) {
   const relativeTime = formatDistanceToNow(new Date(announcement.created_at), {
@@ -44,9 +54,11 @@ export function AnnouncementCard({
   });
 
   const visibilityLabel =
-    announcement.visibility !== "everyone"
-      ? VISIBILITY_LABEL[announcement.visibility]
-      : null;
+    announcement.visibility === "hide_from_celebrant"
+      ? hideFromCelebrantBadge(celebrantName)
+      : announcement.visibility !== "everyone"
+        ? VISIBILITY_LABEL[announcement.visibility]
+        : null;
 
   return (
     <article className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">

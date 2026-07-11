@@ -31,6 +31,16 @@ interface AnnouncementsFeedProps {
   memberUserMap: ReadonlyMap<string, string | null>;
   /** Per-announcement reaction aggregates (#389), keyed by announcement id. */
   reactionsByAnnouncement: Record<string, AnnouncementReactionSummary>;
+  /** #405-B — celebrant display name for the hide-from-celebrant badge. */
+  celebrantName?: string | null;
+  /**
+   * #405-C — the poster's own display name. The freshly-inserted row the
+   * server action returns has no `authorDisplayName` (enrichment happens at
+   * the page layer, not in the action), so folding it in raw flashed
+   * "Someone · less than a minute ago" until a later render resolved it.
+   * The poster IS the viewer, so we optimistically stamp their own name.
+   */
+  viewerDisplayName?: string | null;
 }
 
 export function AnnouncementsFeed({
@@ -39,6 +49,8 @@ export function AnnouncementsFeed({
   initialAnnouncements,
   memberUserMap,
   reactionsByAnnouncement,
+  celebrantName,
+  viewerDisplayName,
 }: AnnouncementsFeedProps) {
   const listRef = useRef<AnnouncementListHandle>(null);
 
@@ -48,7 +60,15 @@ export function AnnouncementsFeed({
         <AnnouncementComposer
           tripId={tripId}
           isOrganizer={isOrganizer}
-          onPosted={(announcement) => listRef.current?.prepend(announcement)}
+          onPosted={(announcement) =>
+            listRef.current?.prepend({
+              ...announcement,
+              // #405-C: stamp the poster's own name so the card never flashes
+              // "Someone". A real enriched value on the payload still wins.
+              authorDisplayName:
+                announcement.authorDisplayName ?? viewerDisplayName ?? null,
+            })
+          }
         />
       </div>
 
@@ -58,6 +78,7 @@ export function AnnouncementsFeed({
         initialAnnouncements={initialAnnouncements}
         memberUserMap={memberUserMap}
         reactionsByAnnouncement={reactionsByAnnouncement}
+        celebrantName={celebrantName}
       />
     </>
   );

@@ -84,6 +84,11 @@ export default async function ExpensesPage({ params }: PageProps) {
     name: resolveMemberName(memberMap, m.id),
   }));
 
+  // #405-B: celebrant display name for the hide-from-celebrant badge —
+  // derived from the already-fetched members (no extra query).
+  const celebrantName =
+    tripMembers.find((m) => m.is_celebrant)?.display_name ?? null;
+
   // Viewer seat for the composer sheets (#384): visibility options are
   // filtered to what this member could still read.
   const viewerContext = {
@@ -140,6 +145,7 @@ export default async function ExpensesPage({ params }: PageProps) {
                       : resolveMemberName(memberMap, "")
                   }
                   viewerMemberId={viewer.id}
+                  celebrantName={celebrantName}
                 />
                 {canEdit ? (
                   <EditExpenseSheet

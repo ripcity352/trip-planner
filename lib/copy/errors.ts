@@ -35,6 +35,12 @@ export type ErrorKey =
   | "invite_exhausted"
   | "invite_not_found"
   | "trip_create_failed"
+  // #405-D — reversed trip dates. The createTripAction `.refine()` already
+  // authored a specific message; before this key every zod failure collapsed
+  // to the generic `validation_failed` and that specific line never reached
+  // the user. A dedicated key lets both the client date-field highlight and
+  // the server backstop name the actual problem.
+  | "trip_dates_reversed"
   | "rsvp_save_failed"
   // M3 error keys (Wave 0a). Naming follows the existing
   // `<feature>_<verb>_failed` pattern. Voice-tested — blame-free, warm,
@@ -138,6 +144,9 @@ export const ERRORS: Record<ErrorKey, string> = {
   invite_not_found: "Can't find that invite. Double-check the link.",
   trip_create_failed:
     "Couldn't lock that in. Give it another shot in a sec.",
+  // #405-D — the specific line the `.refine()` authored, now actually
+  // surfaced (was collapsing to the generic validation_failed).
+  trip_dates_reversed: "End date can't be before the start date.",
   rsvp_save_failed: "RSVP didn't save. Tap it again — it'll catch.",
   // M3 error strings — same voice rules.
   itinerary_save_failed:

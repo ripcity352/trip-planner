@@ -310,7 +310,10 @@ export default async function InvitePreviewPage({
               <p className="text-sm text-muted-foreground">
                 {M2_UI_STRINGS.invitePreview_cta_anon}
               </p>
-              <LoginForm next={invitePreviewPath(token)} />
+              {/* #395: invite surface — reveal "Create account instead"
+                  from the start so a first-touch invitee isn't handed a
+                  guaranteed wrong-password dead-end. */}
+              <LoginForm next={invitePreviewPath(token)} inviteSurface />
             </div>
           )}
         </div>

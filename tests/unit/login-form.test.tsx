@@ -445,6 +445,34 @@ describe("<LoginForm /> — next prop", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #395 — invite surface reveals "Create account instead" from the start
+// ---------------------------------------------------------------------------
+
+describe("<LoginForm /> — inviteSurface prop", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows 'Create account instead' in password mode BEFORE any error (#395)", async () => {
+    render(<LoginForm next="/invite/abc123" inviteSurface />);
+    await advanceToPasswordMode("nate@example.com");
+    // No wrong-password attempt has happened — the affordance is present
+    // from the start on the invite surface.
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.createAccountLink })
+    ).toBeInTheDocument();
+  });
+
+  it("does NOT show 'Create account instead' pre-error on the default (login) surface", async () => {
+    render(<LoginForm />);
+    await advanceToPasswordMode();
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.createAccountLink })
+    ).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Google OAuth button (PR5)
 // ---------------------------------------------------------------------------
 

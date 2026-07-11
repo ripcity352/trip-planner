@@ -23,6 +23,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { addExpenseAction } from "@/lib/actions/expenses";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { FIELD_ERRORS } from "@/lib/copy/field-errors";
 import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
 import {
   readableVisibilityOptions,
@@ -34,12 +36,17 @@ const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
 
 /** Shared with EditExpenseSheet — same fields, prefilled there (#383). */
 export const expenseFormSchema = z.object({
-  description: z.string().trim().min(1).max(200),
+  // #401: field-error copy sourced from lib/copy (voice-tested), not inline.
+  description: z
+    .string()
+    .trim()
+    .min(1, FIELD_ERRORS.expense_description_required)
+    .max(200),
   amountDollars: z
     .string()
     .trim()
-    .regex(AMOUNT_RE)
-    .refine((v) => parseFloat(v) > 0),
+    .regex(AMOUNT_RE, FIELD_ERRORS.expense_amount_invalid)
+    .refine((v) => parseFloat(v) > 0, FIELD_ERRORS.expense_amount_required),
   occurredOn: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -170,11 +177,25 @@ export function AddExpenseSheet({
         <input
           id="expense-description"
           type="text"
-          className={inputClass}
+          className={cn(inputClass, errors.description && "border-red-400")}
           placeholder={M5_UI_STRINGS.expensesForm_description_placeholder}
           disabled={isSubmitting}
+          aria-invalid={errors.description ? "true" : undefined}
+          aria-describedby={
+            errors.description ? "expense-description-error" : undefined
+          }
           {...register("description")}
         />
+        {/* #401: a rejected field must SAY why, not just shift a border. */}
+        {errors.description ? (
+          <p
+            id="expense-description-error"
+            role="alert"
+            className={cn(ERROR_LINE_CLASS, "text-sm")}
+          >
+            {errors.description.message}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -188,8 +209,23 @@ export function AddExpenseSheet({
           className={cn(inputClass, errors.amountDollars && "border-red-400")}
           placeholder={M5_UI_STRINGS.expensesForm_amount_placeholder}
           disabled={isSubmitting}
+          aria-invalid={errors.amountDollars ? "true" : undefined}
+          aria-describedby={
+            errors.amountDollars ? "expense-amount-error" : undefined
+          }
           {...register("amountDollars")}
         />
+        {/* #401: amount "0" / blank now names the rule ("over $0"), not a
+            bare red border with no text. */}
+        {errors.amountDollars ? (
+          <p
+            id="expense-amount-error"
+            role="alert"
+            className={cn(ERROR_LINE_CLASS, "text-sm")}
+          >
+            {errors.amountDollars.message}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-1.5">

@@ -64,4 +64,17 @@ describe("ExpenseCard", () => {
     );
     expect(screen.getByText("Hidden from the celebrant")).toBeInTheDocument();
   });
+
+  it("names the celebrant in the hidden badge when threaded (#405-B)", () => {
+    render(
+      <ExpenseCard
+        expense={{ ...EXPENSE, visibility: "hide_from_celebrant" }}
+        splits={[]}
+        payerName="Dave Bestman"
+        viewerMemberId={null}
+        celebrantName="Mike Groom"
+      />
+    );
+    expect(screen.getByText("Hidden from Mike Groom")).toBeInTheDocument();
+  });
 });

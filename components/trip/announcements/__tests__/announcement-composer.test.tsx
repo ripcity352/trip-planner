@@ -197,6 +197,40 @@ describe("AnnouncementComposer", () => {
     });
   });
 
+  it("surfaces field-error text (not just a border) on an empty body (#401)", async () => {
+    const { FIELD_ERRORS } = await import("@/lib/copy/field-errors");
+    render(<AnnouncementComposer {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /send it/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(FIELD_ERRORS.announcement_body_required)
+      ).toBeInTheDocument();
+    });
+    // aria-invalid is set on the offending field for screen readers.
+    expect(
+      screen.getByPlaceholderText(/what's the update/i)
+    ).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("surfaces the over-length field error on a >5000-char body (#401)", async () => {
+    const { FIELD_ERRORS } = await import("@/lib/copy/field-errors");
+    render(<AnnouncementComposer {...defaultProps} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/what's the update/i), {
+      target: { value: "x".repeat(5001) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send it/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(FIELD_ERRORS.announcement_body_too_long)
+      ).toBeInTheDocument();
+    });
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   it("submits the selected visibility value", async () => {
     render(<AnnouncementComposer {...defaultProps} />);
 

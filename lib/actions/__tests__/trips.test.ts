@@ -84,7 +84,7 @@ describe("createTripAction", () => {
     expect(createTripMock).not.toHaveBeenCalled();
   });
 
-  it("validates: returns validation_failed when ends_at is before starts_at (#350)", async () => {
+  it("validates: returns trip_dates_reversed when ends_at is before starts_at (#350/#405-D)", async () => {
     primeAuth("u-1");
     const { createTripAction } = await import("@/lib/actions/trips");
 
@@ -93,6 +93,17 @@ describe("createTripAction", () => {
       starts_at: "2027-06-10",
       ends_at: "2027-06-01",
     });
+
+    // #405-D: the specific reversed-dates key, not the generic collapse.
+    expect(result).toEqual({ ok: false, errorKey: "trip_dates_reversed" });
+    expect(createTripMock).not.toHaveBeenCalled();
+  });
+
+  it("validates: an empty (malformed) name still returns the generic validation_failed", async () => {
+    primeAuth("u-1");
+    const { createTripAction } = await import("@/lib/actions/trips");
+
+    const result = await createTripAction({ name: "  " });
 
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
     expect(createTripMock).not.toHaveBeenCalled();

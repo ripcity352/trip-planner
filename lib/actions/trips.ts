@@ -45,10 +45,12 @@ export interface CreateTripActionInput {
 
 // zod schema. Names are short, dates are optional, vibe_tags are
 // strings. `ends_at < starts_at` is rejected by the cross-field
-// `.refine()` below — there is NO DB check constraint backstopping
-// this (verified against pg_constraint; filed separately as #350's
-// DB-layer follow-up), so the zod refine is the only enforcement
-// today, not defense-in-depth on top of one.
+// `.refine()` below. As of commit f758d52 (#350) the DB also carries a
+// `trips_end_after_start` CHECK constraint, so this zod refine is now the
+// first, user-facing half of a defense-in-depth pair (the CHECK is the
+// data-integrity backstop). The refine failure is surfaced with a
+// dedicated `trip_dates_reversed` errorKey (#405-D) rather than collapsing
+// to the generic `validation_failed`.
 const inputSchema = z
   .object({
     name: z.string().trim().min(1).max(100),
@@ -96,7 +98,18 @@ export async function createTripAction(
   // 1. Validate.
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, errorKey: "validation_failed" };
+    // #405-D: surface the specific reversed-dates message the `.refine()`
+    // already authored instead of collapsing to the generic
+    // validation_failed. The refine emits a `custom` issue on the `ends_at`
+    // path — narrow to that so a genuinely malformed ends_at (e.g. empty
+    // string → too_small) still reads as a generic validation error.
+    const datesReversed = parsed.error.issues.some(
+      (issue) => issue.code === "custom" && issue.path[0] === "ends_at"
+    );
+    return {
+      ok: false,
+      errorKey: datesReversed ? "trip_dates_reversed" : "validation_failed",
+    };
   }
 
   // 2. Identify the caller. We need their id as the rate-limit key.

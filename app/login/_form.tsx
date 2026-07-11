@@ -64,19 +64,33 @@ import {
 type LoginFormProps = {
   /** Redirect target after successful sign-in. Defaults to /trips. */
   next?: string;
+  /**
+   * #395: on the invite surface the most common persona is a never-seen
+   * invitee, so reveal "Create account instead" from the start (in password
+   * mode) rather than only after a guaranteed wrong-password dead-end. Safe
+   * to disclose here — the invite already discloses account existence via
+   * the code path, so this adds no new enumeration surface. Off (login page
+   * default) keeps the sign-in-first, post-wrong-password reveal.
+   */
+  inviteSurface?: boolean;
 };
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function LoginForm({ next }: LoginFormProps) {
+export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   const [mode, setMode] = useState<Mode>("email-only");
   const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  // #395: on the invite surface, the create-account affordance is present
+  // from the start of password mode (not gated on a prior wrong-password
+  // error) so a first-touch invitee isn't handed a guaranteed dead-end.
+  const revealCreateAccount = showCreateAccount || inviteSurface;
 
   const emailForm = useForm<EmailOnlyValues>({
     resolver: zodResolver(emailOnlySchema),
@@ -289,7 +303,7 @@ export function LoginForm({ next }: LoginFormProps) {
                 {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
               </button>
             </div>
-            {showCreateAccount ? (
+            {revealCreateAccount ? (
               <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
             ) : null}
           </div>
@@ -297,7 +311,7 @@ export function LoginForm({ next }: LoginFormProps) {
           <Button type="submit" disabled={isPending} aria-busy={isPending}>
             {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
           </Button>
-          {showCreateAccount ? (
+          {revealCreateAccount ? (
             <Button
               type="button"
               variant="secondary"

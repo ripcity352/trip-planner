@@ -20,7 +20,7 @@
  * server's local clock at render time. Deferred to M4+ (#108).
  */
 
-import { differenceInCalendarDays } from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { whatsHappeningNow } from "@/lib/utils/whats-happening-now";
@@ -101,25 +101,54 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
             {M3_UI_STRINGS.nowNext_next_heading}
           </p>
           <p className="text-sm font-medium mt-0.5">{nextItem.title}</p>
-          {nextItem.start_time ? (
+          {/* #404-A: carry the day when the next item is on a different
+              calendar day than today, so a fresh member weeks out reads
+              "Wed Jul 29 · 6:30 PM" — not a bare time that implies tonight. */}
+          {formatNextWhen(nextItem, now) ? (
             <p className="text-xs text-muted-foreground">
-              {formatTimeShort(nextItem.start_time)}
+              {formatNextWhen(nextItem, now)}
             </p>
           ) : null}
         </div>
       ) : null}
 
-      {/* Pre-trip with no current item — show days-until if trip hasn't started */}
-      {!currentItem && !nextItem && trip.starts_at && new Date(trip.starts_at) > now ? (
+      {/* #404-A/B: pre-trip countdown. Shows whenever nothing is currently
+          in progress and the trip hasn't started yet — the old
+          `!currentItem && !nextItem` gate made this unreachable the moment
+          any future item existed, silently dropping the "countdown + first
+          item" half of the M3 DoD. #404-B: `parseDateOnly` (not raw
+          `new Date()`) so the date-only `starts_at` parses as local
+          midnight, not UTC (which counts a day short west of UTC). */}
+      {!currentItem &&
+      trip.starts_at &&
+      parseDateOnly(trip.starts_at) > now ? (
         <p className="text-sm text-muted-foreground">
           {M3_UI_STRINGS.nowNext_pretrip_template.replace(
             "{days}",
-            formatDaysUntil(new Date(trip.starts_at), now)
+            formatDaysUntil(parseDateOnly(trip.starts_at), now)
           )}
         </p>
       ) : null}
     </div>
   );
+}
+
+/**
+ * "Up next" when-line (#404-A). A next item on a different calendar day
+ * than `now` carries its day ("Wed Jul 29 · 6:30 PM"); a same-day item
+ * keeps the bare time ("6:30 PM"). A whole-day future item (no start_time)
+ * renders just the day. Returns "" when there's nothing to show (same-day
+ * whole-day item), which the caller treats as "render no line".
+ */
+function formatNextWhen(item: ItineraryItem, now: Date): string {
+  const onDifferentDay = item.day !== format(now, "yyyy-MM-dd");
+  const dayLabel = onDifferentDay
+    ? format(parseDateOnly(item.day), "EEE MMM d")
+    : null;
+  const timeLabel = item.start_time ? formatTimeShort(item.start_time) : null;
+
+  if (dayLabel && timeLabel) return `${dayLabel} · ${timeLabel}`;
+  return dayLabel ?? timeLabel ?? "";
 }
 
 function formatTimeShort(time: string): string {

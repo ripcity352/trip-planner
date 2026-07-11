@@ -53,6 +53,8 @@ interface AnnouncementListProps {
    * entry (incl. realtime arrivals) render an empty reaction row.
    */
   reactionsByAnnouncement?: Record<string, AnnouncementReactionSummary>;
+  /** #405-B — celebrant display name for the hide-from-celebrant badge. */
+  celebrantName?: string | null;
 }
 
 export interface AnnouncementListHandle {
@@ -72,7 +74,13 @@ export const AnnouncementList = forwardRef<
   AnnouncementListHandle,
   AnnouncementListProps
 >(function AnnouncementList(
-  { tripId, initialAnnouncements, memberUserMap, reactionsByAnnouncement = {} },
+  {
+    tripId,
+    initialAnnouncements,
+    memberUserMap,
+    reactionsByAnnouncement = {},
+    celebrantName,
+  },
   ref
 ) {
   const [announcements, setAnnouncements] = useState<Announcement[]>(
@@ -153,6 +161,7 @@ export const AnnouncementList = forwardRef<
             <AnnouncementCard
               announcement={a}
               authorDisplayName={a.authorDisplayName}
+              celebrantName={celebrantName}
               reactionsSlot={
                 <ReactionRow
                   announcementId={a.id}

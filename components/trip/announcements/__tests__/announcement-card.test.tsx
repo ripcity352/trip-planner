@@ -92,4 +92,23 @@ describe("AnnouncementCard", () => {
     );
     expect(screen.getByTestId("visibility-badge")).toBeInTheDocument();
   });
+
+  it("names the celebrant in the hide_from_celebrant badge when provided (#405-B)", () => {
+    render(
+      <AnnouncementCard
+        announcement={makeAnnouncement({ visibility: "hide_from_celebrant" })}
+        celebrantName="Mike Groom"
+      />
+    );
+    expect(screen.getByText("Hidden from Mike Groom")).toBeInTheDocument();
+  });
+
+  it("falls back to the generic celebrant noun when no name is threaded (#405-B)", () => {
+    render(
+      <AnnouncementCard
+        announcement={makeAnnouncement({ visibility: "hide_from_celebrant" })}
+      />
+    );
+    expect(screen.getByText("Hidden from the celebrant")).toBeInTheDocument();
+  });
 });

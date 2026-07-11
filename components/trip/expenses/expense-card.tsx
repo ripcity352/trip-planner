@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { formatCents } from "@/lib/utils/format-cents";
 import { parseDateOnly } from "@/lib/utils/date-only";
 import { M3_UI_STRINGS, M5_UI_STRINGS } from "@/lib/copy/empty-states";
+import { hideFromCelebrantBadge } from "@/lib/utils/celebrant-badge";
 import type { Expense, ExpenseSplit } from "@/lib/db/types";
 
 export interface ExpenseCardProps {
@@ -21,12 +22,21 @@ export interface ExpenseCardProps {
   payerName: string;
   /** Viewer's trip_members.id — null when somehow unresolved. */
   viewerMemberId: string | null;
+  /**
+   * #405-B — the trip celebrant's display name, threaded from the page so
+   * the `hide_from_celebrant` badge names them instead of the generic
+   * "Hidden from the celebrant".
+   */
+  celebrantName?: string | null;
   className?: string;
 }
 
+/**
+ * Non-celebrant visibility badges. `hide_from_celebrant` is NOT here — it
+ * goes through `hideFromCelebrantBadge` so it can name the celebrant (#405-B).
+ */
 const VISIBILITY_BADGE: Partial<Record<Expense["visibility"], string>> = {
   organizers_only: M3_UI_STRINGS.announcements_badge_organizers_only,
-  hide_from_celebrant: M3_UI_STRINGS.announcements_badge_hide_celebrant,
   custom: M3_UI_STRINGS.announcements_badge_custom,
 };
 
@@ -35,12 +45,16 @@ export function ExpenseCard({
   splits,
   payerName,
   viewerMemberId,
+  celebrantName,
   className,
 }: ExpenseCardProps) {
   const myShare = viewerMemberId
     ? (splits.find((s) => s.trip_member_id === viewerMemberId) ?? null)
     : null;
-  const badge = VISIBILITY_BADGE[expense.visibility];
+  const badge =
+    expense.visibility === "hide_from_celebrant"
+      ? hideFromCelebrantBadge(celebrantName)
+      : VISIBILITY_BADGE[expense.visibility];
 
   return (
     <article

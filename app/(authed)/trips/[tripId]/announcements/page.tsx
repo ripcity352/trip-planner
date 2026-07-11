@@ -92,6 +92,17 @@ export default async function AnnouncementsPage({ params }: PageProps) {
   // rows so the fetch can run in parallel with getTripMembers (the map source).
   const enrichedAnnouncements = enrichAnnouncements(announcements, memberUserMap);
 
+  // #405-B: celebrant display name for the hide-from-celebrant badge. Derived
+  // from the already-fetched members (no extra query) so organizers see
+  // "Hidden from <name>" instead of the generic "Hidden from the celebrant".
+  const celebrantName =
+    members.find((m) => m.is_celebrant)?.display_name ?? null;
+
+  // #405-C: the viewer's own display name, so a freshly-posted announcement
+  // renders their name immediately instead of flashing "Someone".
+  const viewerDisplayName =
+    members.find((m) => m.user_id === user.id)?.display_name ?? null;
+
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-6">
@@ -116,6 +127,8 @@ export default async function AnnouncementsPage({ params }: PageProps) {
         initialAnnouncements={enrichedAnnouncements}
         memberUserMap={memberUserMap}
         reactionsByAnnouncement={reactionsByAnnouncement}
+        celebrantName={celebrantName}
+        viewerDisplayName={viewerDisplayName}
       />
     </section>
   );

@@ -19,6 +19,7 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "invite_exhausted",
   "invite_not_found",
   "trip_create_failed",
+  "trip_dates_reversed",
   "rsvp_save_failed",
   // M3 keys (Wave 0a)
   "itinerary_save_failed",
