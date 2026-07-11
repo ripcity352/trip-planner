@@ -126,6 +126,35 @@ describe("AddExpenseSheet", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
+  it("surfaces field-error text on a blank description + zero amount (#401)", async () => {
+    const { FIELD_ERRORS } = await import("@/lib/copy/field-errors");
+    openSheet();
+    // Blank description; amount "0" — both reject client-side.
+    fireEvent.change(screen.getByLabelText("How much?"), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Log it" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(FIELD_ERRORS.expense_description_required)
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(FIELD_ERRORS.expense_amount_required)
+    ).toBeInTheDocument();
+    // Offending fields carry aria-invalid for screen readers.
+    expect(screen.getByLabelText("What was it?")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(screen.getByLabelText("How much?")).toHaveAttribute(
+      "aria-invalid",
+      "true"
+    );
+    expect(addExpenseActionMock).not.toHaveBeenCalled();
+  });
+
   describe("role-filtered visibility options (#384)", () => {
     function optionValues() {
       return Array.from(

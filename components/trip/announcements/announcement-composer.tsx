@@ -30,6 +30,7 @@ import { postAnnouncement } from "@/lib/actions/announcements";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { ERRORS } from "@/lib/copy/errors";
+import { FIELD_ERRORS } from "@/lib/copy/field-errors";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Announcement, TripVisibility } from "@/lib/db/types";
 
@@ -41,7 +42,12 @@ const VISIBILITY_OPTIONS: { value: Exclude<TripVisibility, "custom">; label: str
 ];
 
 const composerSchema = z.object({
-  body: z.string().trim().min(1, "Body is required").max(5000),
+  // #401: field-error copy sourced from lib/copy (voice-tested), not inline.
+  body: z
+    .string()
+    .trim()
+    .min(1, FIELD_ERRORS.announcement_body_required)
+    .max(5000, FIELD_ERRORS.announcement_body_too_long),
   visibility: z.enum(["everyone", "organizers_only", "hide_from_celebrant"]),
 });
 
@@ -88,7 +94,7 @@ function ComposerForm({
     handleSubmit,
     setValue,
     reset,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = useForm<ComposerFormValues>({
     resolver: zodResolver(composerSchema),
     defaultValues: {
@@ -135,8 +141,21 @@ function ComposerForm({
           id="announcement-body"
           placeholder={M3_UI_STRINGS.announcements_compose_placeholder}
           rows={3}
+          aria-invalid={errors.body ? "true" : undefined}
+          aria-describedby={errors.body ? "announcement-body-error" : undefined}
           {...register("body")}
         />
+        {/* #401: client-side field error — a rejected body must SAY why, not
+            just shift a border colour (easy to miss at 375px). */}
+        {errors.body ? (
+          <p
+            id="announcement-body-error"
+            role="alert"
+            className={cn(ERROR_LINE_CLASS, "text-sm")}
+          >
+            {errors.body.message}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-1.5">
