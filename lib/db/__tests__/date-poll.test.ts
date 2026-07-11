@@ -42,11 +42,14 @@ import type {
  * drive `from("date_poll_candidates")` and `from("date_poll_votes")`
  * independently without two separate clients.
  */
+type Resolved = { data: unknown; error: unknown };
+
 function makeClient(
-  tableResolvers: Record<string, () => { data: unknown; error: unknown }>
+  tableResolvers: Record<string, () => Resolved>,
+  rpcResolvers: Record<string, () => Resolved> = {}
 ) {
   const buildProxy = (tableName: string): Record<string, unknown> => {
-    const thenable: PromiseLike<{ data: unknown; error: unknown }> = {
+    const thenable: PromiseLike<Resolved> = {
       then(onfulfilled) {
         const result = tableResolvers[tableName]?.() ?? {
           data: [],
@@ -67,6 +70,10 @@ function makeClient(
 
   return {
     from: vi.fn((table: string) => buildProxy(table)),
+    // #420: aggregate counts route through the get_date_poll_vote_counts RPC.
+    rpc: vi.fn((name: string) =>
+      Promise.resolve(rpcResolvers[name]?.() ?? { data: [], error: null })
+    ),
   } as unknown as SupabaseClient;
 }
 
@@ -163,33 +170,64 @@ describe("lib/db/date-poll.ts — Supabase wrappers", () => {
   });
 
   describe("getVoteCountsByCandidate", () => {
-    it("returns an empty Map when there are no candidates", async () => {
-      const client = makeClient({
-        date_poll_candidates: () => ({ data: [], error: null }),
-      });
+    it("returns an empty Map when the aggregate RPC returns no rows", async () => {
+      const client = makeClient(
+        {},
+        { get_date_poll_vote_counts: () => ({ data: [], error: null }) }
+      );
       const counts = await getVoteCountsByCandidate(client, "trip-1");
       expect(counts.size).toBe(0);
     });
 
-    it("initializes a zero bucket for every candidate then folds votes in", async () => {
-      const client = makeClient({
-        date_poll_candidates: () => ({
-          data: [{ id: "c1" }, { id: "c2" }],
-          error: null,
-        }),
-        date_poll_votes: () => ({
-          data: [
-            { candidate_id: "c1", trip_member_id: "m1", vote: true },
-            { candidate_id: "c1", trip_member_id: "m2", vote: true },
-            { candidate_id: "c1", trip_member_id: "m3", vote: false },
-            { candidate_id: "c2", trip_member_id: "m1", vote: false },
-          ],
-          error: null,
-        }),
-      });
+    it("maps per-candidate yes/no counts from the aggregate RPC", async () => {
+      const client = makeClient(
+        {},
+        {
+          get_date_poll_vote_counts: () => ({
+            data: [
+              { candidate_id: "c1", yes_votes: 2, no_votes: 1 },
+              { candidate_id: "c2", yes_votes: 0, no_votes: 1 },
+            ],
+            error: null,
+          }),
+        }
+      );
       const counts = await getVoteCountsByCandidate(client, "trip-1");
       expect(counts.get("c1")).toEqual({ yes: 2, no: 1 });
       expect(counts.get("c2")).toEqual({ yes: 0, no: 1 });
+      // Aggregates come from the RPC, never a raw all-voter votes read.
+      expect(client.rpc).toHaveBeenCalledWith("get_date_poll_vote_counts", {
+        p_trip_id: "trip-1",
+      });
+    });
+
+    it("coerces bigint counts handed back as strings", async () => {
+      const client = makeClient(
+        {},
+        {
+          get_date_poll_vote_counts: () => ({
+            data: [{ candidate_id: "c1", yes_votes: "3", no_votes: "4" }],
+            error: null,
+          }),
+        }
+      );
+      const counts = await getVoteCountsByCandidate(client, "trip-1");
+      expect(counts.get("c1")).toEqual({ yes: 3, no: 4 });
+    });
+
+    it("throws a scoped error when the RPC fails", async () => {
+      const client = makeClient(
+        {},
+        {
+          get_date_poll_vote_counts: () => ({
+            data: null,
+            error: { message: "boom" },
+          }),
+        }
+      );
+      await expect(
+        getVoteCountsByCandidate(client, "trip-1")
+      ).rejects.toThrow(/getVoteCountsByCandidate failed: boom/);
     });
   });
 
@@ -209,50 +247,39 @@ describe("lib/db/date-poll.ts — Supabase wrappers", () => {
   });
 
   describe("getDatePollViewModel", () => {
-    it("composes candidates + marks + counts + my-vote into per-candidate views", async () => {
-      let candidatesQ = 0;
-      let votesQ = 0;
-      const client = makeClient({
-        date_poll_candidates: () => {
-          candidatesQ += 1;
-          // First call from listCandidates returns full rows; the second
-          // and third (from getCelebrantMarks / getVoteCountsByCandidate)
-          // are short-id reads but the proxy returns the same shape so
-          // it's fine — the consumers narrow.
-          return { data: [C1, C2], error: null };
-        },
-        date_poll_celebrant_marks: () => ({
-          data: [
-            {
-              candidate_id: "c1",
-              mark: "no-go",
-              marked_by: "u-1",
-              marked_at: "2026-05-19T13:00:00.000Z",
-            },
-          ],
-          error: null,
-        }),
-        date_poll_votes: () => {
-          votesQ += 1;
-          // First votes call is the aggregate-counts read; second is
-          // my-vote scoped to the viewer.
-          if (votesQ === 1) {
-            return {
-              data: [
-                { candidate_id: "c1", trip_member_id: "m1", vote: true },
-                { candidate_id: "c2", trip_member_id: "m1", vote: false },
-              ],
-              error: null,
-            };
-          }
-          return {
+    it("composes candidates + marks + aggregate counts + own vote into per-candidate views", async () => {
+      const client = makeClient(
+        {
+          date_poll_candidates: () => ({ data: [C1, C2], error: null }),
+          date_poll_celebrant_marks: () => ({
+            data: [
+              {
+                candidate_id: "c1",
+                mark: "no-go",
+                marked_by: "u-1",
+                marked_at: "2026-05-19T13:00:00.000Z",
+              },
+            ],
+            error: null,
+          }),
+          // The ONLY date_poll_votes read left is the own-row my-vote
+          // scan — scoped to the viewer, never a peer's vote.
+          date_poll_votes: () => ({
             data: [{ candidate_id: "c1", vote: true }],
             error: null,
-          };
+          }),
         },
-      });
+        {
+          get_date_poll_vote_counts: () => ({
+            data: [
+              { candidate_id: "c1", yes_votes: 1, no_votes: 0 },
+              { candidate_id: "c2", yes_votes: 0, no_votes: 1 },
+            ],
+            error: null,
+          }),
+        }
+      );
       const rows = await getDatePollViewModel(client, "trip-1", "m1");
-      expect(candidatesQ).toBeGreaterThan(0);
       expect(rows).toHaveLength(2);
       const c1 = rows.find((r) => r.candidate.id === "c1");
       expect(c1?.mark).toBe("no-go");
@@ -261,6 +288,10 @@ describe("lib/db/date-poll.ts — Supabase wrappers", () => {
       const c2 = rows.find((r) => r.candidate.id === "c2");
       expect(c2?.mark).toBeNull();
       expect(c2?.no_votes).toBe(1);
+      // Aggregate counts route through the RPC.
+      expect(client.rpc).toHaveBeenCalledWith("get_date_poll_vote_counts", {
+        p_trip_id: "trip-1",
+      });
     });
   });
 });

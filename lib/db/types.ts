@@ -459,6 +459,27 @@ export interface PollVote {
 }
 
 /**
+ * Per-option aggregate count row, as returned by the
+ * `get_poll_vote_counts` RPC (#420). Aggregate-only — the DB function
+ * returns ids + counts and never a `trip_member_id`, so per-name votes
+ * can't be reconstructed from this surface.
+ */
+export interface PollVoteCount {
+  poll_id: string;
+  option_id: string;
+  votes: number;
+}
+
+/**
+ * The viewer's own poll vote (poll → chosen option), read from the
+ * own-row-only `poll_votes` SELECT (#420). Drives the highlighted chip.
+ */
+export interface MyPollVote {
+  poll_id: string;
+  option_id: string;
+}
+
+/**
  * One option with its aggregate tally. Aggregate-only per ADR — voter
  * names are intentionally NOT threaded through this surface.
  */

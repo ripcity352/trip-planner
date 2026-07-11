@@ -13,7 +13,11 @@
  * RLS gates every read at the database level:
  *   - `date_poll_candidates`  → members of the candidate's trip
  *   - `date_poll_celebrant_marks` → same
- *   - `date_poll_votes`       → same
+ *   - `date_poll_votes`       → own-row only (#420): a member reads ONLY
+ *     their own vote, so per-name votes can't be reconstructed via a
+ *     direct select. Aggregate counts come from the
+ *     `get_date_poll_vote_counts` SECURITY DEFINER RPC (members-gated,
+ *     candidate_id + counts only — no trip_member_id).
  *
  * The app layer is a thin typed wrapper.
  */
@@ -25,13 +29,11 @@ import type {
   DatePollCandidateView,
   DatePollCelebrantMark,
   DatePollCelebrantMarkRow,
-  DatePollVote,
 } from "./types";
 
 const CANDIDATE_COLUMNS =
   "id, trip_id, label, starts_on, ends_on, created_by, created_at";
 const MARK_COLUMNS = "candidate_id, mark, marked_by, marked_at";
-const VOTE_COLUMNS = "candidate_id, trip_member_id, vote, voted_at, idempotency_key";
 
 /**
  * Aggregate counts (yes / no) per candidate. Keys are candidate ids.
@@ -101,55 +103,40 @@ export async function getCelebrantMarks(
 }
 
 /**
- * Reads every vote for the trip's candidates and aggregates yes / no
- * counts per candidate. We do client-side aggregation (not a SQL
- * GROUP BY) for symmetry with `getRsvpCountsForTrip` — the row count
- * is small (members × candidates ≤ ~60 for a typical bach trip) so
- * the network savings of a SQL aggregate aren't worth the extra
- * SECURITY DEFINER surface.
+ * Aggregate yes / no counts per candidate for the trip.
+ *
+ * Aggregate-only at the DB (#420): the raw `date_poll_votes` SELECT is
+ * now own-row only (a member can't read peers' votes), so counting is
+ * delegated to the `get_date_poll_vote_counts` SECURITY DEFINER RPC. It
+ * spans all voters but returns candidate_id + counts only (never a
+ * trip_member_id) and is gated to trip members, so per-name votes can't
+ * be reconstructed from this surface.
  */
 export async function getVoteCountsByCandidate(
   supabase: SupabaseClient,
   tripId: string
 ): Promise<VoteCountsByCandidate> {
-  const { data: candidates, error: candidatesError } = await supabase
-    .from("date_poll_candidates")
-    .select("id")
-    .eq("trip_id", tripId);
-
-  if (candidatesError) {
-    throw new Error(
-      `getVoteCountsByCandidate failed: ${candidatesError.message}`
-    );
-  }
-  const candidateIds = (candidates ?? []).map(
-    (c) => (c as { id: string }).id
-  );
-  if (candidateIds.length === 0) return new Map();
-
-  const { data, error } = await supabase
-    .from("date_poll_votes")
-    .select(VOTE_COLUMNS)
-    .in("candidate_id", candidateIds);
+  const { data, error } = await supabase.rpc("get_date_poll_vote_counts", {
+    p_trip_id: tripId,
+  });
 
   if (error) {
     throw new Error(`getVoteCountsByCandidate failed: ${error.message}`);
   }
 
-  const rows = (data ?? []) as DatePollVote[];
-  // Initialize the map with zero buckets for every candidate so the
-  // caller doesn't need to defensively coalesce. Then walk the votes.
-  const counts: VoteCountsByCandidate = new Map(
-    candidateIds.map((id) => [id, { yes: 0, no: 0 }])
-  );
+  const rows = (data ?? []) as Array<{
+    candidate_id: string;
+    yes_votes: number;
+    no_votes: number;
+  }>;
+  const counts: VoteCountsByCandidate = new Map();
   for (const row of rows) {
-    const bucket = counts.get(row.candidate_id);
-    if (!bucket) continue;
-    if (row.vote) {
-      counts.set(row.candidate_id, { yes: bucket.yes + 1, no: bucket.no });
-    } else {
-      counts.set(row.candidate_id, { yes: bucket.yes, no: bucket.no + 1 });
-    }
+    // Postgres returns count() as bigint; PostgREST may hand it back as a
+    // string, so coerce defensively.
+    counts.set(row.candidate_id, {
+      yes: Number(row.yes_votes),
+      no: Number(row.no_votes),
+    });
   }
   return counts;
 }

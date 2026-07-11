@@ -5,6 +5,70 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-11 — #420 — Votes are aggregate-only at the DB, not just in the UI
+
+**Gap named (a missing axis in the vote-visibility spec):** both
+`poll_votes` (#390) and `date_poll_votes` (M2) enforced "aggregate-only,
+never voter names" in the *app view-models only*. Their RLS SELECT
+policies granted **row-level** read — including `trip_member_id` — to
+every member who could see the parent poll. A member using the browser
+Supabase client could `select('*')` and join `trip_members` to
+reconstruct per-name votes ("Dave voted omakase"), defeating the
+aggregate-only / voter-opt-in privacy rule the UIs promise. The
+aggregate-only invariant was never load-bearing at the source of truth
+(RLS); it was a view-model convention a direct PostgREST call bypassed.
+The date poll shipped this posture first; #390 deliberately mirrored it
+for parity, so #420 tightens **both together** so they don't diverge.
+
+**Decision:** close the gap in RLS, symmetrically, for both tables
+(`20260710070100_vote_aggregate_only.sql`):
+
+1. **Per-vote SELECT restricted to the voter's OWN row** —
+   `trip_member_id in (select id from trip_members where user_id =
+   auth.uid())`. A direct `select('*')` now returns only your own vote;
+   no cross-member reconstruction. This *is* the 'my vote' read, so
+   optimistic-UI highlighting keeps working with no separate grant.
+2. **Aggregates move to a per-table SECURITY DEFINER set-returning
+   function** (`get_poll_vote_counts`, `get_date_poll_vote_counts`) that
+   returns per-option / per-candidate counts and **never a
+   `trip_member_id`**.
+
+**Why SECURITY DEFINER and not the security_invoker view the issue
+first reached for:** once the base-table SELECT is own-row only, a
+security_invoker view/function re-applies that same RLS to its own read
+and can only ever see the caller's *own* vote — a per-caller count of 1,
+never the real total. Counting across all voters *requires* bypassing
+the base-table SELECT RLS, which is what DEFINER does. The
+celebrant-hidden-poll invariant is preserved **explicitly inside** the
+function: `can_see_content(trip_id, visibility)` (polls) /
+`is_trip_member(trip_id)` (date poll, which has no visibility axis) is
+re-checked against `auth.uid()` (both are DEFINER helpers reading the
+caller's identity), so a `hide_from_celebrant` poll contributes **zero
+rows and zero aggregate** to the celebrant, and a non-member gets
+nothing. The functions expose only ids + counts, so definer is safe —
+there is no per-name surface to leak. EXECUTE trimmed to `authenticated`
+(the `create_poll_with_options` precedent). Data layer
+(`lib/db/polls.ts`, `lib/db/date-poll.ts`) re-points aggregates at the
+RPCs and keeps the exported view-model signatures
+(`getPollsViewModel` / `getDatePollViewModel`) stable so PulsePoll and
+both poll UIs render unchanged. Local `BEGIN/ROLLBACK` RLS matrix
+(member sees only own vote row on both tables; aggregate correct;
+celebrant zero-rows-and-zero-aggregate for the hidden poll; non-member
+zero) proved it before push.
+
+**Deferred:** the roadmap "per-name poll visibility → voter opt-in"
+rule is *not* modeled here — an opt-in column/grant is future work; the
+default stays aggregate-only, now enforced at the DB.
+
+**Alternative considered:** a `security_invoker` view over the
+own-row-restricted table — rejected (structurally can't aggregate over
+rows the caller can't read; see above). A definer *view* would also
+work but trips the `security_definer_view` advisor and doesn't match the
+codebase's DEFINER-function idiom (`can_see_content`, `is_trip_member`,
+`assert_candidate_not_vetoed_before_vote`).
+
+---
+
 ## 2026-07-09 — #349/#400 — Realtime subscriptions authenticate before subscribe; castDateVote exits the F2 exclusion
 
 **Gap named (two axes missing from the spec):**
