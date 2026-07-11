@@ -184,6 +184,19 @@ decisions and `notes/retros/m4-retro.md` for the full retro.
 > invite-chain fixes (#364/#366/#370), organizer flag read surface
 > (#365), display-name at accept (#348), and the **expenses MVP (#372 —
 > shipped)**. The rest of M5 "Earned post-trip" stays retro-gated.
+>
+> **2026-07-09/11 update:** a second operator-directed feature session
+> (audit → 4-wave build, 18 PRs, 5 prod migrations — see decisions.md
+> "Aggressive feature session" ADR) lifted the gate for FIVE more approved
+> features: roster member management (#386), per-name RSVP holdout surface
+> (#387), announcement reactions (#389), generic poll primitive (#390),
+> day-scoped attendance UI (#388). Also shipped: correctable-money expenses
+> edit/delete (#383/#384), invite_preview v2 (#367/#402), dates reconcile
+> (#369), realtime auth fix (#349), and two security-hardening migrations —
+> `trip_members` role-escalation lock (#418) and vote aggregate-only-at-DB
+> (#420). The rest of M5 "Earned post-trip" stays retro-gated; the bright
+> line holds — **no infra/feature wave lifts the gate for un-approved M5
+> items.**
 
 **Sim 2026-05-20:** 16 of 21 future-state-guide open questions
 resolved; see `notes/sim/2026-05-20/findings.md` for the synthesis.
