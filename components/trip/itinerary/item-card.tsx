@@ -15,6 +15,7 @@ import { Hotel, PartyPopper, Plane, UtensilsCrossed, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { hideFromCelebrantBadge } from "@/lib/utils/celebrant-badge";
 import { MapsLink } from "./maps-link";
 import { ItemRsvpChip } from "./item-rsvp-chip";
 import { ItemFlagForm } from "./item-flag-form";
@@ -123,10 +124,7 @@ export function ItemCard({
           muted badge, matching AnnouncementCard's non-default treatment. */}
       {isHiddenFromCelebrant && isOrganizer ? (
         <span className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          {M3_UI_STRINGS.itinerary_item_visibility_hide_celebrant_badge.replace(
-            "{name}",
-            celebrantName ?? "the celebrant"
-          )}
+          {hideFromCelebrantBadge(celebrantName)}
         </span>
       ) : null}
       {nonCelebrantVisibilityLabel && isOrganizer ? (

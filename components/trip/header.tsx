@@ -15,8 +15,12 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
  * is testable without spinning up that whole type surface — only the
  * fields we actually read are typed.
  *
- * `email` is required because the avatar fallback derives an initial
- * from it. If we ever support phone-only sign-in, swap to `display_name`.
+ * The avatar fallback initial derives from the resolved display name
+ * first (`user_metadata.display_name`), with `email` only as a last
+ * resort — the #215/#216 identity precedence (display name over email),
+ * applied to the auth user the authed root layout has on hand (there's no
+ * trip-scoped member map at this layer). Before #405-A a walk persona who
+ * typed "Nate Newguy" was crowned "W" from `walk-…@example.com`.
  */
 export interface HeaderUser {
   email?: string | null;
@@ -34,7 +38,7 @@ export interface HeaderUser {
  */
 export function Header({ user }: { user: HeaderUser }) {
   const avatarUrl = user.user_metadata?.avatar_url ?? null;
-  const initial = deriveInitial(user.email);
+  const initial = deriveInitial(user.user_metadata?.display_name, user.email);
 
   return (
     <header className="border-border/60 bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 border-b backdrop-blur">
@@ -69,12 +73,20 @@ export function Header({ user }: { user: HeaderUser }) {
 }
 
 /**
- * Pull the first alpha character out of an email and uppercase it.
- * Falls back to "?" when we have no usable identifier — keeps the
- * fallback slot from collapsing.
+ * Pull the first alpha character out of the resolved identity and
+ * uppercase it. Precedence: display name first, email as last resort
+ * (#405-A / #215-#216). Falls back to "?" when neither yields an alpha
+ * char — keeps the fallback slot from collapsing.
+ *
+ * Note: this is NOT email-local-part display derivation (the #216 ban) —
+ * we take a single initial from whichever identity resolves, never a
+ * name from the local part.
  */
-function deriveInitial(email: string | null | undefined): string {
-  if (!email) return "?";
-  const match = email.match(/[a-zA-Z]/);
+function deriveInitial(
+  displayName: string | null | undefined,
+  email: string | null | undefined,
+): string {
+  const source = displayName?.trim() || email || "";
+  const match = source.match(/[a-zA-Z]/);
   return (match?.[0] ?? "?").toUpperCase();
 }

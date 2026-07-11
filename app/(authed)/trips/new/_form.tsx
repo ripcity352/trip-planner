@@ -34,16 +34,25 @@ import { createTripAction } from "@/lib/actions/trips";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 
-const schema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, { message: ERRORS.validation_failed })
-    .max(100, { message: ERRORS.validation_failed }),
-  starts_at: z.string().optional(),
-  ends_at: z.string().optional(),
-  description: z.string().trim().max(1000).optional(),
-});
+const schema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, { message: ERRORS.validation_failed })
+      .max(100, { message: ERRORS.validation_failed }),
+    starts_at: z.string().optional(),
+    ends_at: z.string().optional(),
+    description: z.string().trim().max(1000).optional(),
+  })
+  // #405-D: mirror the server's cross-field refine so the date fields
+  // highlight client-side and the specific message surfaces at the field,
+  // not just the generic server toast. The server action re-checks and is
+  // the authoritative backstop (plus the trips_end_after_start DB CHECK).
+  .refine(
+    (data) => !data.starts_at || !data.ends_at || data.ends_at >= data.starts_at,
+    { message: ERRORS.trip_dates_reversed, path: ["ends_at"] }
+  );
 
 type FormValues = z.infer<typeof schema>;
 
@@ -138,9 +147,26 @@ export function TripForm() {
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="trip-ends-at">{M2_UI_STRINGS.newTrip_endLabel}</Label>
-          <Input id="trip-ends-at" type="date" {...register("ends_at")} />
+          <Input
+            id="trip-ends-at"
+            type="date"
+            aria-invalid={Boolean(errors.ends_at)}
+            aria-describedby={errors.ends_at ? "trip-ends-at-error" : undefined}
+            {...register("ends_at")}
+          />
         </div>
       </div>
+
+      {/* #405-D: cross-field date error surfaces at the field, on-voice. */}
+      {errors.ends_at ? (
+        <p
+          id="trip-ends-at-error"
+          role="alert"
+          className={cn(ERROR_LINE_CLASS, "text-sm")}
+        >
+          {errors.ends_at.message}
+        </p>
+      ) : null}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="trip-description">

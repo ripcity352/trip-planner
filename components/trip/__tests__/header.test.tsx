@@ -63,6 +63,17 @@ describe("Header", () => {
     expect(screen.getByTestId("header-avatar-fallback")).toHaveTextContent("D");
   });
 
+  it("derives the initial from the display name, not the email (#405-A)", () => {
+    // Walk persona: email local-part is "walk-…" but the typed name is
+    // "Nate Newguy" — the initial must be "N", never "W".
+    const user: HeaderUser = {
+      email: "walk-nate@example.com",
+      user_metadata: { display_name: "Nate Newguy" },
+    };
+    render(<Header user={user} />);
+    expect(screen.getByTestId("header-avatar-fallback")).toHaveTextContent("N");
+  });
+
   it("renders the avatar image when avatar_url is present", async () => {
     const userWithAvatar: HeaderUser = {
       email: "dave@example.com",

@@ -192,6 +192,11 @@ export const M3_UI_STRINGS = {
   itinerary_item_address_cta: "Open in Maps",
   itinerary_item_hidden_for_celebrant: "Something planned",
   itinerary_item_visibility_hide_celebrant_badge: "Hidden from {name}",
+  // #405-B — generic fallback for the {name} slot when the celebrant's
+  // display name can't be resolved. Keeps the badge readable ("Hidden from
+  // the celebrant") without leaking the raw spec register into the common
+  // (named) path. Shared by all three surfaces via hideFromCelebrantBadge().
+  celebrant_generic_fallback: "the celebrant",
   itinerary_item_kind_event: "Event",
   itinerary_item_kind_lodging: "Lodging",
   itinerary_item_kind_transport: "Transport",
