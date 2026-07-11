@@ -447,4 +447,24 @@ export const M5_UI_STRINGS = {
   reactions_add_aria: "Add a reaction",
   reactions_picker_aria: "Pick a reaction",
   reactions_toggle_aria_template: "React with {emoji}",
+  // #390 — generic poll primitive ("Put it to the crew" register).
+  // Same voice test. No leaderboard framing on tallies — counts are
+  // aggregate-only and stated plainly.
+  polls_composer_cta: "Put it to the crew",
+  pollsForm_question_label: "The question",
+  pollsForm_question_placeholder: "Steakhouse or omakase?",
+  pollsForm_option_label_template: "Option {n}",
+  pollsForm_add_option: "Add another option",
+  pollsForm_closes_label: "Last call for votes? (fine to leave open)",
+  pollsForm_visibility_label: "Who sees this?",
+  pollsForm_submit: "Ask the crew",
+  pollsForm_cancel: "Never mind",
+  polls_vote_count_one: "1 vote in",
+  polls_vote_count_other: "{count} votes in",
+  polls_closes_template: "Closes {date}",
+  polls_closed_label: "Voting's closed",
+  polls_closed_winner_template: "{label} takes it",
+  polls_closed_tie: "Dead heat. Sort it out over a drink.",
+  polls_closed_no_votes: "Nobody weighed in. Organizer's call.",
+  polls_option_vote_aria_template: "Vote {label}",
 } as const;

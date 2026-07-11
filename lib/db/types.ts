@@ -418,3 +418,66 @@ export interface ItineraryItemMemberFlag {
   note: string | null;
   created_at: string;
 }
+
+// =============================================================
+// #390 — Generic poll primitive
+// Mirrors `20260710060100_polls.sql`.
+// =============================================================
+
+/**
+ * A generic decision poll (#390). One question, 2–4 options, optional
+ * date-only deadline. Organizer-composed this round (scope fence).
+ */
+export interface Poll {
+  id: string;
+  trip_id: string;
+  question: string;
+  visibility: TripVisibility;
+  /** ISO date `YYYY-MM-DD` or null. Votes accepted THROUGH this date
+   * (inclusive); closed once today > closes_on. Date-only register. */
+  closes_on: string | null;
+  /** trip_members.id of the composing organizer (survives claim-the-seat). */
+  created_by: string;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
+export interface PollOption {
+  id: string;
+  poll_id: string;
+  label: string;
+  /** Display order, 0–3 (the 2–4 option invariant caps at 4). */
+  position: number;
+}
+
+export interface PollVote {
+  poll_id: string;
+  option_id: string;
+  trip_member_id: string;
+  voted_at: string;
+  idempotency_key: string | null;
+}
+
+/**
+ * One option with its aggregate tally. Aggregate-only per ADR — voter
+ * names are intentionally NOT threaded through this surface.
+ */
+export interface PollOptionView {
+  option: PollOption;
+  votes: number;
+  /** True when this option is the viewer's own current choice. */
+  is_my_vote: boolean;
+}
+
+/**
+ * Composite view-model for one poll — the shape the announcements page
+ * renders. `my_option_id` is the viewer's current choice (null if they
+ * haven't voted).
+ */
+export interface PollView {
+  poll: Poll;
+  /** Ordered by `position`. */
+  options: PollOptionView[];
+  total_votes: number;
+  my_option_id: string | null;
+}

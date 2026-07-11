@@ -10,6 +10,10 @@
  * Organizer check is done via `is_trip_organizer` RPC, consistent with the
  * dashboard and itinerary pages. The result is passed to AnnouncementsFeed,
  * which hides the composer entirely for non-organizers.
+ *
+ * #390: decision polls live on this page too — PollsSection (organizer
+ * composer + tap-to-vote cards, PulsePoll-backed) renders above the
+ * announcements feed. RLS scopes what each viewer sees.
  */
 
 import { notFound } from "next/navigation";
@@ -20,7 +24,9 @@ import {
   getReactionsForTrip,
   summarizeReactions,
 } from "@/lib/db/announcement-reactions";
+import { getPollsViewModel } from "@/lib/db/polls";
 import { AnnouncementsFeed } from "@/components/trip/announcements/announcements-feed";
+import { PollsSection } from "@/components/trip/polls/polls-section";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 
 type PageProps = {
@@ -65,6 +71,15 @@ export default async function AnnouncementsPage({ params }: PageProps) {
     members.find((m) => m.user_id === user.id)?.id ?? null;
   const reactionsByAnnouncement = summarizeReactions(reactions, myMemberId);
 
+  // #390: the viewer's own member row (for vote attribution + own-choice
+  // highlight). Undefined for a non-member viewer — read-only polls.
+  const viewerTripMemberId = members.find((m) => m.user_id === user.id)?.id;
+  const pollViews = await getPollsViewModel(
+    supabase,
+    trip.id,
+    viewerTripMemberId
+  );
+
   // Build user_id → display_name map for author attribution.
   // Keyed by user_id (not trip_member.id) because created_by references auth.users.
   const memberUserMap = new Map<string, string | null>(
@@ -85,6 +100,15 @@ export default async function AnnouncementsPage({ params }: PageProps) {
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">{trip.name}</p>
       </header>
+
+      <div className="mb-6">
+        <PollsSection
+          tripId={trip.id}
+          isOrganizer={isOrganizer}
+          viewerTripMemberId={viewerTripMemberId}
+          initialViews={pollViews}
+        />
+      </div>
 
       <AnnouncementsFeed
         tripId={trip.id}
