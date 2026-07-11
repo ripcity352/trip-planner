@@ -16,6 +16,10 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getTripMembers } from "@/lib/db/trips";
 import { enrichAnnouncements, getAnnouncements } from "@/lib/db/announcements";
+import {
+  getReactionsForTrip,
+  summarizeReactions,
+} from "@/lib/db/announcement-reactions";
 import { AnnouncementsFeed } from "@/components/trip/announcements/announcements-feed";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 
@@ -41,15 +45,25 @@ export default async function AnnouncementsPage({ params }: PageProps) {
     notFound();
   }
 
-  // Fan out: announcements + members + organizer check in parallel.
-  // Members are needed to build the memberUserMap for author attribution (#239).
-  const [announcements, members, organizerCheck] = await Promise.all([
-    getAnnouncements(supabase, trip.id),
-    getTripMembers(supabase, trip.id),
-    supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
-  ]);
+  // Fan out: announcements + reactions + members + organizer check in
+  // parallel. Members are needed to build the memberUserMap for author
+  // attribution (#239); reactions feed the per-card ack row (#389).
+  const [announcements, reactions, members, organizerCheck] =
+    await Promise.all([
+      getAnnouncements(supabase, trip.id),
+      getReactionsForTrip(supabase, trip.id),
+      getTripMembers(supabase, trip.id),
+      supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
+    ]);
 
   const isOrganizer = organizerCheck.data === true;
+
+  // The caller's own seat (trip_members.id) — drives the "mine"
+  // highlight on reaction chips. null only if the membership row is
+  // missing, in which case the row renders read-only counts.
+  const myMemberId =
+    members.find((m) => m.user_id === user.id)?.id ?? null;
+  const reactionsByAnnouncement = summarizeReactions(reactions, myMemberId);
 
   // Build user_id → display_name map for author attribution.
   // Keyed by user_id (not trip_member.id) because created_by references auth.users.
@@ -77,6 +91,7 @@ export default async function AnnouncementsPage({ params }: PageProps) {
         isOrganizer={isOrganizer}
         initialAnnouncements={enrichedAnnouncements}
         memberUserMap={memberUserMap}
+        reactionsByAnnouncement={reactionsByAnnouncement}
       />
     </section>
   );

@@ -1,3 +1,5 @@
+import type { ReactionEmoji } from "@/lib/reactions/constants";
+
 /**
  * Database row types — hand-rolled to match the latest applied migration.
  * Source of truth: `supabase/migrations/`. Current applied set:
@@ -326,6 +328,36 @@ export interface Announcement {
   created_by: string | null;
   // W1c addition — resolved at the data-layer boundary, not a DB column
   authorDisplayName?: string | null;
+}
+
+/**
+ * A fixed-set emoji ack on an announcement (#389).
+ *
+ * Visibility is INHERITED from the parent announcement (rule-7 exception —
+ * see the 20260710060000 migration header): no visibility column; RLS
+ * routes every read/write through the parent's can_see_content().
+ * Idempotency is the natural key (announcement_id, trip_member_id, emoji)
+ * — rule-9 exception, item_flags precedent.
+ */
+export interface AnnouncementReaction {
+  id: string;
+  announcement_id: string;
+  trip_id: string;
+  trip_member_id: string;
+  emoji: ReactionEmoji;
+  created_at: string;
+}
+
+/**
+ * Per-announcement aggregate for the reaction row. Deliberately
+ * aggregate-only — no per-name reaction lists (#389 design constraint).
+ * Plain object/array shapes so it serializes across the RSC boundary.
+ */
+export interface AnnouncementReactionSummary {
+  /** emoji → count; only reacted emoji appear (no zero entries). */
+  counts: Partial<Record<ReactionEmoji, number>>;
+  /** The viewer's own reactions on this announcement. */
+  mine: ReactionEmoji[];
 }
 
 /**

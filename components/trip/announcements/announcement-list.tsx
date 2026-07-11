@@ -31,8 +31,12 @@ import { createClient } from "@/lib/supabase/browser";
 import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import { AnnouncementCard } from "./announcement-card";
+import { ReactionRow } from "./reaction-row";
 import { EMPTY_STATES } from "@/lib/copy/empty-states";
-import type { Announcement } from "@/lib/db/types";
+import type {
+  Announcement,
+  AnnouncementReactionSummary,
+} from "@/lib/db/types";
 
 interface AnnouncementListProps {
   tripId: string;
@@ -43,6 +47,12 @@ interface AnnouncementListProps {
    * to subscribeToAnnouncements. Built server-side from getTripMembers().
    */
   memberUserMap: ReadonlyMap<string, string | null>;
+  /**
+   * Per-announcement reaction aggregates (#389), keyed by announcement id.
+   * Built server-side via summarizeReactions. Announcements without an
+   * entry (incl. realtime arrivals) render an empty reaction row.
+   */
+  reactionsByAnnouncement?: Record<string, AnnouncementReactionSummary>;
 }
 
 export interface AnnouncementListHandle {
@@ -62,7 +72,7 @@ export const AnnouncementList = forwardRef<
   AnnouncementListHandle,
   AnnouncementListProps
 >(function AnnouncementList(
-  { tripId, initialAnnouncements, memberUserMap },
+  { tripId, initialAnnouncements, memberUserMap, reactionsByAnnouncement = {} },
   ref
 ) {
   const [announcements, setAnnouncements] = useState<Announcement[]>(
@@ -136,14 +146,24 @@ export const AnnouncementList = forwardRef<
       aria-live="polite"
       aria-relevant="additions"
     >
-      {announcements.map((a) => (
-        <li key={a.id}>
-          <AnnouncementCard
-            announcement={a}
-            authorDisplayName={a.authorDisplayName}
-          />
-        </li>
-      ))}
+      {announcements.map((a) => {
+        const reactions = reactionsByAnnouncement[a.id];
+        return (
+          <li key={a.id}>
+            <AnnouncementCard
+              announcement={a}
+              authorDisplayName={a.authorDisplayName}
+              reactionsSlot={
+                <ReactionRow
+                  announcementId={a.id}
+                  initialCounts={reactions?.counts ?? {}}
+                  initialMine={reactions?.mine ?? []}
+                />
+              }
+            />
+          </li>
+        );
+      })}
     </ol>
   );
 });

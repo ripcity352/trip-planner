@@ -439,4 +439,12 @@ export const M5_UI_STRINGS = {
   expensesForm_date_label_edit: "When?",
   expensesForm_delete: "Delete",
   expensesForm_delete_confirm: "Take this off the tab? Can't undo.",
+  // #389 — announcement reactions (the ack loop). Aggregate-only surface:
+  // counts, never names. The emoji carry the voice; copy here is
+  // aria-only so screen readers get a warm, specific action label.
+  // {emoji} is interpolated via .replace at the call site (same pattern
+  // as itinerary_day_section_template).
+  reactions_add_aria: "Add a reaction",
+  reactions_picker_aria: "Pick a reaction",
+  reactions_toggle_aria_template: "React with {emoji}",
 } as const;
