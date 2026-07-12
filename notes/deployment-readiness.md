@@ -65,6 +65,7 @@ stale local override. See ADR 2026-05-19 (late PM) in
 | **Custom SMTP (Resend)** wired | Project Settings → Auth → SMTP Settings | Without it: Supabase's free-tier project-wide email cap (3/hr) bricks magic-link sign-ins past the third attempt. The 2026-05-19 retro caught this within minutes of going live. | 2026-05-19 |
 | **Email Templates → Magic Link** uses the cross-device-safe variant | Authentication → Email Templates → Magic Link | If template emits `{{ .ConfirmationURL }}` (PKCE-bound), cross-device clicks fail with `pkce_code_verifier_not_found` (#137). Template must emit a `token_hash` link consumable by `verifyOtp`. **Wave 0c (M3) flips this.** | 2026-05-20 (Wave 0c #137) |
 | **Realtime publication includes the right tables** | Database → Replication → Publications → `supabase_realtime` | Without `date_poll_votes` in the publication, PulsePoll renders but never updates live. M3 adds `announcements`. | 2026-05-19 (M2) / 2026-05-20 (M3 Wave 1 #79) |
+| **Confirm email (`mailer_autoconfirm`)** | Authentication → Sign In / Providers → Email → "Confirm email" | **The setting whose drift caused the 2026-07-11 invite-chain incident.** When `mailer_autoconfirm` is OFF (confirmations ON) but local `supabase/config.toml` ships `enable_confirmations=false`, `signUp()` returns no session in prod while every local/preview walk exercises the session-returned branch — the confirmation-ON path was structurally untested. Currently **autoconfirm ON / confirmations OFF** (flipped 2026-07-12 via Management API as part of Option A "instant-session signup"; see `notes/decisions.md` "Invite-chain incident 2026-07-11" ADR). New signups get an instant session; the "Confirm signup" email template (`{{ .ConfirmationURL }}`) is now unreachable but not deleted — see `notes/runbooks/auth-setup.md` §1 addendum. | **2026-07-12 (operator-confirmed, Management API flip)** |
 
 ---
 
@@ -197,6 +198,19 @@ drift was caught only mid-walk). Operator-confirmed live as of 2026-06-17:
 
 Re-verify this snapshot after any domain change, provider enablement, or
 email-template edit.
+
+---
+
+## Snapshot refresh — 2026-07-12 (post-incident)
+
+The 2026-06-17 snapshot above did not include the Confirm-email toggle —
+that omission is the root cause of the 2026-07-11 invite-chain incident
+(both invitees authenticated but zero joined the trip; see
+`notes/decisions.md` "Invite-chain incident 2026-07-11 → instant-session
+signup (Option A)" ADR). The **Confirm email (`mailer_autoconfirm`)** row
+above is now part of the tracked auth snapshot and must be re-verified
+at every future closure walk alongside the 2026-06-17 rows, not treated
+as a one-off fix.
 
 ---
 
