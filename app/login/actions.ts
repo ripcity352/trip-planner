@@ -289,6 +289,12 @@ export async function signUpAction(input: {
         code: (error as { code?: string }).code,
         name: error.name,
       });
+      // Already registered, enumeration protection OFF (explicit error).
+      // signUp-specific — keep it out of the shared mapAuthErrorToKey so
+      // sign-in / code paths can't accidentally inherit it.
+      if ((error as { code?: string }).code === "user_already_exists") {
+        return { ok: false, errorKey: "auth_account_exists" };
+      }
       const mapped = mapAuthErrorToKey(error);
       return { ok: false, errorKey: mapped ?? "network" };
     }
@@ -312,6 +318,15 @@ export async function signUpAction(input: {
       return { ok: true };
     }
     if (userId && !data?.session) {
+      // Already registered, enumeration protection ON: GoTrue returns an
+      // OBFUSCATED user with `identities: []` and no session instead of an
+      // error (PR #430 review MEDIUM). Without this check the path below
+      // would promise a confirmation email that never arrives. A genuinely
+      // new confirmation-gated user carries a non-empty identities array.
+      const identities = data?.user?.identities;
+      if (Array.isArray(identities) && identities.length === 0) {
+        return { ok: false, errorKey: "auth_account_exists" };
+      }
       // Account created, confirmation pending — has_password self-heals on
       // the first successful password sign-in (#F9).
       return { ok: false, errorKey: "auth_confirm_pending" };

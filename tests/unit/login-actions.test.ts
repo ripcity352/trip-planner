@@ -326,7 +326,32 @@ describe("signUpAction", () => {
     );
   });
 
-  it("returns auth_confirm_pending (and skips markPasswordSet) when signUp yields a user but NO session", async () => {
+  it("returns auth_confirm_pending (and skips markPasswordSet) when signUp yields a GENUINELY NEW user but NO session", async () => {
+    // A genuinely-new confirmation-gated user carries a NON-EMPTY
+    // identities array — that's what distinguishes it from the obfuscated
+    // already-registered response below.
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: {
+          id: "user-1",
+          identities: [{ id: "identity-1", provider: "email" }],
+        },
+        session: null,
+      },
+      error: null,
+    });
+    const result = await signUpAction({
+      email: "newuser@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_confirm_pending" });
+    expect(mockMarkPasswordSet).not.toHaveBeenCalled();
+  });
+
+  it("still returns auth_confirm_pending when identities is absent (can't confirm obfuscation)", async () => {
+    // Defensive default: no identities field at all → treat as a genuine
+    // pending confirmation rather than accusing the user of having an
+    // account we can't prove exists.
     mockSignUp.mockResolvedValue({
       data: { user: { id: "user-1" }, session: null },
       error: null,
@@ -336,6 +361,47 @@ describe("signUpAction", () => {
       password: "supersecret",
     });
     expect(result).toEqual({ ok: false, errorKey: "auth_confirm_pending" });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Already-registered detection (PR #430 review MEDIUM)
+  //
+  // The incident's retry cohort now HAS accounts and re-taps the invite
+  // into the create-first surface. Supabase signals "already registered"
+  // two ways depending on enumeration protection:
+  //   ON  → obfuscated success: user present, identities: [], no session
+  //         (would masquerade as confirm-pending — but no email is sent)
+  //   OFF → explicit error.code === "user_already_exists"
+  // Both must map to auth_account_exists, never a dead-end.
+  // ---------------------------------------------------------------------------
+
+  it("returns auth_account_exists for the obfuscated already-registered response (identities: [])", async () => {
+    mockSignUp.mockResolvedValue({
+      data: { user: { id: "user-1", identities: [] }, session: null },
+      error: null,
+    });
+    const result = await signUpAction({
+      email: "returning@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_account_exists" });
+    expect(mockMarkPasswordSet).not.toHaveBeenCalled();
+  });
+
+  it("returns auth_account_exists for an explicit user_already_exists error", async () => {
+    mockSignUp.mockResolvedValue({
+      data: { user: null },
+      error: {
+        status: 422,
+        code: "user_already_exists",
+        message: "User already registered",
+      },
+    });
+    const result = await signUpAction({
+      email: "returning@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_account_exists" });
     expect(mockMarkPasswordSet).not.toHaveBeenCalled();
   });
 

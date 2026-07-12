@@ -24,7 +24,7 @@
  * Tests: tests/unit/login-form.test.tsx (Override C — never under app/).
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -246,8 +246,32 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
         return;
       }
       setServerError(result.errorKey);
+      // Already registered (PR #430 review MEDIUM — the incident's retry
+      // cohort now HAS accounts and re-taps the invite into create mode).
+      // Don't just tell them to sign in — put them there: flip the invite
+      // surface to the sign-in branch (email kept, labels/autocomplete flip
+      // with the intent). Focus lands via the effect below once the
+      // transition settles — the field is still disabled (isPending) here.
+      if (result.errorKey === "auth_account_exists" && inviteSurface) {
+        setAuthIntent("sign-in");
+      }
     });
   });
+
+  // After the account-exists flip, put the cursor in the password field for
+  // the sign-in retype. Can't focus inside the transition callback: the
+  // input is disabled while isPending, so setFocus there is a no-op and
+  // focus stays on the clicked submit button.
+  useEffect(() => {
+    if (
+      !isPending &&
+      inviteSurface &&
+      serverError === "auth_account_exists" &&
+      authIntent === "sign-in"
+    ) {
+      passwordForm.setFocus("password");
+    }
+  }, [isPending, inviteSurface, serverError, authIntent, passwordForm]);
 
   // Invite-surface intent toggles ("Have an account? Sign in" ⇄ "Create
   // account instead"). Pure local state — no server call.

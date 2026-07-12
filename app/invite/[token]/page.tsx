@@ -311,9 +311,7 @@ export default async function InvitePreviewPage({
             // "Sign in to join") renders INSIDE LoginForm so it always
             // matches the primary button — the static "Sign in to join"
             // line that used to sit here misdirected brand-new invitees.
-            <div className="flex flex-col gap-2">
-              <LoginForm next={invitePreviewPath(token)} inviteSurface />
-            </div>
+            <LoginForm next={invitePreviewPath(token)} inviteSurface />
           )}
         </div>
       </article>

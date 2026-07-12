@@ -535,6 +535,78 @@ describe("<LoginForm /> — inviteSurface create-account-first", () => {
     });
   });
 
+  it("auth_account_exists flips the invite surface to the sign-in branch (PR #430 MEDIUM)", async () => {
+    // The incident's retry cohort: both real invitees now HAVE accounts
+    // and re-tap the invite link into create mode. Already-registered must
+    // not dead-end — the form flips to sign-in (email kept, labels +
+    // autocomplete follow the intent, password field focused) with the
+    // honest copy shown.
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_account_exists" };
+    });
+    await renderInvitePasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    const createBtn = screen.getByRole("button", { name: AUTH_COPY.signUpButton });
+    await clickAndSettle(createBtn);
+
+    // Error copy surfaces...
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.auth_account_exists)).toBeInTheDocument();
+    });
+    // ...and the primary is now the sign-in branch, not another create.
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.signUpButton })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(AUTH_COPY.inviteAuthHeaderSignIn)).toBeInTheDocument();
+    const passwordField = screen.getByLabelText(AUTH_COPY.passwordFieldLabel);
+    expect(passwordField).toHaveAttribute("autocomplete", "current-password");
+    // Email preserved — the sign-in retry is one password away.
+    expect(screen.getByText("nate@example.com")).toBeInTheDocument();
+    // Password field is focused for the retype.
+    await waitFor(() => {
+      expect(passwordField).toHaveFocus();
+    });
+  });
+
+  it("auth_account_exists on /login shows the copy without flipping anything", async () => {
+    // Non-invite surface: the primary already IS "Sign in"; the copy alone
+    // is the affordance. No intent state exists to flip.
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_account_exists" };
+    });
+    signInWithPasswordActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_wrong_password" };
+    });
+    render(<LoginForm />);
+    await advanceToPasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    // Reveal the create affordance via wrong password, then attempt create.
+    await clickAndSettle(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    );
+    const createLink = await screen.findByRole("button", {
+      name: AUTH_COPY.createAccountLink,
+    });
+    await clickAndSettle(createLink);
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.auth_account_exists)).toBeInTheDocument();
+    });
+    // Primary stays "Sign in" — nothing flipped, nothing broke.
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    ).toBeInTheDocument();
+  });
+
   it("'Have an account? Sign in' toggles to the sign-in branch (labels + autocomplete flip)", async () => {
     await renderInvitePasswordMode();
     // Toggle is synchronous local state — fireEvent is fine.

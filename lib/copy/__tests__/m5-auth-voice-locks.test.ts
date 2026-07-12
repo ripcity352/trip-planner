@@ -90,13 +90,27 @@ describe("ERRORS — M5 auth voice locks (Phase 4 audit H7)", () => {
     );
   });
 
+  it("auth_account_exists is voice-locked", () => {
+    // Create-account attempt on an already-registered email (PR #430
+    // review MEDIUM). Deterministic — the fix is the sign-in branch, and
+    // the invite form flips itself there; the copy just names it.
+    expect(ERRORS.auth_account_exists).toBe(
+      "You've already got an account — sign in instead."
+    );
+  });
+
   it("confirm-split strings do not contain corporate SaaS language", () => {
-    for (const key of ["auth_confirm_pending", "auth_email_not_confirmed"] as const) {
+    for (const key of [
+      "auth_confirm_pending",
+      "auth_email_not_confirmed",
+      "auth_account_exists",
+    ] as const) {
       const v = ERRORS[key].toLowerCase();
       expect(v).not.toContain("an error occurred");
       expect(v).not.toContain("authentication failed");
       expect(v).not.toContain("invalid");
       expect(v).not.toContain("verify your email address");
+      expect(v).not.toContain("already registered");
       expect(ERRORS[key].length).toBeLessThanOrEqual(120);
     }
   });
@@ -109,6 +123,7 @@ describe("ERRORS — M5 auth voice locks (Phase 4 audit H7)", () => {
       "auth_email_taken_oauth",
       "auth_confirm_pending",
       "auth_email_not_confirmed",
+      "auth_account_exists",
     ] as const;
     for (const key of keys) {
       expect(

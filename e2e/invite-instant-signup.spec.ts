@@ -30,6 +30,7 @@ import {
   seedTripAndInvite,
 } from "./_setup/seed-invite";
 import { cleanupUserByEmail } from "./_setup/cleanup-user";
+import { TEST_USER_EMAIL } from "./_setup/seed-test-user";
 
 const SEED_TRIP_NAME = "Instant Signup Smoke";
 const SEED_HOST_DISPLAY_NAME = "Carl";
@@ -115,6 +116,40 @@ test.describe("invite — fresh invitee creates an account with an instant sessi
     await expect(
       page.getByText(SEED_TRIP_NAME).first()
     ).toBeVisible();
+  });
+
+  test("create-account with an already-registered email flips to the sign-in branch (PR #430 MEDIUM)", async ({
+    page,
+  }) => {
+    // The incident's retry cohort: an invitee who already HAS an account
+    // re-taps the link into create mode and submits anyway. Local Supabase
+    // is autoconfirm, so this walks the explicit user_already_exists path;
+    // the obfuscated identities:[] path is unit-pinned in
+    // tests/unit/login-actions.test.ts.
+    await page.goto(`/invite/${token}`);
+    await page.getByLabel("Email").fill(TEST_USER_EMAIL);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByLabel("Password")).toBeVisible();
+
+    await page.getByLabel("Password").fill("any-password-attempt");
+    await page
+      .getByRole("button", { name: "Create account", exact: true })
+      .click();
+
+    // Honest copy + auto-flip: the primary is now the sign-in branch with
+    // the email kept — one correct password away, no dead-end.
+    await expect(
+      page.getByText("You've already got an account — sign in instead.")
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Sign in", exact: true })
+    ).toBeVisible();
+    await expect(page.getByText("Sign in to join")).toBeVisible();
+    await expect(page.getByText(TEST_USER_EMAIL)).toBeVisible();
+    await expect(page.getByLabel("Password")).toHaveAttribute(
+      "autocomplete",
+      "current-password"
+    );
   });
 
   test("returning invitee can toggle to the sign-in branch", async ({ page }) => {
