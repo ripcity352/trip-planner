@@ -52,6 +52,10 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "auth_code_invalid",
   "auth_code_expired",
   "auth_email_taken_oauth",
+  // 2026-07-11 invite-incident split — confirmation-gated signup (no
+  // session) + correct-password-but-unconfirmed-email sign-in
+  "auth_confirm_pending",
+  "auth_email_not_confirmed",
   // M5 PR4 account security keys
   "auth_current_password_incorrect",
   "auth_unauthenticated",

@@ -105,8 +105,13 @@ test.describe("invite preview — inline auth for anonymous viewer", () => {
     await page.getByLabel("Email").fill(TEST_USER_EMAIL);
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByLabel("Password")).toBeVisible();
+    // 2026-07-11 incident fix: the invite surface is create-account-first.
+    // A returning user reaches the sign-in branch via the secondary toggle.
+    await page
+      .getByRole("button", { name: "Have an account? Sign in" })
+      .click();
     await page.getByLabel("Password").fill(TEST_USER_PASSWORD);
-    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
     // On successful sign-in we land back on the preview URL (not /accept)...
     await expect(page).toHaveURL(new RegExp(`/invite/${token}$`), {

@@ -118,6 +118,13 @@ export const M2_UI_STRINGS = {
   // #348: optional name capture at accept — no asterisk, no gate.
   invitePreview_name_label: "What should the crew call you?",
   invitePreview_name_placeholder: "First name works",
+  /**
+   * @deprecated 2026-07-11 incident fix — the anon lead-in above the
+   * inline LoginForm is now the intent-aware pair
+   * AUTH_COPY.inviteAuthHeaderCreate / inviteAuthHeaderSignIn (rendered
+   * inside the form so it can follow the create/sign-in toggle). Kept so
+   * the M2 key set stays stable; no app surface renders this.
+   */
   invitePreview_cta_anon: "Sign in to join",
   invitePreview_back_link: "Back home",
   invitePreview_dates_unset: "Dates TBD",

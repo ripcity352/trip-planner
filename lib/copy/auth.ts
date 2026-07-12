@@ -195,6 +195,24 @@ export const AUTH_COPY = {
    * Consumers: app/invite/[token]/page.tsx (W2, #219).
    */
   inviteH1Fallback: "You're on the list.",
+
+  // ---------------------------------------------------------------------------
+  // Invite surface — create-account-first (2026-07-11 incident fix)
+  // ---------------------------------------------------------------------------
+  //
+  // The invite surface's most common persona is a never-seen invitee, so the
+  // password step leads with create-account voice. The old surface rendered
+  // "Sign in to join" + a "Sign in" primary above create-account helper text —
+  // crossed labels that walked brand-new invitees into the sign-in branch.
+  // These headers live INSIDE <LoginForm> (inviteSurface only) so they can
+  // follow the create/sign-in intent toggle; /login is unaffected.
+
+  /** Header above the inline invite form while creating an account (default). */
+  inviteAuthHeaderCreate: "Make an account to join",
+  /** Header above the inline invite form after "Have an account? Sign in". */
+  inviteAuthHeaderSignIn: "Sign in to join",
+  /** Secondary toggle on the invite surface: create intent → sign-in intent. */
+  inviteHaveAccountToggle: "Have an account? Sign in",
 } as const;
 
 export type AuthCopyKey = keyof typeof AUTH_COPY;

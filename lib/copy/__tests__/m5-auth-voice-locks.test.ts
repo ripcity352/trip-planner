@@ -70,12 +70,45 @@ describe("ERRORS — M5 auth voice locks (Phase 4 audit H7)", () => {
     expect(v).not.toContain("invalid code");
   });
 
+  // --- 2026-07-11 invite-incident voice locks --------------------------------
+
+  it("auth_confirm_pending is voice-locked", () => {
+    // Signup succeeded in a confirmation-gated env (no session). Honest:
+    // the account EXISTS — never report the false "network" failure that
+    // stranded the 2026-07-11 invitees.
+    expect(ERRORS.auth_confirm_pending).toBe(
+      "Account's created — check your email to confirm, then sign in here."
+    );
+  });
+
+  it("auth_email_not_confirmed is voice-locked", () => {
+    // Correct password, unconfirmed email. Split out of auth_wrong_password
+    // — users with the right password must never be told the combo didn't
+    // match.
+    expect(ERRORS.auth_email_not_confirmed).toBe(
+      "You're in the books — check your email to confirm first."
+    );
+  });
+
+  it("confirm-split strings do not contain corporate SaaS language", () => {
+    for (const key of ["auth_confirm_pending", "auth_email_not_confirmed"] as const) {
+      const v = ERRORS[key].toLowerCase();
+      expect(v).not.toContain("an error occurred");
+      expect(v).not.toContain("authentication failed");
+      expect(v).not.toContain("invalid");
+      expect(v).not.toContain("verify your email address");
+      expect(ERRORS[key].length).toBeLessThanOrEqual(120);
+    }
+  });
+
   it("all M5 auth error strings are under 120 chars", () => {
     const keys = [
       "auth_wrong_password",
       "auth_code_invalid",
       "auth_code_expired",
       "auth_email_taken_oauth",
+      "auth_confirm_pending",
+      "auth_email_not_confirmed",
     ] as const;
     for (const key of keys) {
       expect(
@@ -255,6 +288,43 @@ describe("AUTH_COPY — W1b login page voice locks (#122)", () => {
 
   it("loginPageTitle is under 40 chars (fits a mobile card header)", () => {
     expect(AUTH_COPY.loginPageTitle.length).toBeLessThanOrEqual(40);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Invite surface create-account-first voice locks (2026-07-11 incident fix)
+// ---------------------------------------------------------------------------
+//
+// Pin the intent-aware invite headers + toggle exactly (Override H). These
+// replaced the crossed-label surface ("Sign in to join" header + "Sign in"
+// primary over create-account helper text) that misdirected new invitees.
+
+describe("AUTH_COPY — invite create-first voice locks", () => {
+  it("inviteAuthHeaderCreate is voice-locked", () => {
+    expect(AUTH_COPY.inviteAuthHeaderCreate).toBe("Make an account to join");
+  });
+
+  it("inviteAuthHeaderSignIn is voice-locked", () => {
+    expect(AUTH_COPY.inviteAuthHeaderSignIn).toBe("Sign in to join");
+  });
+
+  it("inviteHaveAccountToggle is voice-locked", () => {
+    expect(AUTH_COPY.inviteHaveAccountToggle).toBe("Have an account? Sign in");
+  });
+
+  it("invite create-first keys contain no corporate SaaS language", () => {
+    const keys = [
+      "inviteAuthHeaderCreate",
+      "inviteAuthHeaderSignIn",
+      "inviteHaveAccountToggle",
+    ] as const;
+    for (const key of keys) {
+      const v = (AUTH_COPY[key] as string).toLowerCase();
+      expect(v).not.toContain("get started");
+      expect(v).not.toContain("welcome back");
+      expect(v).not.toContain("sign up");
+      expect((AUTH_COPY[key] as string).length).toBeLessThanOrEqual(60);
+    }
   });
 });
 
