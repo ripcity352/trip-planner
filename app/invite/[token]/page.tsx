@@ -301,20 +301,17 @@ export default async function InvitePreviewPage({
             </form>
           ) : (
             // Anonymous viewer — render the LoginForm inline so they
-            // never leave the invite page. On successful sign-in the form
+            // never leave the invite page. On successful auth the form
             // redirects (GET) back to THIS preview, which then renders the
             // one-tap Accept POST form above. `next` must be the preview,
             // never the POST-only accept route (#316).
             // M5/PR2: replaces the old /login?next= bounce link.
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">
-                {M2_UI_STRINGS.invitePreview_cta_anon}
-              </p>
-              {/* #395: invite surface — reveal "Create account instead"
-                  from the start so a first-touch invitee isn't handed a
-                  guaranteed wrong-password dead-end. */}
-              <LoginForm next={invitePreviewPath(token)} inviteSurface />
-            </div>
+            // 2026-07-11 incident #5: the surface is create-account-first.
+            // The intent-aware header ("Make an account to join" /
+            // "Sign in to join") renders INSIDE LoginForm so it always
+            // matches the primary button — the static "Sign in to join"
+            // line that used to sit here misdirected brand-new invitees.
+            <LoginForm next={invitePreviewPath(token)} inviteSurface />
           )}
         </div>
       </article>

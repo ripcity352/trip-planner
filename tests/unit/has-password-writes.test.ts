@@ -111,8 +111,12 @@ describe("signUpAction — has_password atomic write", () => {
   });
 
   it("calls .from('profiles').update({has_password:true}) after successful signUp", async () => {
+    // Session included — the 2026-07-11 session guard only writes
+    // has_password when signUp returns a REAL session (autoconfirm env).
+    // A user-without-session signUp (confirmation-gated) skips the write
+    // and returns auth_confirm_pending — covered in login-actions.test.ts.
     mockSignUp.mockResolvedValue({
-      data: { user: { id: "user-abc" } },
+      data: { user: { id: "user-abc" }, session: { access_token: "jwt" } },
       error: null,
     });
 

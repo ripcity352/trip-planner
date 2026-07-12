@@ -356,9 +356,11 @@ describe("<LoginForm /> — code-verify mode", () => {
     expect(screen.getByLabelText(AUTH_COPY.codeFieldLabel)).toBeInTheDocument();
   });
 
-  it("calls requestEmailCode when transitioning to code-verify mode", async () => {
+  it("calls requestEmailCode (threading next) when transitioning to code-verify mode", async () => {
     await advanceToCodeVerifyMode();
-    expect(requestEmailCodeMock).toHaveBeenCalledWith("dave@example.com");
+    // No `next` prop in this fixture — the second arg rides along as
+    // undefined so the action falls back to /trips (incident #2 wiring).
+    expect(requestEmailCodeMock).toHaveBeenCalledWith("dave@example.com", undefined);
   });
 
   it("shows 'Code's heading to...' helper text in code-verify mode", async () => {
@@ -445,30 +447,331 @@ describe("<LoginForm /> — next prop", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #395 — invite surface reveals "Create account instead" from the start
+// Invite surface — create-account-first (2026-07-11 incident #5; supersedes
+// the #395 reveal-only behavior). Password mode leads with create-account
+// voice: create header + "Create account" primary + new-password
+// autocomplete. "Have an account? Sign in" toggles to the sign-in branch;
+// "Email me a code instead" stays as the tertiary link. /login unchanged.
 // ---------------------------------------------------------------------------
 
-describe("<LoginForm /> — inviteSurface prop", () => {
+describe("<LoginForm /> — inviteSurface create-account-first", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("shows 'Create account instead' in password mode BEFORE any error (#395)", async () => {
+  async function renderInvitePasswordMode() {
     render(<LoginForm next="/invite/abc123" inviteSurface />);
     await advanceToPasswordMode("nate@example.com");
-    // No wrong-password attempt has happened — the affordance is present
-    // from the start on the invite surface.
+  }
+
+  it("shows the create header from the start", async () => {
+    render(<LoginForm next="/invite/abc123" inviteSurface />);
+    expect(screen.getByText(AUTH_COPY.inviteAuthHeaderCreate)).toBeInTheDocument();
+  });
+
+  it("password mode primary button is 'Create account' (not 'Sign in')", async () => {
+    await renderInvitePasswordMode();
     expect(
-      screen.getByRole("button", { name: AUTH_COPY.createAccountLink })
+      screen.getByRole("button", { name: AUTH_COPY.signUpButton })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.signInButton })
+    ).not.toBeInTheDocument();
+  });
+
+  it("password field uses new-password autocomplete in create mode", async () => {
+    await renderInvitePasswordMode();
+    expect(screen.getByLabelText(AUTH_COPY.passwordFieldLabel)).toHaveAttribute(
+      "autocomplete",
+      "new-password"
+    );
+  });
+
+  it("shows the pick-a-password helper in create mode", async () => {
+    await renderInvitePasswordMode();
+    expect(screen.getByText(AUTH_COPY.passwordHelper)).toBeInTheDocument();
+  });
+
+  it("keeps 'Email me a code instead' as a tertiary affordance in create mode", async () => {
+    await renderInvitePasswordMode();
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.emailMeCodeLink })
     ).toBeInTheDocument();
   });
 
-  it("does NOT show 'Create account instead' pre-error on the default (login) surface", async () => {
+  it("submitting create mode calls signUpAction with email, password AND next", async () => {
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    await renderInvitePasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    const createBtn = screen.getByRole("button", { name: AUTH_COPY.signUpButton });
+    await clickAndSettle(createBtn);
+    expect(signUpActionMock).toHaveBeenCalledTimes(1);
+    expect(signUpActionMock).toHaveBeenCalledWith({
+      email: "nate@example.com",
+      password: "supersecret",
+      next: "/invite/abc123",
+    });
+    expect(signInWithPasswordActionMock).not.toHaveBeenCalled();
+  });
+
+  it("shows honest auth_confirm_pending copy when signUp is confirmation-gated", async () => {
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_confirm_pending" };
+    });
+    await renderInvitePasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    const createBtn = screen.getByRole("button", { name: AUTH_COPY.signUpButton });
+    await clickAndSettle(createBtn);
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.auth_confirm_pending)).toBeInTheDocument();
+    });
+  });
+
+  it("auth_account_exists flips the invite surface to the sign-in branch (PR #430 MEDIUM)", async () => {
+    // The incident's retry cohort: both real invitees now HAVE accounts
+    // and re-tap the invite link into create mode. Already-registered must
+    // not dead-end — the form flips to sign-in (email kept, labels +
+    // autocomplete follow the intent, password field focused) with the
+    // honest copy shown.
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_account_exists" };
+    });
+    await renderInvitePasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    const createBtn = screen.getByRole("button", { name: AUTH_COPY.signUpButton });
+    await clickAndSettle(createBtn);
+
+    // Error copy surfaces...
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.auth_account_exists)).toBeInTheDocument();
+    });
+    // ...and the primary is now the sign-in branch, not another create.
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.signUpButton })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(AUTH_COPY.inviteAuthHeaderSignIn)).toBeInTheDocument();
+    const passwordField = screen.getByLabelText(AUTH_COPY.passwordFieldLabel);
+    expect(passwordField).toHaveAttribute("autocomplete", "current-password");
+    // Email preserved — the sign-in retry is one password away.
+    expect(screen.getByText("nate@example.com")).toBeInTheDocument();
+    // Password field is focused for the retype.
+    await waitFor(() => {
+      expect(passwordField).toHaveFocus();
+    });
+  });
+
+  it("auth_account_exists on /login shows the copy without flipping anything", async () => {
+    // Non-invite surface: the primary already IS "Sign in"; the copy alone
+    // is the affordance. No intent state exists to flip.
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_account_exists" };
+    });
+    signInWithPasswordActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_wrong_password" };
+    });
+    render(<LoginForm />);
+    await advanceToPasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    // Reveal the create affordance via wrong password, then attempt create.
+    await clickAndSettle(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    );
+    const createLink = await screen.findByRole("button", {
+      name: AUTH_COPY.createAccountLink,
+    });
+    await clickAndSettle(createLink);
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.auth_account_exists)).toBeInTheDocument();
+    });
+    // Primary stays "Sign in" — nothing flipped, nothing broke.
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    ).toBeInTheDocument();
+  });
+
+  it("'Have an account? Sign in' toggles to the sign-in branch (labels + autocomplete flip)", async () => {
+    await renderInvitePasswordMode();
+    // Toggle is synchronous local state — fireEvent is fine.
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.inviteHaveAccountToggle })
+    );
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.signUpButton })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(AUTH_COPY.inviteAuthHeaderSignIn)).toBeInTheDocument();
+    expect(screen.getByLabelText(AUTH_COPY.passwordFieldLabel)).toHaveAttribute(
+      "autocomplete",
+      "current-password"
+    );
+    // The crossed-labels bug: no pick-a-password helper under a Sign in primary.
+    expect(screen.queryByText(AUTH_COPY.passwordHelper)).not.toBeInTheDocument();
+  });
+
+  it("sign-in branch keeps 'Create account instead' as the way back to create mode", async () => {
+    await renderInvitePasswordMode();
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.inviteHaveAccountToggle })
+    );
+    const backToggle = screen.getByRole("button", {
+      name: AUTH_COPY.createAccountLink,
+    });
+    fireEvent.click(backToggle);
+    // Back in create mode — and NO signUpAction fired (it's a toggle on the
+    // invite surface, not a direct submit).
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signUpButton })
+    ).toBeInTheDocument();
+    expect(signUpActionMock).not.toHaveBeenCalled();
+  });
+
+  it("sign-in branch submit calls signInWithPasswordAction", async () => {
+    signInWithPasswordActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    await renderInvitePasswordMode();
+    fireEvent.click(
+      screen.getByRole("button", { name: AUTH_COPY.inviteHaveAccountToggle })
+    );
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "hunter2!" },
+    });
+    const signInBtn = screen.getByRole("button", { name: AUTH_COPY.signInButton });
+    await clickAndSettle(signInBtn);
+    expect(signInWithPasswordActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "nate@example.com", password: "hunter2!" })
+    );
+    expect(signUpActionMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT show create-first affordances on the default (login) surface", async () => {
     render(<LoginForm />);
     await advanceToPasswordMode();
     expect(
       screen.queryByRole("button", { name: AUTH_COPY.createAccountLink })
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.inviteHaveAccountToggle })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(AUTH_COPY.inviteAuthHeaderCreate)
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(AUTH_COPY.passwordFieldLabel)).toHaveAttribute(
+      "autocomplete",
+      "current-password"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rejected server actions (2026-07-11 incident #4) — a middleware-edge 429
+// (raw JSON, not an action result) or a network drop REJECTS the awaited
+// action inside startTransition. Without a catch the button silently dies;
+// the form must surface the "network" copy and re-enable.
+// ---------------------------------------------------------------------------
+
+describe("<LoginForm /> — rejected server actions surface the network error", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sign-in rejection shows the network error and re-enables the button", async () => {
+    signInWithPasswordActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      throw new Error("429 from the middleware edge");
+    });
+    render(<LoginForm />);
+    await advanceToPasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "hunter2!" },
+    });
+    const signInBtn = screen.getByRole("button", { name: AUTH_COPY.signInButton });
+    await clickAndSettle(signInBtn);
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.network)).toBeInTheDocument();
+    });
+    expect(signInBtn).toBeEnabled();
+  });
+
+  it("'Email me a code instead' rejection shows the network error (button does not die silently)", async () => {
+    requestEmailCodeMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      throw new Error("network drop");
+    });
+    render(<LoginForm />);
+    await advanceToPasswordMode();
+    const emailCodeBtn = screen.getByRole("button", { name: AUTH_COPY.emailMeCodeLink });
+    await clickAndSettle(emailCodeBtn);
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.network)).toBeInTheDocument();
+    });
+    // Stays in password mode — no phantom transition.
+    expect(
+      screen.queryByLabelText(AUTH_COPY.codeFieldLabel)
+    ).not.toBeInTheDocument();
+  });
+
+  it("create-account rejection on the invite surface shows the network error", async () => {
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      throw new Error("network drop");
+    });
+    render(<LoginForm next="/invite/abc123" inviteSurface />);
+    await advanceToPasswordMode("nate@example.com");
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    const createBtn = screen.getByRole("button", { name: AUTH_COPY.signUpButton });
+    await clickAndSettle(createBtn);
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.network)).toBeInTheDocument();
+    });
+    expect(createBtn).toBeEnabled();
+  });
+
+  it("code-verify rejection shows the network error", async () => {
+    requestEmailCodeMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    verifyEmailCodeActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      throw new Error("network drop");
+    });
+    render(<LoginForm />);
+    await advanceToPasswordMode();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: AUTH_COPY.emailMeCodeLink }));
+    await screen.findByRole("button", { name: AUTH_COPY.verifyCodeButton });
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.codeFieldLabel), {
+      target: { value: "123456" },
+    });
+    const verifyBtn = screen.getByRole("button", { name: AUTH_COPY.verifyCodeButton });
+    await clickAndSettle(verifyBtn);
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.network)).toBeInTheDocument();
+    });
   });
 });
 

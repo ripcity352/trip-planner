@@ -121,34 +121,60 @@ export async function seedTripAndInvite(
 }
 
 /**
- * Best-effort: reuse the first user we find, otherwise mint one via the
- * admin API. Idempotent enough for repeated local runs.
+ * Deterministic seed OWNER for trips minted by this helper.
+ *
+ * Was "reuse the first user we find" — fragile: on a fresh DB the first
+ * user is often the Playwright TEST USER itself (e2e-test@example.com),
+ * which makes the seeded trip's organizer the same account the spec then
+ * signs in with, so the invite page renders the member re-entry link
+ * instead of the accept CTA and the sign-in specs fail spuriously.
+ */
+const SEED_OWNER_EMAIL = "invite-seed-owner@example.com";
+
+/**
+ * Reuse (or mint) the deterministic seed-owner user via the admin API.
+ * Idempotent across repeated local runs; never the Playwright test user.
  */
 async function ensureSeedUser(
   request: APIRequestContext,
   headers: Record<string, string>
 ): Promise<string> {
   const listResp = await request.get(
-    `${SUPABASE_URL}/auth/v1/admin/users?per_page=1`,
+    `${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`,
     { headers }
   );
   if (listResp.ok()) {
     const body = (await listResp.json()) as {
-      users?: Array<{ id: string }>;
+      users?: Array<{ id: string; email?: string }>;
     };
-    if (body.users && body.users.length > 0) {
-      return body.users[0].id;
+    const existing = body.users?.find((u) => u.email === SEED_OWNER_EMAIL);
+    if (existing) {
+      return existing.id;
     }
   }
 
   const createResp = await request.post(`${SUPABASE_URL}/auth/v1/admin/users`, {
     headers,
     data: {
-      email: `smoke+${Date.now()}@example.com`,
+      email: SEED_OWNER_EMAIL,
       email_confirm: true,
     },
   });
   if (!createResp.ok()) {
+    // Concurrent specs can race the create — fall back to a lookup.
+    const retryResp = await request.get(
+      `${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`,
+      { headers }
+    );
+    if (retryResp.ok()) {
+      const body = (await retryResp.json()) as {
+        users?: Array<{ id: string; email?: string }>;
+      };
+      const existing = body.users?.find((u) => u.email === SEED_OWNER_EMAIL);
+      if (existing) {
+        return existing.id;
+      }
+    }
     throw new Error(
       `seed-invite: admin user create failed (${createResp.status()}): ${await createResp.text()}`
     );

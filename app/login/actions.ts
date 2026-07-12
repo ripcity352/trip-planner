@@ -48,8 +48,17 @@ const signInWithPasswordSchema = emailSchema.extend({
   password: z.string().min(6),
 });
 
-// signUpSchema has the same shape as signInWithPasswordSchema, different intent.
-const signUpSchema = signInWithPasswordSchema;
+// signUpSchema — sign-in shape + optional `next` (2026-07-11 incident #2:
+// emailRedirectTo used to hardcode /trips, stranding invitees mid-invite).
+// 2048 cap + safeNext sanitation mirror signInWithOAuthSchema.
+const signUpSchema = signInWithPasswordSchema.extend({
+  next: z.string().max(2048).optional(),
+});
+
+// requestEmailCode carries the same optional `next` (same incident).
+const requestEmailCodeSchema = emailSchema.extend({
+  next: z.string().max(2048).optional(),
+});
 
 const verifyEmailCodeSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -104,11 +113,15 @@ function mapAuthErrorToKey(
   // users, so a new invitee dead-ends here. Surface a clear "create an
   // account" message instead of the generic network fallthrough below.
   if (error.code === "otp_disabled") return "auth_no_account";
+  // Correct password, unconfirmed email (2026-07-11 incident #3). This used
+  // to collapse into auth_wrong_password below — users holding the RIGHT
+  // password were told "That combo didn't match". The fix is in their inbox,
+  // so it gets its own honest key.
+  if (error.code === "email_not_confirmed") return "auth_email_not_confirmed";
   // Wrong password / invalid credentials — HTTP 400 with invalid_credentials code.
   if (
     error.status === 400 &&
     (error.code === "invalid_credentials" ||
-      error.code === "email_not_confirmed" ||
       // Some Supabase versions use "invalid_grant" in error.code for bad creds
       error.code === "invalid_grant")
   ) {
@@ -227,13 +240,20 @@ export async function signInWithPasswordAction(input: {
 }
 
 /**
- * Creates a new account with email + password and signs in immediately.
+ * Creates a new account with email + password and signs in immediately
+ * (autoconfirm env — the expected prod configuration).
+ *
+ * `next` (optional) is the post-auth destination — e.g. the invite preview
+ * path — sanitized through safeNext before it reaches emailRedirectTo.
+ * Incident 2026-07-11 #2: the hardcoded `/trips` stranded invitees on the
+ * empty dashboard after any email round-trip.
  *
  * Rate-limit scope: AUTH_PASSWORD (5 / 15 min per email).
  */
 export async function signUpAction(input: {
   email: string;
   password: string;
+  next?: string;
 }): Promise<AuthResult> {
   const parsed = signUpSchema.safeParse(input);
   if (!parsed.success) {
@@ -247,7 +267,8 @@ export async function signUpAction(input: {
   } catch {
     return { ok: false, errorKey: "network" };
   }
-  const emailRedirectTo = `${origin}/auth/callback?next=/trips`;
+  const nextPath = safeNext(parsed.data.next ?? null);
+  const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
   try {
     const supabase = await createClient();
@@ -268,18 +289,47 @@ export async function signUpAction(input: {
         code: (error as { code?: string }).code,
         name: error.name,
       });
+      // Already registered, enumeration protection OFF (explicit error).
+      // signUp-specific — keep it out of the shared mapAuthErrorToKey so
+      // sign-in / code paths can't accidentally inherit it.
+      if ((error as { code?: string }).code === "user_already_exists") {
+        return { ok: false, errorKey: "auth_account_exists" };
+      }
       const mapped = mapAuthErrorToKey(error);
       return { ok: false, errorKey: mapped ?? "network" };
     }
 
-    // Atomically mark has_password in profiles — same closure as signUp,
-    // so this only runs when signUp succeeds. W0 D6 (trip-readiness).
+    // Session guard (2026-07-11 incident #1): in a confirmation-gated env
+    // ("Confirm email" ON) signUp succeeds but returns NO session. Writing
+    // has_password through the session-less client made RLS match 0 rows
+    // and reported every successful brand-new signup as a "network"
+    // failure. Only touch profiles when a session exists; the session-less
+    // user-created case is the honest auth_confirm_pending. Prod is now
+    // autoconfirm (mailer_autoconfirm=true, 2026-07-12) — this is
+    // defense-in-depth so the failure class can't silently recur.
     const userId = data?.user?.id;
-    if (userId) {
+    if (userId && data?.session) {
+      // Atomically mark has_password in profiles — same closure as signUp,
+      // so this only runs when signUp succeeds. W0 D6 (trip-readiness).
       const hp = await markPasswordSet(supabase, userId, "auth:signUp");
       if (!hp.ok) {
         return { ok: false, errorKey: "network" };
       }
+      return { ok: true };
+    }
+    if (userId && !data?.session) {
+      // Already registered, enumeration protection ON: GoTrue returns an
+      // OBFUSCATED user with `identities: []` and no session instead of an
+      // error (PR #430 review MEDIUM). Without this check the path below
+      // would promise a confirmation email that never arrives. A genuinely
+      // new confirmation-gated user carries a non-empty identities array.
+      const identities = data?.user?.identities;
+      if (Array.isArray(identities) && identities.length === 0) {
+        return { ok: false, errorKey: "auth_account_exists" };
+      }
+      // Account created, confirmation pending — has_password self-heals on
+      // the first successful password sign-in (#F9).
+      return { ok: false, errorKey: "auth_confirm_pending" };
     }
 
     return { ok: true };
@@ -361,10 +411,17 @@ export async function verifyEmailCodeAction(input: {
  * shouldCreateUser: false here ensures that a code request for an unknown
  * email does NOT silently provision a phantom account in auth.users.
  *
+ * `next` (optional) is the post-auth destination, sanitized through
+ * safeNext (2026-07-11 incident #2 — the hardcoded /trips stranded
+ * invitees who round-tripped through email).
+ *
  * Rate-limit scope: AUTH_OTP_VERIFY.
  */
-export async function requestEmailCode(email: string): Promise<AuthResult> {
-  const parsed = emailSchema.safeParse({ email });
+export async function requestEmailCode(
+  email: string,
+  next?: string,
+): Promise<AuthResult> {
+  const parsed = requestEmailCodeSchema.safeParse({ email, next });
   if (!parsed.success) {
     return { ok: false, errorKey: "validation_failed" };
   }
@@ -376,7 +433,8 @@ export async function requestEmailCode(email: string): Promise<AuthResult> {
   } catch {
     return { ok: false, errorKey: "network" };
   }
-  const emailRedirectTo = `${origin}/auth/callback?next=/trips`;
+  const nextPath = safeNext(parsed.data.next ?? null);
+  const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
 
   try {
     const supabase = await createClient();

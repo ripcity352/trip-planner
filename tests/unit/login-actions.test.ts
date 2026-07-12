@@ -35,6 +35,18 @@ vi.mock("@/lib/supabase/server", () => ({
   ),
 }));
 
+// has_password shadow-column writer — mocked so session-guard tests can
+// assert it is only called when signUp returns a REAL session (the
+// 2026-07-11 incident: calling it on a session-less client made RLS match
+// 0 rows and turned every successful confirmation-gated signup into a
+// false "network" failure).
+const mockMarkPasswordSet = vi.fn();
+
+vi.mock("@/lib/auth/has-password", () => ({
+  markPasswordSet: (...args: Parameters<typeof mockMarkPasswordSet>) =>
+    mockMarkPasswordSet(...args),
+}));
+
 // Rate-limiter: default to allow (success) so tests focus on action logic.
 // Individual tests override via mockRejectedValueOnce for rate-limit cases.
 const mockRateLimitedAction = vi.fn(
@@ -183,6 +195,21 @@ describe("signInWithPasswordAction", () => {
       expect.any(Function)
     );
   });
+
+  // 2026-07-11 incident #3: email_not_confirmed used to collapse into
+  // auth_wrong_password — a user with the CORRECT password was told
+  // "That combo didn't match". It must map to its own honest key.
+  it("returns auth_email_not_confirmed (NOT auth_wrong_password) for an unconfirmed email", async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: null },
+      error: { status: 400, code: "email_not_confirmed", message: "Email not confirmed" },
+    });
+    const result = await signInWithPasswordAction({
+      email: "dave@example.com",
+      password: "hunter2!",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_email_not_confirmed" });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -266,6 +293,173 @@ describe("signUpAction", () => {
       "authPassword",
       "dave@example.com",
       expect.any(Function)
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Session guard (2026-07-11 incident #1)
+  //
+  // Prod had "Confirm email" ON while local config.toml had it off: signUp()
+  // succeeded but returned NO session. markPasswordSet then ran on the
+  // session-less client, RLS matched 0 rows, and every successful brand-new
+  // signup was reported as { ok:false, errorKey:"network" }. The guard:
+  // only touch profiles when a session exists; a user-without-session result
+  // is the honest auth_confirm_pending, never a failure.
+  // ---------------------------------------------------------------------------
+
+  it("calls markPasswordSet and returns ok when signUp yields user AND session", async () => {
+    mockMarkPasswordSet.mockResolvedValue({ ok: true });
+    mockSignUp.mockResolvedValue({
+      data: { user: { id: "user-1" }, session: { access_token: "jwt" } },
+      error: null,
+    });
+    const result = await signUpAction({
+      email: "newuser@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: true });
+    expect(mockMarkPasswordSet).toHaveBeenCalledTimes(1);
+    expect(mockMarkPasswordSet).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-1",
+      expect.any(String)
+    );
+  });
+
+  it("returns auth_confirm_pending (and skips markPasswordSet) when signUp yields a GENUINELY NEW user but NO session", async () => {
+    // A genuinely-new confirmation-gated user carries a NON-EMPTY
+    // identities array — that's what distinguishes it from the obfuscated
+    // already-registered response below.
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: {
+          id: "user-1",
+          identities: [{ id: "identity-1", provider: "email" }],
+        },
+        session: null,
+      },
+      error: null,
+    });
+    const result = await signUpAction({
+      email: "newuser@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_confirm_pending" });
+    expect(mockMarkPasswordSet).not.toHaveBeenCalled();
+  });
+
+  it("still returns auth_confirm_pending when identities is absent (can't confirm obfuscation)", async () => {
+    // Defensive default: no identities field at all → treat as a genuine
+    // pending confirmation rather than accusing the user of having an
+    // account we can't prove exists.
+    mockSignUp.mockResolvedValue({
+      data: { user: { id: "user-1" }, session: null },
+      error: null,
+    });
+    const result = await signUpAction({
+      email: "newuser@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_confirm_pending" });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Already-registered detection (PR #430 review MEDIUM)
+  //
+  // The incident's retry cohort now HAS accounts and re-taps the invite
+  // into the create-first surface. Supabase signals "already registered"
+  // two ways depending on enumeration protection:
+  //   ON  → obfuscated success: user present, identities: [], no session
+  //         (would masquerade as confirm-pending — but no email is sent)
+  //   OFF → explicit error.code === "user_already_exists"
+  // Both must map to auth_account_exists, never a dead-end.
+  // ---------------------------------------------------------------------------
+
+  it("returns auth_account_exists for the obfuscated already-registered response (identities: [])", async () => {
+    mockSignUp.mockResolvedValue({
+      data: { user: { id: "user-1", identities: [] }, session: null },
+      error: null,
+    });
+    const result = await signUpAction({
+      email: "returning@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_account_exists" });
+    expect(mockMarkPasswordSet).not.toHaveBeenCalled();
+  });
+
+  it("returns auth_account_exists for an explicit user_already_exists error", async () => {
+    mockSignUp.mockResolvedValue({
+      data: { user: null },
+      error: {
+        status: 422,
+        code: "user_already_exists",
+        message: "User already registered",
+      },
+    });
+    const result = await signUpAction({
+      email: "returning@example.com",
+      password: "supersecret",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "auth_account_exists" });
+    expect(mockMarkPasswordSet).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // next threading (2026-07-11 incident #2)
+  //
+  // emailRedirectTo used to hardcode ?next=/trips, stranding invitees on the
+  // empty dashboard after any email round-trip. The action now accepts an
+  // optional `next`, sanitized through safeNext.
+  // ---------------------------------------------------------------------------
+
+  it("threads a safe next path into emailRedirectTo", async () => {
+    mockSignUp.mockResolvedValue({ data: { user: {} }, error: null });
+    await signUpAction({
+      email: "dave@example.com",
+      password: "supersecret",
+      next: "/invite/tok123",
+    });
+    expect(mockSignUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          emailRedirectTo: expect.stringContaining(
+            `next=${encodeURIComponent("/invite/tok123")}`
+          ),
+        }),
+      })
+    );
+  });
+
+  it("falls back to /trips in emailRedirectTo when next is omitted", async () => {
+    mockSignUp.mockResolvedValue({ data: { user: {} }, error: null });
+    await signUpAction({ email: "dave@example.com", password: "supersecret" });
+    expect(mockSignUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          emailRedirectTo: expect.stringContaining(
+            `next=${encodeURIComponent("/trips")}`
+          ),
+        }),
+      })
+    );
+  });
+
+  it("sanitizes an off-origin next through safeNext (protocol-relative)", async () => {
+    mockSignUp.mockResolvedValue({ data: { user: {} }, error: null });
+    await signUpAction({
+      email: "dave@example.com",
+      password: "supersecret",
+      next: "//evil.com/phish",
+    });
+    expect(mockSignUp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          emailRedirectTo: expect.stringContaining(
+            `next=${encodeURIComponent("/trips")}`
+          ),
+        }),
+      })
     );
   });
 });
@@ -462,5 +656,49 @@ describe("requestEmailCode (renamed from requestMagicLink)", () => {
     });
     const result = await requestEmailCode("dave@example.com");
     expect(result).toEqual({ ok: false, errorKey: "network" });
+  });
+
+  // 2026-07-11 incident #2 — same next-threading contract as signUpAction.
+
+  it("threads a safe next path into emailRedirectTo", async () => {
+    mockSignInWithOtp.mockResolvedValue({ data: {}, error: null });
+    await requestEmailCode("dave@example.com", "/invite/tok123");
+    expect(mockSignInWithOtp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          emailRedirectTo: expect.stringContaining(
+            `next=${encodeURIComponent("/invite/tok123")}`
+          ),
+        }),
+      })
+    );
+  });
+
+  it("falls back to /trips in emailRedirectTo when next is omitted", async () => {
+    mockSignInWithOtp.mockResolvedValue({ data: {}, error: null });
+    await requestEmailCode("dave@example.com");
+    expect(mockSignInWithOtp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          emailRedirectTo: expect.stringContaining(
+            `next=${encodeURIComponent("/trips")}`
+          ),
+        }),
+      })
+    );
+  });
+
+  it("sanitizes an off-origin next through safeNext", async () => {
+    mockSignInWithOtp.mockResolvedValue({ data: {}, error: null });
+    await requestEmailCode("dave@example.com", "https://evil.com/phish");
+    expect(mockSignInWithOtp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          emailRedirectTo: expect.stringContaining(
+            `next=${encodeURIComponent("/trips")}`
+          ),
+        }),
+      })
+    );
   });
 });

@@ -24,7 +24,7 @@
  * Tests: tests/unit/login-form.test.tsx (Override C — never under app/).
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -49,6 +49,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   type Mode,
+  type AuthIntent,
   type EmailOnlyValues,
   type PasswordValues,
   type CodeValues,
@@ -65,12 +66,14 @@ type LoginFormProps = {
   /** Redirect target after successful sign-in. Defaults to /trips. */
   next?: string;
   /**
-   * #395: on the invite surface the most common persona is a never-seen
-   * invitee, so reveal "Create account instead" from the start (in password
-   * mode) rather than only after a guaranteed wrong-password dead-end. Safe
+   * #395 + 2026-07-11 incident #5: on the invite surface the most common
+   * persona is a never-seen invitee, so the password step leads with
+   * CREATE-ACCOUNT voice (header, primary button, new-password
+   * autocomplete) — "Have an account? Sign in" toggles to the sign-in
+   * branch, and "Email me a code instead" stays as a tertiary link. Safe
    * to disclose here — the invite already discloses account existence via
-   * the code path, so this adds no new enumeration surface. Off (login page
-   * default) keeps the sign-in-first, post-wrong-password reveal.
+   * the code path, so this adds no new enumeration surface. Off (login
+   * page default) keeps the sign-in-first, post-wrong-password reveal.
    */
   inviteSurface?: boolean;
 };
@@ -85,12 +88,21 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
+  // Invite surface leads with create-account (see LoginFormProps note);
+  // /login always leads with sign-in.
+  const [authIntent, setAuthIntent] = useState<AuthIntent>(
+    inviteSurface ? "create" : "sign-in",
+  );
   const [isPending, startTransition] = useTransition();
 
   // #395: on the invite surface, the create-account affordance is present
   // from the start of password mode (not gated on a prior wrong-password
   // error) so a first-touch invitee isn't handed a guaranteed dead-end.
   const revealCreateAccount = showCreateAccount || inviteSurface;
+
+  // Password mode leads with the create-account affordance only on the
+  // invite surface while the user hasn't toggled to sign-in.
+  const createMode = inviteSurface && authIntent === "create";
 
   const emailForm = useForm<EmailOnlyValues>({
     resolver: zodResolver(emailOnlySchema),
@@ -114,10 +126,30 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   // Handlers
   // -------------------------------------------------------------------------
 
+  /**
+   * Every awaited server action funnels through here. A middleware-edge 429
+   * (raw JSON, not an action result) or a network drop REJECTS the await
+   * inside startTransition — without a catch the rejection is swallowed and
+   * the button silently does nothing (2026-07-11 incident #4). On rejection
+   * we surface the existing "network" copy so the user always gets a signal.
+   */
+  const runAction = (fn: () => Promise<void>) => {
+    startTransition(async () => {
+      try {
+        await fn();
+      } catch (err) {
+        console.error("[auth] server action rejected", {
+          name: err instanceof Error ? err.name : "unknown",
+        });
+        setServerError("network");
+      }
+    });
+  };
+
   // Starts a Google OAuth round-trip. The server returns a URL; we navigate there.
   const handleGoogleSignIn = () => {
     setServerError(null);
-    startTransition(async () => {
+    runAction(async () => {
       const result = await signInWithOAuthAction({ provider: "google", next });
       if (result.ok) {
         window.location.assign(result.url);
@@ -139,7 +171,7 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   const handleSignIn = passwordForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
-    startTransition(async () => {
+    runAction(async () => {
       const result = await signInWithPasswordAction({
         email: values.email,
         password: values.password,
@@ -163,8 +195,8 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   const handleEmailMeCode = () => {
     setServerError(null);
     setShowCreateAccount(false);
-    startTransition(async () => {
-      const result = await requestEmailCode(email);
+    runAction(async () => {
+      const result = await requestEmailCode(email, next);
       if (result.ok) {
         codeForm.setValue("email", email);
         setMode("code-verify");
@@ -182,7 +214,7 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
 
   const handleVerifyCode = codeForm.handleSubmit((values) => {
     setServerError(null);
-    startTransition(async () => {
+    runAction(async () => {
       const result = await verifyEmailCodeAction({
         email: values.email,
         token: values.token,
@@ -195,18 +227,61 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
     });
   });
 
-  const handleCreateAccount = () => {
-    const password = passwordForm.getValues("password");
+  // Create-account submit — the primary in invite create mode, the
+  // post-wrong-password secondary on /login. handleSubmit gives the
+  // password field client-side zod validation (6+ chars) on both paths.
+  // `next` rides along so the confirmation email (if the env gates on
+  // confirm) round-trips back to the invite, not the empty dashboard.
+  const handleCreateAccount = passwordForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
-    startTransition(async () => {
-      const result = await signUpAction({ email, password });
+    runAction(async () => {
+      const result = await signUpAction({
+        email: values.email,
+        password: values.password,
+        next,
+      });
       if (result.ok) {
         window.location.href = next ?? "/trips";
         return;
       }
       setServerError(result.errorKey);
+      // Already registered (PR #430 review MEDIUM — the incident's retry
+      // cohort now HAS accounts and re-taps the invite into create mode).
+      // Don't just tell them to sign in — put them there: flip the invite
+      // surface to the sign-in branch (email kept, labels/autocomplete flip
+      // with the intent). Focus lands via the effect below once the
+      // transition settles — the field is still disabled (isPending) here.
+      if (result.errorKey === "auth_account_exists" && inviteSurface) {
+        setAuthIntent("sign-in");
+      }
     });
+  });
+
+  // After the account-exists flip, put the cursor in the password field for
+  // the sign-in retype. Can't focus inside the transition callback: the
+  // input is disabled while isPending, so setFocus there is a no-op and
+  // focus stays on the clicked submit button.
+  useEffect(() => {
+    if (
+      !isPending &&
+      inviteSurface &&
+      serverError === "auth_account_exists" &&
+      authIntent === "sign-in"
+    ) {
+      passwordForm.setFocus("password");
+    }
+  }, [isPending, inviteSurface, serverError, authIntent, passwordForm]);
+
+  // Invite-surface intent toggles ("Have an account? Sign in" ⇄ "Create
+  // account instead"). Pure local state — no server call.
+  const handleSwitchToSignIn = () => {
+    setServerError(null);
+    setAuthIntent("sign-in");
+  };
+  const handleSwitchToCreate = () => {
+    setServerError(null);
+    setAuthIntent("create");
   };
 
   // -------------------------------------------------------------------------
@@ -236,9 +311,22 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   // Render
   // -------------------------------------------------------------------------
 
+  // Invite-only header — follows the create/sign-in intent so the label
+  // above the form always matches the primary button below it (the
+  // 2026-07-11 crossed-labels fix). Replaces the static "Sign in to join"
+  // the invite page used to render above this form.
+  const inviteHeader = inviteSurface ? (
+    <p className="text-sm text-muted-foreground">
+      {authIntent === "create"
+        ? AUTH_COPY.inviteAuthHeaderCreate
+        : AUTH_COPY.inviteAuthHeaderSignIn}
+    </p>
+  ) : null;
+
   if (mode === "email-only") {
     return (
       <div className="flex flex-col gap-3">
+        {inviteHeader}
         <form onSubmit={handleEmailContinue} noValidate className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="login-email">{AUTH_COPY.emailFieldLabel}</Label>
@@ -273,7 +361,12 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   if (mode === "password") {
     return (
       <div className="flex flex-col gap-3">
-        <form onSubmit={handleSignIn} noValidate className="flex flex-col gap-3">
+        {inviteHeader}
+        <form
+          onSubmit={createMode ? handleCreateAccount : handleSignIn}
+          noValidate
+          className="flex flex-col gap-3"
+        >
           {hiddenUsernameField}
           <p className="text-muted-foreground text-sm">{email}</p>
           <div className="flex flex-col gap-1.5">
@@ -282,7 +375,10 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
               <Input
                 id="login-password"
                 type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
+                // new-password while creating (keychain offers to save a
+                // fresh credential), current-password while signing in —
+                // crossed values misdirect password managers (incident #5).
+                autoComplete={createMode ? "new-password" : "current-password"}
                 aria-invalid={
                   passwordForm.formState.errors.password ? "true" : undefined
                 }
@@ -303,20 +399,43 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
                 {showPassword ? AUTH_COPY.togglePasswordHide : AUTH_COPY.togglePasswordShow}
               </button>
             </div>
-            {revealCreateAccount ? (
+            {/* Pick-a-password helper belongs to the CREATE affordance only —
+                under a "Sign in" primary it reads as crossed labels
+                (incident #5). On /login it appears with the post-wrong-
+                password create reveal, as before. */}
+            {createMode || (!inviteSurface && showCreateAccount) ? (
               <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
             ) : null}
           </div>
           <ErrorNote id="login-error" message={inlineError} />
           <Button type="submit" disabled={isPending} aria-busy={isPending}>
-            {isPending ? <PendingSpinner /> : <span>{AUTH_COPY.signInButton}</span>}
+            {isPending ? (
+              <PendingSpinner />
+            ) : (
+              <span>
+                {createMode ? AUTH_COPY.signUpButton : AUTH_COPY.signInButton}
+              </span>
+            )}
           </Button>
-          {revealCreateAccount ? (
+          {createMode ? (
+            // Secondary: returning invitee escapes to the sign-in branch.
             <Button
               type="button"
               variant="secondary"
               disabled={isPending}
-              onClick={handleCreateAccount}
+              onClick={handleSwitchToSignIn}
+            >
+              {AUTH_COPY.inviteHaveAccountToggle}
+            </Button>
+          ) : revealCreateAccount ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isPending}
+              // On the invite surface this toggles the primary back to
+              // create (labels flip with it); on /login it submits the
+              // sign-up directly, as before.
+              onClick={inviteSurface ? handleSwitchToCreate : handleCreateAccount}
             >
               {AUTH_COPY.createAccountLink}
             </Button>

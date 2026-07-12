@@ -96,6 +96,27 @@ export type ErrorKey =
   // dead-end fix). Replaces the misleading generic `network` it used to
   // fall through to.
   | "auth_no_account"
+  // 2026-07-11 invite-incident split: a confirmation-gated environment
+  // ("Confirm email" ON in Supabase) makes signUp() succeed WITHOUT a
+  // session. That is not a failure — the account exists; the user just has
+  // to confirm before signing in. Before this key, the session-less path
+  // fell into markPasswordSet → RLS 0-rows → a false "network" failure on
+  // every successful brand-new signup.
+  | "auth_confirm_pending"
+  // 2026-07-11 invite-incident split: email_not_confirmed used to collapse
+  // into auth_wrong_password — users with the CORRECT password were told
+  // "That combo didn't match". Deterministic, non-retry state: the fix is
+  // in their inbox, not in retyping.
+  | "auth_email_not_confirmed"
+  // Create-account attempt for an already-registered email (PR #430 review
+  // MEDIUM — the incident's retry cohort now HAS accounts and re-taps the
+  // invite into the create-first surface). Two Supabase shapes: enumeration
+  // protection ON returns an obfuscated user (identities: []) with no
+  // session — which would masquerade as auth_confirm_pending and promise
+  // an email that never arrives — and protection OFF returns an explicit
+  // user_already_exists error, which fell to the generic network copy.
+  // Deterministic rejection; the fix is the sign-in branch.
+  | "auth_account_exists"
   // Placeholder for PR5 (OAuth). Not yet wired to any action — kept
   // here so the type union is complete and TypeScript enforces
   // exhaustiveness in the ERRORS record below.
@@ -205,6 +226,18 @@ export const ERRORS: Record<ErrorKey, string> = {
   // No account yet for that email — point them at the password path (sign-up
   // is explicit; codes don't create accounts). Voice: blame-free, casual.
   auth_no_account: "No account on that email yet. Add a password to create one.",
+  // Signup succeeded but the environment gates on email confirmation, so
+  // there's no session yet. Honest about what happened (account exists)
+  // and what's next (confirm, then sign in) — never a false failure.
+  auth_confirm_pending:
+    "Account's created — check your email to confirm, then sign in here.",
+  // Correct password, unconfirmed email. Deterministic — the fix is in
+  // their inbox, so no "try again" framing and no blame.
+  auth_email_not_confirmed:
+    "You're in the books — check your email to confirm first.",
+  // Already registered — deterministic rejection; the fix is the sign-in
+  // branch (the invite form flips itself there), never a retry.
+  auth_account_exists: "You've already got an account — sign in instead.",
   // PR5 placeholder — not wired yet. Copy ready so the error is
   // user-visible the moment OAuth lands without a follow-up copy sprint.
   auth_email_taken_oauth:

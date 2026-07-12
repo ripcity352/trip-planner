@@ -20,6 +20,7 @@ import {
   ATTENDEE_COUNT_BUCKET_LABELS,
   M2_UI_STRINGS,
 } from "@/lib/copy/empty-states";
+import { AUTH_COPY } from "@/lib/copy/auth";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -84,13 +85,14 @@ test.describe("M2 golden path — anonymous invite preview", () => {
     ).toBeVisible();
 
     // Anonymous CTA: M5/PR2 replaced the `/login?next=` bounce link with
-    // an inline LoginForm rendered directly on this page (the anon-CTA
-    // copy is now a lead-in sentence above the form, not a link name).
-    // Full inline-auth interaction coverage lives in
-    // invite-inline-auth.spec.ts; here we just confirm the bounce link
+    // an inline LoginForm rendered directly on this page. Since the
+    // 2026-07-11 incident fix the surface is create-account-first — the
+    // lead-in above the form is the intent-aware create header, not the
+    // old "Sign in to join". Full inline-auth interaction coverage lives
+    // in invite-inline-auth.spec.ts; here we just confirm the bounce link
     // is gone and the inline form is present.
     await expect(
-      page.getByText(M2_UI_STRINGS.invitePreview_cta_anon)
+      page.getByText(AUTH_COPY.inviteAuthHeaderCreate)
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: /sign in to join/i })

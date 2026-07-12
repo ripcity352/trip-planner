@@ -16,6 +16,15 @@ import { ERRORS } from "@/lib/copy/errors";
 
 export type Mode = "email-only" | "password" | "code-verify";
 
+/**
+ * Which primary affordance the password step leads with (invite surface
+ * only — /login is always "sign-in"). The invite surface defaults to
+ * "create": its most common persona is a never-seen invitee, and the old
+ * sign-in-first labels walked brand-new users into the wrong branch
+ * (2026-07-11 incident #5).
+ */
+export type AuthIntent = "create" | "sign-in";
+
 // ---------------------------------------------------------------------------
 // Zod schemas (client-side mirrors of the server-side schemas in actions.ts)
 // ---------------------------------------------------------------------------
