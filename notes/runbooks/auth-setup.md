@@ -4,6 +4,22 @@
 > covered the email-template flip (PR3). This file now also covers the
 > Google OAuth provider setup (PR5). Both are one-time operator steps.
 
+> **Correction (2026-07-12, post-incident):** Section 1 below previously
+> claimed the "Magic Link" template is used by `signInWithOtp`, `signUp`,
+> **and** password-reset. That's false — GoTrue routes `/signup` through
+> a **separate** "Confirm signup" template, which the PR3 flip never
+> touched. That template still emitted `{{ .ConfirmationURL }}` in prod,
+> and its fragment-bound link (unreadable by the server-side
+> `/auth/callback`) was one of the four failure points in the
+> 2026-07-11 invite-chain incident. See `notes/decisions.md`
+> "Invite-chain incident 2026-07-11 → instant-session signup (Option A)"
+> ADR. As of 2026-07-12, prod `mailer_autoconfirm` is ON, so the
+> "Confirm signup" template is currently **unreachable** (no signup ever
+> needs confirming) — it has NOT been flipped to `{{ .Token }}`, only
+> made moot. **If confirmations are ever re-enabled, the "Confirm
+> signup" template must be flipped to `{{ .Token }}` in the same change**
+> — do not assume the Section 1 flip below already covers it.
+
 ---
 
 # Section 1 — Supabase email-template flip (magic link → 6-digit code)
@@ -14,10 +30,15 @@ changes in PR #228 (closes #223).
 
 ## Background
 
-Until M5, Supabase Dashboard's email template for OTP-class flows
-(`signInWithOtp`, signup, password reset) emitted a magic-link URL
+Until M5, Supabase Dashboard's "Magic Link" email template — used by
+`signInWithOtp` **only** — emitted a magic-link URL
 (`{{ .ConfirmationURL }}`). The callback handler verified the embedded
 `token_hash` via `verifyOtp({token_hash, type})`.
+
+**Note:** `signUp` and password-reset use their own separate GoTrue
+templates ("Confirm signup" and "Reset password" respectively), not
+this one. See the correction note at the top of this file — conflating
+the three was the 2026-07-11 incident's documentation-side gap.
 
 M5 demotes magic-link to a verification primitive and replaces the
 primary flow with a 6-digit OTP code entered on a form. The dashboard
@@ -59,8 +80,10 @@ before PR1+PR2 production-deployed → revert template immediately.
 
 1. Open Supabase Dashboard → project `trip-planner` → **Authentication**
    → **Email Templates**.
-2. Select the **"Magic Link"** template (this is the one used by
-   `signInWithOtp`, `signUp`, and password-reset email).
+2. Select the **"Magic Link"** template (this is used by
+   `signInWithOtp` only — `signUp` and password-reset have their own
+   separate templates; see the correction note at the top of this
+   file).
 3. Open the **Message body** editor. Find the line containing
    `{{ .ConfirmationURL }}`.
 4. Replace the line with:

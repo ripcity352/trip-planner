@@ -5,6 +5,129 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-12 — Invite-chain incident 2026-07-11 → instant-session signup (Option A)
+
+**Incident:** two invitees failed to join "Winston Bachelor Trip" via a
+minted invite link on `travelston.com` on 2026-07-11 (confirmed by audit
+of prod auth logs). Root cause chain:
+
+1. Prod Supabase **"Confirm email" was ON** while local
+   `supabase/config.toml` has `enable_confirmations=false` — an
+   **untracked config-drift**. `signUp()` under confirmation-ON returns
+   no session, so `signUpAction`'s `markPasswordSet` failed under RLS →
+   every successful brand-new signup reported back to the user as a
+   failure ("Couldn't reach the server").
+2. Password sign-in on the still-unconfirmed account returned
+   `email_not_confirmed`, which the app mis-copied as "That combo didn't
+   match" — steering the user toward retrying the wrong fix.
+3. Retries tripped GoTrue's per-address ~60s
+   `over_email_send_rate_limit` ("Easy, tiger"); one user hit the
+   OTP-can't-create-account 422 (`otp_disabled`) 7× in 27s trying "Email
+   me a code instead" on a brand-new address.
+4. The "Confirm signup" email template still emits
+   `{{ .ConfirmationURL }}`, whose link lands tokens in a URL fragment
+   the server-side `/auth/callback` can never read → `/login?error=auth`
+   with the invite token gone. (`emailRedirectTo` also hardcodes
+   `next=/trips` at `app/login/actions.ts:250` / `:379`, so even a
+   working confirmation link would drop the invite context.)
+5. Net result: both invitees eventually authenticated (via retries /
+   OTP fallback once the address existed) but **zero joined the trip** —
+   the invite token was lost at every one of the four failure points
+   above before either user reached the accept step.
+
+**Gap named:** the deployment-readiness auth snapshot
+(`notes/deployment-readiness.md:182-198`, dated 2026-06-17) records the
+redirect allowlist, Site URL, OTP length, Magic Link template, SMTP, and
+OAuth provider status — but never the **Confirm-email toggle**. That
+toggle is prod-only in the sense that no local walk or Vercel-preview
+smoke ever exercises the confirmation-ON branch: local
+`supabase/config.toml` ships `enable_confirmations=false`, and the AUTH
+closure smokes (`notes/retros/auth-retro.md`) ran against Vercel
+preview, not `travelston.com`. So the one setting whose drift caused a
+real incident was structurally untestable by every gate we had. This is
+the same failure shape as the M5-retro OTP-length drift (recommendation
+5) — a prod-only dashboard toggle with no snapshot row — recurring
+because the snapshot's axis list was never generalized past "the things
+that broke last time."
+
+A second, independent documentation gap: `notes/runbooks/auth-setup.md`
+§1 (lines ~62-63) claims the "Magic Link" template is "the one used by
+`signInWithOtp`, `signUp`, and password-reset email." This is false —
+GoTrue routes `/signup` through a **separate** "Confirm signup"
+template, which was never flipped to `{{ .Token }}` during the M5
+PR3 flip because the runbook said it didn't need to be. That template
+still emits `{{ .ConfirmationURL }}` today, which is failure point 4
+above.
+
+**Decision (Option A — instant-session signup, user-approved
+2026-07-12):**
+
+1. Flip prod `mailer_autoconfirm` to **TRUE** via the Management API
+   (operator: Claude session, approved by Carl, 2026-07-12). New
+   signups now get an instant session; zero confirmation emails sit in
+   the invitee happy path.
+2. Companion code PR (`fix/invite-instant-signup`, in flight,
+   separate branch): `signUpAction` session-guard + an honest
+   `auth_confirm_pending` state (defense-in-depth if autoconfirm is ever
+   off again), `next` threaded into both `emailRedirectTo` builders,
+   `email_not_confirmed` split out of the `auth_wrong_password` copy
+   bucket, `try/catch` around every awaited server action in
+   `LoginForm` (bare awaits were silently swallowing edge-429s and
+   killing the button), and an invite-surface relabel to
+   create-account-first voice.
+
+**Trade-off accepted:** email ownership goes unverified at signup time.
+Acceptable under the recorded low-friction-over-defense-in-depth threat
+model (see the M5 auth redesign ADR above and project memory) — this is
+a bachelor-party invite flow, not a system holding funds or PII beyond
+what attendees volunteer. The real owner of an address can always
+reclaim the account later via the existing email-based OTP/reset path.
+
+**Rejected alternatives:**
+
+- *Magic link as the fix:* rejected because the `ConfirmationURL`
+  fragment dead-end **is** the magic-link failure mode — the token
+  lands in a URL fragment, and the invitee is very likely opening the
+  link inside an iMessage in-app webview whose server-side callback
+  can't read a fragment either way. Fixing signup by routing back
+  through magic link reintroduces the exact class of bug PR3 removed.
+- *Google OAuth as primary:* the provider isn't enabled in Supabase
+  (#232, parked per operator 2026-06-22), and Google blocks OAuth
+  inside embedded webviews (iMessage/Instagram/etc.) — the dominant
+  entry surface for an invite link — so it wouldn't have fixed this
+  incident even if it shipped today.
+- *Invite-scoped OTP-first signup (`shouldCreateUser:true` scoped to a
+  valid invite token):* preserves the M5 anti-phantom-account decision
+  by narrowing it to invite-holders instead of relaxing it globally,
+  and stays open as a **future follow-up** (tracked in the follow-up
+  issue below) — but it keeps an email round-trip in the critical path,
+  which doesn't fix the in-webview fragment problem and adds a second
+  auth surface to maintain. Not chosen for this incident's timeline.
+- *Deferred / no-auth join (accept the invite before creating an
+  account):* collides with CLAUDE.md rule 5/6 (RLS-as-source-of-truth,
+  every table scoped by `trip_id` via `trip_members` membership) — there
+  is no way to grant `trip_members` access without an authenticated
+  `user_id`.
+- *Confirmation-aware signup, keeping "Confirm email" ON:* a 3-4x
+  larger diff (every signup call site needs a pending-confirmation
+  branch), keeps the email-rate-limit exposure that produced the "Easy,
+  tiger" symptom, and is untestable locally without standing up
+  mail-capture infra — the thing that let this drift go unnoticed for
+  as long as it did in the first place.
+
+**Follow-ups filed:** resend-countdown UX for `over_email_send_rate_limit`
+(disabled resend button + timer), invite-scoped OTP-first as a future
+Option B, and re-evaluating whether "Email me a code instead" should even
+render for addresses that don't exist yet (currently produces a 422
+`otp_disabled` with no user-facing explanation). See the incident and
+follow-up GitHub issues linked in this ADR's PR.
+
+**Spec-gap closure:** `notes/deployment-readiness.md`'s auth snapshot now
+carries a `Confirm email (mailer_autoconfirm)` row so this class of
+drift is a glance, not a discovery, on the next closure walk.
+
+---
+
 ## 2026-07-11 — #420 — Votes are aggregate-only at the DB, not just in the UI
 
 **Gap named (a missing axis in the vote-visibility spec):** both
