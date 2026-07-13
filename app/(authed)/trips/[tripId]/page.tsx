@@ -45,6 +45,7 @@ import {
 import { RsvpToggle } from "@/components/trip/rsvp-toggle";
 import { NowNextCard } from "@/components/trip/now-next-card";
 import { TripNotesEditor } from "@/components/trip/trip-notes-editor";
+import { EditTripSheet } from "@/components/trip/edit-trip-sheet";
 import { getTripBySlug } from "@/lib/db/trips";
 import {
   getMyRsvp,
@@ -120,7 +121,24 @@ export default async function TripDashboardPage({ params }: PageProps) {
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">{trip.name}</h1>
+        {/* flex-wrap: the closed trigger sits beside the h1; the open
+            form is w-full and wraps to its own line at any width. */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {trip.name}
+          </h1>
+          {/* Organizer micro-affordance (rule 11) — non-organizers never
+              see the trigger. Name + location only; dates stay with the
+              /dates poll flow. RLS is the real gate on the write. */}
+          {isOrganizer ? (
+            <EditTripSheet
+              tripId={trip.id}
+              initialName={trip.name}
+              initialLocation={trip.location}
+              triggerClassName="shrink-0"
+            />
+          ) : null}
+        </div>
         <p className="text-muted-foreground mt-1 text-sm">
           {formatTripDates(trip)}
           {trip.location ? ` · ${trip.location}` : null}

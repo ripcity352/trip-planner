@@ -26,6 +26,11 @@ export const FIELD_ERRORS = {
   expense_description_required: "Give it a name — what was the spend?",
   expense_amount_required: "How much? Pop in an amount over $0.",
   expense_amount_invalid: "How much? Pop in an amount over $0.",
+
+  // Dashboard-header trip edit sheet
+  trip_name_required: "The trip needs a name — even a working title.",
+  trip_name_too_long: "That's a mouthful. Trim the name down a bit.",
+  trip_location_too_long: "That's a lot of address. Keep it short.",
 } as const;
 
 export type FieldErrorKey = keyof typeof FIELD_ERRORS;

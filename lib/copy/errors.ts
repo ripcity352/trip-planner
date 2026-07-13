@@ -56,6 +56,9 @@ export type ErrorKey =
   | "item_flag_save_failed"
   | "announcement_post_failed"
   | "trip_notes_save_failed"
+  // Trip name/location edit from the dashboard header. Same
+  // `<feature>_<verb>_failed` pattern; retry-framed (transient).
+  | "trip_update_failed"
   | "travel_leg_save_failed"
   | "travel_leg_delete_failed"
   | "lodging_assign_failed"
@@ -189,6 +192,7 @@ export const ERRORS: Record<ErrorKey, string> = {
   announcement_post_failed:
     "Update didn't go out. Tap send again — the group hasn't seen it yet.",
   trip_notes_save_failed: "Notes didn't save. Try once more in a sec.",
+  trip_update_failed: "That didn't save. Give it another go in a sec.",
   travel_leg_save_failed:
     "Leg didn't save. Tap again — your connection's flaky.",
   travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",

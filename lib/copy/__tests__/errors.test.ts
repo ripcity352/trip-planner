@@ -31,6 +31,7 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "item_flag_save_failed",
   "announcement_post_failed",
   "trip_notes_save_failed",
+  "trip_update_failed",
   "travel_leg_save_failed",
   "travel_leg_delete_failed",
   "lodging_assign_failed",

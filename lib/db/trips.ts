@@ -309,6 +309,43 @@ export async function createTrip(
 }
 
 /**
+ * Fields the dashboard-header edit may touch. Dates are deliberately
+ * NOT here — they're owned by the /dates poll flow (`decide_trip_dates`),
+ * and routing them through a free-text edit would bypass the vote.
+ */
+export interface UpdateTripInput {
+  name: string;
+  location: string | null;
+}
+
+/**
+ * Update a trip's name + location. RLS ("organizers can update their
+ * trips", 0001_init.sql) gates WHO can write — no app-level role check
+ * here, per the lib/db contract. We chain `.select(...).maybeSingle()`
+ * so a policy-swallowed zero-row update is detectable: returns the
+ * updated Trip, or null when RLS hid the row (non-organizer / not a
+ * member / no such trip) instead of lying about success.
+ */
+export async function updateTrip(
+  supabase: SupabaseClient,
+  tripId: string,
+  input: UpdateTripInput
+): Promise<Trip | null> {
+  const { data, error } = await supabase
+    .from("trips")
+    .update({ name: input.name, location: input.location })
+    .eq("id", tripId)
+    .select(TRIP_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`updateTrip failed: ${error.message}`);
+  }
+
+  return data as Trip | null;
+}
+
+/**
  * #348: set the caller's per-trip display name on their own membership
  * row. RLS ("users can update their own RSVP" — whole-row, user_id-
  * scoped) means this can only ever touch the caller's row; passing a

@@ -15,6 +15,7 @@ import {
   getTripMemberById,
   updateTripMemberRole,
   deleteTripMember,
+  updateTrip,
 } from "../trips";
 
 const M1_COLUMNS = [
@@ -317,5 +318,63 @@ describe("deleteTripMember", () => {
       "member-1"
     );
     expect(count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateTrip — dashboard-header name/location edit. RLS ("organizers can
+// update their trips") gates WHO; the .select()-chained write makes a
+// policy-swallowed zero-row update detectable (null, not fake success).
+// ---------------------------------------------------------------------------
+describe("updateTrip", () => {
+  const UPDATED_TRIP = { id: "trip-1", slug: "vegas-bach", name: "Vegas v2" };
+
+  it("updates name + location by trip id and returns the row via a select-chained write", async () => {
+    const { calls, client } = makeBuilder(UPDATED_TRIP);
+
+    const result = await updateTrip(client as unknown as SupabaseClient, "trip-1", {
+      name: "Vegas v2",
+      location: "Las Vegas, NV",
+    });
+
+    expect(result).toEqual(UPDATED_TRIP);
+
+    const update = calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({
+      name: "Vegas v2",
+      location: "Las Vegas, NV",
+    });
+
+    const eq = calls.find((c) => c.method === "eq");
+    expect(eq?.args).toEqual(["id", "trip-1"]);
+
+    // The write must be .select()-chained (full column list) so a
+    // zero-row update is detectable, and end in maybeSingle.
+    const select = calls.find((c) => c.method === "select");
+    expect(String(select?.args[0])).toContain("slug");
+    expect(calls.some((c) => c.method === "maybeSingle")).toBe(true);
+  });
+
+  it("passes location null through (clearing the field)", async () => {
+    const { calls, client } = makeBuilder(UPDATED_TRIP);
+
+    await updateTrip(client as unknown as SupabaseClient, "trip-1", {
+      name: "Vegas v2",
+      location: null,
+    });
+
+    const update = calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({ name: "Vegas v2", location: null });
+  });
+
+  it("returns null when RLS swallows the update (no row comes back)", async () => {
+    const { client } = makeBuilder(null);
+
+    const result = await updateTrip(client as unknown as SupabaseClient, "trip-1", {
+      name: "Vegas v2",
+      location: null,
+    });
+
+    expect(result).toBeNull();
   });
 });

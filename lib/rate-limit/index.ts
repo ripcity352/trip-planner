@@ -165,6 +165,11 @@ export const RATE_LIMIT_SCOPES = {
   // fail-OPEN on shim (votes aren't credential minting).
   CREATE_POLL: "createPoll",
   CAST_POLL_VOTE: "castPollVote",
+  // Trip name/location edit from the dashboard header. Low-tap organizer
+  // surface; own bucket so header edits can't starve other budgets.
+  // Default 30/60s; fail-OPEN on shim (trip metadata, not credential
+  // minting) — same posture as UPDATE_TRIP_NOTES.
+  UPDATE_TRIP: "updateTrip",
 } as const;
 
 export type RateLimitScope =
