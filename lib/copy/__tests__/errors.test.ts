@@ -86,6 +86,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "member_organizer_locked",
   // fix-first on #416 — money-invariant guard (deterministic, retry-free)
   "member_remove_has_expenses",
+  // #368 / #262 — /me profile editor (phone-taken is deterministic)
+  "profile_save_failed",
+  "profile_phone_taken",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

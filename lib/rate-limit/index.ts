@@ -142,6 +142,12 @@ export const RATE_LIMIT_SCOPES = {
   // must not brick them).
   SET_MEMBER_ROLE: "setMemberRole",
   REMOVE_MEMBER: "removeMember",
+  // #368 / #262 — self-service name + phone editing on /me. Own bucket
+  // so a fumbled profile save can't starve roster-management budgets.
+  // Default 30/60s; NOT in FAIL_CLOSED_ON_SHIM (identity strings on the
+  // caller's own row, not credential minting). RLS pins WHO (own row
+  // only) and keeps role/is_celebrant immutable via the #418 WITH CHECK.
+  UPDATE_MY_PROFILE: "updateMyProfile",
   // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
   // Isolated bucket so a burst of typeahead requests doesn't starve
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED
