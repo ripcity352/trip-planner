@@ -62,6 +62,32 @@ describe("safeNext()", () => {
     expect(safeNext("/%E0%A4%A")).toBe("/trips");
   });
 
+  // Backslash open-redirect (PR #437 security review, MEDIUM): browsers
+  // normalize `\` to `/` when resolving relative URLs, so
+  // new URL("/\\evil.com", origin) lands on https://evil.com/ — a
+  // post-auth open redirect through `window.location.href = next`.
+  describe("backslash rejection (protocol-relative in disguise)", () => {
+    it("rejects /\\evil.com (backslash after slash)", () => {
+      expect(safeNext("/\\evil.com")).toBe("/trips");
+    });
+
+    it("rejects the percent-encoded smuggle /%5Cevil.com", () => {
+      expect(safeNext("/%5Cevil.com")).toBe("/trips");
+    });
+
+    it("rejects \\\\evil.com (leading backslashes)", () => {
+      expect(safeNext("\\\\evil.com")).toBe("/trips");
+    });
+
+    it("rejects a backslash buried mid-path", () => {
+      expect(safeNext("/trips/abc\\evil.com")).toBe("/trips");
+    });
+
+    it("still passes an ordinary backslash-free path", () => {
+      expect(safeNext("/trips/abc?tab=crew")).toBe("/trips/abc?tab=crew");
+    });
+  });
+
   // #433: `next` targets are consumed by GET redirects, but
   // /invite/<token>/accept is POST-only — a GET there dead-ends in a 405
   // (flagged LOW in the #430 security review). safeNext rewrites the shape
