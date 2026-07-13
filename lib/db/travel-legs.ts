@@ -33,3 +33,29 @@ export async function getTravelLegsByTrip(
 
   return (data ?? []) as TravelLeg[];
 }
+
+/**
+ * Slim arrival-instants read for the dashboard Arrivals glance line —
+ * one column, legs without an arrival time filtered at the DB. The
+ * aggregate landed/next math lives in
+ * `lib/utils/dashboard-glance.ts#summarizeArrivals`; only counts and
+ * the next instant ever render (no names — no arrival forensics).
+ */
+export async function getArrivalTimesByTrip(
+  supabase: SupabaseClient,
+  tripId: string
+): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("travel_legs")
+    .select("arrive_at")
+    .eq("trip_id", tripId)
+    .not("arrive_at", "is", null);
+
+  if (error) {
+    throw new Error(`getArrivalTimesByTrip failed: ${error.message}`);
+  }
+
+  return ((data ?? []) as Array<{ arrive_at: string }>).map(
+    (row) => row.arrive_at
+  );
+}

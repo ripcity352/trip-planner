@@ -174,6 +174,35 @@ export async function getTripInvites(
 export const getInvitesByTrip = getTripInvites;
 
 /**
+ * Count of LIVE invite links for a trip — the dashboard Invites-card
+ * glance line. Head count only, zero row payload. RLS keeps this
+ * organizer-scoped (#155: non-organizers get 0, not an error), and the
+ * dashboard additionally hides the card for non-organizers.
+ *
+ * "Live" is the negation of `isInviteDead`: not expired
+ * (`expires_at` null or strictly in the future — the revoke clamp sets
+ * `expires_at = now()`, so `gt` matches the predicate's `<=` deadness)
+ * and not exhausted (`uses_left` null or > 0).
+ */
+export async function countActiveInvites(
+  supabase: SupabaseClient,
+  tripId: string,
+  now: Date
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("invites")
+    .select("token", { count: "exact", head: true })
+    .eq("trip_id", tripId)
+    .or(`expires_at.is.null,expires_at.gt.${now.toISOString()}`)
+    .or("uses_left.is.null,uses_left.gt.0");
+
+  if (error) {
+    throw new Error(`countActiveInvites failed: ${error.message}`);
+  }
+  return count ?? 0;
+}
+
+/**
  * Inserts a new invite row. RLS gates writes to organizers; the M1
  * INSERT policy enforces `with check (is_trip_organizer(trip_id) and
  * auth.uid() = created_by)`. The caller passes the userId explicitly

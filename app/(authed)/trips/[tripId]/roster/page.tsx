@@ -78,6 +78,7 @@ export default async function RosterPage({ params }: PageProps) {
       {/* #388 — organizer-only per-day headcount (self-contained; single mount) */}
       <DayHeadcount
         tripId={trip.id}
+        tripSlug={slug}
         viewerRole={viewer.role}
         startsAt={trip.starts_at}
         endsAt={trip.ends_at}

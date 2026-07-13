@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  countActiveInvites,
   createInviteRecord,
   getInvitePreview,
   getTripInvites,
@@ -438,5 +439,64 @@ describe("isInviteDead (#385)", () => {
         NOW,
       ),
     ).toBe(false);
+  });
+});
+
+// -------------------------------------------------------------------
+// countActiveInvites — the dashboard glance-line head count. We assert
+// the query predicate mirrors `isInviteDead`'s negation (null-or-future
+// expiry AND null-or-positive uses) and that the head count round-trips.
+// -------------------------------------------------------------------
+describe("countActiveInvites", () => {
+  function makeCountBuilder(count: number | null, error: unknown = null) {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const handler: ProxyHandler<Record<string, unknown>> = {
+      get(_target, prop: string) {
+        if (prop === "then") {
+          const p = Promise.resolve({ count, error });
+          return p.then.bind(p);
+        }
+        return (...args: unknown[]) => {
+          calls.push({ method: prop, args });
+          return proxy;
+        };
+      },
+    };
+    const proxy: Record<string, unknown> = new Proxy({}, handler);
+    return { calls, client: { from: vi.fn(() => proxy) } };
+  }
+
+  const NOW = new Date("2026-07-13T12:00:00Z");
+
+  it("returns the head count and applies the liveness predicate", async () => {
+    const { calls, client } = makeCountBuilder(3);
+    const result = await countActiveInvites(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      NOW
+    );
+    expect(result).toBe(3);
+
+    const orCalls = calls.filter((c) => c.method === "or");
+    expect(orCalls.map((c) => c.args[0])).toEqual([
+      `expires_at.is.null,expires_at.gt.${NOW.toISOString()}`,
+      "uses_left.is.null,uses_left.gt.0",
+    ]);
+    const selectCall = calls.find((c) => c.method === "select");
+    expect(selectCall?.args[1]).toEqual({ count: "exact", head: true });
+  });
+
+  it("returns 0 when the count comes back null", async () => {
+    const { client } = makeCountBuilder(null);
+    await expect(
+      countActiveInvites(client as unknown as SupabaseClient, "trip-1", NOW)
+    ).resolves.toBe(0);
+  });
+
+  it("throws with context on error", async () => {
+    const { client } = makeCountBuilder(null, { message: "boom" });
+    await expect(
+      countActiveInvites(client as unknown as SupabaseClient, "trip-1", NOW)
+    ).rejects.toThrow(/countActiveInvites failed: boom/);
   });
 });

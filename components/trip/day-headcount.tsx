@@ -16,6 +16,7 @@
  */
 
 import { eachDayOfInterval, format } from "date-fns";
+import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { getPerDayGoingCounts } from "@/lib/db/trip-member-days";
@@ -25,6 +26,8 @@ import type { TripRole } from "@/lib/db/types";
 
 export interface DayHeadcountProps {
   tripId: string;
+  /** URL slug — the counts here are edited on `/trips/[slug]/me`. */
+  tripSlug: string;
   viewerRole: TripRole;
   /** ISO date — `YYYY-MM-DD` — from trips.starts_at / ends_at. */
   startsAt: string | null;
@@ -33,6 +36,7 @@ export interface DayHeadcountProps {
 
 export async function DayHeadcount({
   tripId,
+  tripSlug,
   viewerRole,
   startsAt,
   endsAt,
@@ -86,6 +90,15 @@ export async function DayHeadcount({
       <p aria-hidden="true" className="text-foreground mt-1 font-mono text-sm">
         {days.map((d) => `${d.weekday} ${d.count}`).join(" · ")}
       </p>
+      {/* Glanceability sweep: reciprocal wayfinding to the /me day-chips
+          editor these counts are fed by (each surface previously existed
+          without the other knowing). */}
+      <Link
+        href={`/trips/${tripSlug}/me`}
+        className="text-primary mt-2 inline-block text-sm underline-offset-4 hover:underline"
+      >
+        {MEMBER_DAYS_UI_STRINGS.memberDays_link_to_editor}
+      </Link>
     </div>
   );
 }
