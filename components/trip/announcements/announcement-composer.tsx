@@ -29,6 +29,7 @@ import {
 import { postAnnouncement } from "@/lib/actions/announcements";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { ERRORS } from "@/lib/copy/errors";
 import { FIELD_ERRORS } from "@/lib/copy/field-errors";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
@@ -108,13 +109,16 @@ function ComposerForm({
     // Generate idempotency key at submit time — drunk-user double-tap safety
     const idempotencyKey = crypto.randomUUID();
 
-    const result = await postAnnouncement(
-      {
-        tripId,
-        body: values.body,
-        visibility: values.visibility,
-      },
-      idempotencyKey
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      postAnnouncement(
+        {
+          tripId,
+          body: values.body,
+          visibility: values.visibility,
+        },
+        idempotencyKey
+      )
     );
 
     if (!result.ok) {

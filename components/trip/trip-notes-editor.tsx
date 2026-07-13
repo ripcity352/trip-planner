@@ -26,6 +26,7 @@ import { z } from "zod";
 import { setTripNotes } from "@/lib/actions/trip-notes";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
 
@@ -59,7 +60,10 @@ export function TripNotesEditor({
 
   async function onSubmit(values: FormValues) {
     setErrorMessage(null);
-    const result = await setTripNotes({ tripId, notes: values.notes });
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      setTripNotes({ tripId, notes: values.notes })
+    );
     if (result.ok) {
       setNotes(values.notes);
       reset({ notes: values.notes });

@@ -32,6 +32,7 @@ import {
 } from "@/lib/utils/format-trip-tz";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import { callAction } from "@/lib/ui/call-action";
 import { upsertTravelLeg, deleteTravelLeg } from "@/lib/actions/travel-legs";
 import type { TravelLeg } from "@/lib/db/types";
 import { AirlinePicker } from "./airline-picker";
@@ -128,21 +129,24 @@ export function TravelLegForm({
     // forgets the ternary), not a user error.
     const isFlight = values.kind === "flight";
 
-    const result = await upsertTravelLeg(
-      {
-        tripId,
-        kind: values.kind,
-        departAt: fromLocalInputValue(values.departAt ?? "", tripTimezone),
-        arriveAt: fromLocalInputValue(values.arriveAt ?? "", tripTimezone),
-        carrier: values.carrier || null,
-        confirmationCode: values.confirmationCode || null,
-        notes: values.notes || null,
-        legId: isEditMode ? leg.id : undefined,
-        // M4 W2c additions — only sent when kind === "flight" (#248)
-        airlineIata: isFlight ? values.airlineIata || null : null,
-        flightNumber: isFlight ? values.flightNumber || null : null,
-      },
-      idempotencyKey
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      upsertTravelLeg(
+        {
+          tripId,
+          kind: values.kind,
+          departAt: fromLocalInputValue(values.departAt ?? "", tripTimezone),
+          arriveAt: fromLocalInputValue(values.arriveAt ?? "", tripTimezone),
+          carrier: values.carrier || null,
+          confirmationCode: values.confirmationCode || null,
+          notes: values.notes || null,
+          legId: isEditMode ? leg.id : undefined,
+          // M4 W2c additions — only sent when kind === "flight" (#248)
+          airlineIata: isFlight ? values.airlineIata || null : null,
+          flightNumber: isFlight ? values.flightNumber || null : null,
+        },
+        idempotencyKey
+      )
     );
 
     if (!result.ok) {
@@ -158,7 +162,9 @@ export function TravelLegForm({
     setServerErrorKey(null);
     setIsDeleting(true);
 
-    const result = await deleteTravelLeg(leg.id);
+    // #431: a rejected delete used to skip the reset below, leaving the
+    // whole sheet disabled (isBusy) until reload.
+    const result = await callAction(() => deleteTravelLeg(leg.id));
 
     setIsDeleting(false);
 

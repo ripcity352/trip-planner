@@ -22,6 +22,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { Button } from "@/components/ui/button";
 import {
   deleteExpenseAction,
@@ -119,17 +120,20 @@ export function EditExpenseSheet({
     }
     const idempotencyKey = crypto.randomUUID();
 
-    const result = await updateExpenseAction(
-      {
-        tripId,
-        expenseId: expense.id,
-        description: values.description,
-        amountCents: dollarsToCents(values.amountDollars),
-        ...(values.occurredOn ? { occurredOn: values.occurredOn } : {}),
-        visibility: values.visibility,
-        splitMemberIds: [...splitIds],
-      },
-      idempotencyKey
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      updateExpenseAction(
+        {
+          tripId,
+          expenseId: expense.id,
+          description: values.description,
+          amountCents: dollarsToCents(values.amountDollars),
+          ...(values.occurredOn ? { occurredOn: values.occurredOn } : {}),
+          visibility: values.visibility,
+          splitMemberIds: [...splitIds],
+        },
+        idempotencyKey
+      )
     );
 
     if (!result.ok) {
@@ -149,9 +153,8 @@ export function EditExpenseSheet({
 
     startDeleteTransition(async () => {
       setServerErrorKey(null);
-      const result = await deleteExpenseAction(
-        { tripId, expenseId: expense.id },
-        crypto.randomUUID()
+      const result = await callAction(() =>
+        deleteExpenseAction({ tripId, expenseId: expense.id }, crypto.randomUUID())
       );
       if (!result.ok) {
         setServerErrorKey(result.errorKey);
