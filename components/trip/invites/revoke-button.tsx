@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
 import { revokeInviteAction } from "@/lib/actions/invites";
@@ -33,7 +34,10 @@ export function RevokeButton({ token, onRevoked }: RevokeButtonProps) {
     setRevoking(true);
     setError(null);
 
-    const result = await revokeInviteAction(token);
+    // #431: callAction converts a rejected await (429/network drop) into
+    // the network envelope — without it the reset below never ran and
+    // the button wedged disabled until reload.
+    const result = await callAction(() => revokeInviteAction(token));
 
     setRevoking(false);
 

@@ -13,6 +13,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { updateItineraryItem, deleteItineraryItem } from "@/lib/actions/itinerary";
@@ -124,22 +125,25 @@ export function EditItemForm({
     setServerErrorKey(null);
     const idempotencyKey = crypto.randomUUID();
 
-    const result = await updateItineraryItem(
-      {
-        itemId: item.id,
-        title: values.title,
-        kind: values.kind,
-        day: values.day,
-        startTime: values.startTime ?? null,
-        endTime: values.endTime ?? null,
-        address: values.address || null,
-        addressPlaceId: values.addressPlaceId || null,
-        addressProvider: values.addressProvider || null,
-        dressCode: values.dressCode || null,
-        visibility: values.visibility,
-        activityTag: values.activityTags ?? [],
-      },
-      idempotencyKey
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      updateItineraryItem(
+        {
+          itemId: item.id,
+          title: values.title,
+          kind: values.kind,
+          day: values.day,
+          startTime: values.startTime ?? null,
+          endTime: values.endTime ?? null,
+          address: values.address || null,
+          addressPlaceId: values.addressPlaceId || null,
+          addressProvider: values.addressProvider || null,
+          dressCode: values.dressCode || null,
+          visibility: values.visibility,
+          activityTag: values.activityTags ?? [],
+        },
+        idempotencyKey
+      )
     );
 
     if (!result.ok) {
@@ -157,7 +161,7 @@ export function EditItemForm({
     }
 
     startDeleteTransition(async () => {
-      const result = await deleteItineraryItem(item.id);
+      const result = await callAction(() => deleteItineraryItem(item.id));
       if (!result.ok) {
         setServerErrorKey(result.errorKey);
         setDeleteConfirm(false);

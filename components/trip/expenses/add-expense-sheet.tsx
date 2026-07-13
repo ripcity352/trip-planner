@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { addExpenseAction } from "@/lib/actions/expenses";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { FIELD_ERRORS } from "@/lib/copy/field-errors";
 import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
 import {
@@ -125,16 +126,19 @@ export function AddExpenseSheet({
     // safety; a transport replay collapses on (trip_id, key).
     const idempotencyKey = crypto.randomUUID();
 
-    const result = await addExpenseAction(
-      {
-        tripId,
-        description: values.description,
-        amountCents: dollarsToCents(values.amountDollars),
-        ...(values.occurredOn ? { occurredOn: values.occurredOn } : {}),
-        visibility: values.visibility,
-        splitMemberIds: [...splitIds],
-      },
-      idempotencyKey
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      addExpenseAction(
+        {
+          tripId,
+          description: values.description,
+          amountCents: dollarsToCents(values.amountDollars),
+          ...(values.occurredOn ? { occurredOn: values.occurredOn } : {}),
+          visibility: values.visibility,
+          splitMemberIds: [...splitIds],
+        },
+        idempotencyKey
+      )
     );
 
     if (!result.ok) {

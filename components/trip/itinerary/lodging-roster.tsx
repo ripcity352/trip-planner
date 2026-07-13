@@ -14,6 +14,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import {
@@ -62,11 +63,14 @@ export function LodgingRoster({
     setErrorKey(null);
 
     startTransition(async () => {
-      const result = await assignMemberToLodging({
-        itemId,
-        tripMemberId: selectedMemberId,
-        roomLabel: roomLabel.trim() || null,
-      });
+      // #431: rejected awaits resolve to the network envelope via callAction.
+      const result = await callAction(() =>
+        assignMemberToLodging({
+          itemId,
+          tripMemberId: selectedMemberId,
+          roomLabel: roomLabel.trim() || null,
+        })
+      );
 
       if (!result.ok) {
         setErrorKey(result.errorKey);
@@ -89,7 +93,9 @@ export function LodgingRoster({
     setErrorKey(null);
 
     startTransition(async () => {
-      const result = await removeLodgingAssignment(assignmentId);
+      const result = await callAction(() =>
+        removeLodgingAssignment(assignmentId)
+      );
       if (!result.ok) {
         setErrorKey(result.errorKey);
         return;

@@ -20,6 +20,7 @@ import { MoreHorizontal } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import {
   removeMemberAction,
   setMemberRoleAction,
@@ -66,9 +67,9 @@ export function MemberManage({
   const handleRoleFlip = () => {
     startTransition(async () => {
       setErrorKey(null);
-      const result = await setMemberRoleAction(
-        { tripId, memberId, role: nextRole },
-        crypto.randomUUID()
+      // #431: rejected awaits resolve to the network envelope via callAction.
+      const result = await callAction(() =>
+        setMemberRoleAction({ tripId, memberId, role: nextRole }, crypto.randomUUID())
       );
       if (!result.ok) {
         setErrorKey(result.errorKey);
@@ -87,9 +88,8 @@ export function MemberManage({
     }
     startTransition(async () => {
       setErrorKey(null);
-      const result = await removeMemberAction(
-        { tripId, memberId },
-        crypto.randomUUID()
+      const result = await callAction(() =>
+        removeMemberAction({ tripId, memberId }, crypto.randomUUID())
       );
       if (!result.ok) {
         setErrorKey(result.errorKey);

@@ -31,6 +31,7 @@ import {
 import { createPollAction } from "@/lib/actions/polls";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { ERRORS } from "@/lib/copy/errors";
 import { M3_UI_STRINGS, M5_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { TripVisibility } from "@/lib/db/types";
@@ -172,15 +173,18 @@ function ComposerForm({
     // Generate the idempotency key at submit time — double-tap safety.
     const idempotencyKey = crypto.randomUUID();
 
-    const result = await createPollAction(
-      {
-        tripId,
-        question: values.question,
-        options,
-        closesOn: values.closesOn ? values.closesOn : null,
-        visibility: values.visibility,
-      },
-      idempotencyKey
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      createPollAction(
+        {
+          tripId,
+          question: values.question,
+          options,
+          closesOn: values.closesOn ? values.closesOn : null,
+          visibility: values.visibility,
+        },
+        idempotencyKey
+      )
     );
 
     if (!result.ok) {
