@@ -176,7 +176,7 @@ export async function setRsvpAction(
       RATE_LIMIT_SCOPES.SET_RSVP,
       userId,
       async () => {
-        const { error: updateError } = await supabase
+        const { data: updatedRow, error: updateError } = await supabase
           .from("trip_members")
           .update({
             rsvp_status: status,
@@ -194,6 +194,17 @@ export async function setRsvpAction(
           });
           throw new RsvpUpdateError();
         }
+        // #432: UPDATE matched no row — the membership vanished between
+        // the lookup above and this write (removed from the trip
+        // mid-session, or id mismatch). That's PERMANENT for this session:
+        // the retry-framed rsvp_save_failed copy would loop the user
+        // forever, so surface the honest not-on-the-list state instead.
+        if (!updatedRow) {
+          console.error("[rsvp] update matched no row:", {
+            memberId: targetMemberId,
+          });
+          throw new RsvpMemberGoneError();
+        }
         return status;
       }
     );
@@ -207,6 +218,10 @@ export async function setRsvpAction(
   } catch (err) {
     if (err instanceof RateLimitError) {
       return { ok: false, errorKey: "rate_limit" };
+    }
+    if (err instanceof RsvpMemberGoneError) {
+      // Deterministic — no retry framing (see the closure comment above).
+      return { ok: false, errorKey: "rsvp_not_member" };
     }
     if (err instanceof RsvpUpdateError) {
       return { ok: false, errorKey: "rsvp_save_failed" };
@@ -226,5 +241,18 @@ class RsvpUpdateError extends Error {
   constructor() {
     super("rsvp_update_failed");
     this.name = "RsvpUpdateError";
+  }
+}
+
+/**
+ * Internal sentinel for the #432 no-row UPDATE case — the caller's
+ * membership row vanished between the lookup and the write. Distinct
+ * from RsvpUpdateError so the permanent case never wears the transient
+ * retry copy.
+ */
+class RsvpMemberGoneError extends Error {
+  constructor() {
+    super("rsvp_member_gone");
+    this.name = "RsvpMemberGoneError";
   }
 }

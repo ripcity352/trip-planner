@@ -61,4 +61,62 @@ describe("safeNext()", () => {
   it("handles malformed percent-encoding by failing closed", () => {
     expect(safeNext("/%E0%A4%A")).toBe("/trips");
   });
+
+  // Backslash open-redirect (PR #437 security review, MEDIUM): browsers
+  // normalize `\` to `/` when resolving relative URLs, so
+  // new URL("/\\evil.com", origin) lands on https://evil.com/ — a
+  // post-auth open redirect through `window.location.href = next`.
+  describe("backslash rejection (protocol-relative in disguise)", () => {
+    it("rejects /\\evil.com (backslash after slash)", () => {
+      expect(safeNext("/\\evil.com")).toBe("/trips");
+    });
+
+    it("rejects the percent-encoded smuggle /%5Cevil.com", () => {
+      expect(safeNext("/%5Cevil.com")).toBe("/trips");
+    });
+
+    it("rejects \\\\evil.com (leading backslashes)", () => {
+      expect(safeNext("\\\\evil.com")).toBe("/trips");
+    });
+
+    it("rejects a backslash buried mid-path", () => {
+      expect(safeNext("/trips/abc\\evil.com")).toBe("/trips");
+    });
+
+    it("still passes an ordinary backslash-free path", () => {
+      expect(safeNext("/trips/abc?tab=crew")).toBe("/trips/abc?tab=crew");
+    });
+  });
+
+  // #433: `next` targets are consumed by GET redirects, but
+  // /invite/<token>/accept is POST-only — a GET there dead-ends in a 405
+  // (flagged LOW in the #430 security review). safeNext rewrites the shape
+  // to its GET-safe parent (the invite preview).
+  describe("POST-only invite-accept rewrite (#433)", () => {
+    it("rewrites /invite/<token>/accept to the GET-safe preview parent", () => {
+      expect(safeNext("/invite/tok123/accept")).toBe("/invite/tok123");
+    });
+
+    it("rewrites the trailing-slash variant", () => {
+      expect(safeNext("/invite/tok123/accept/")).toBe("/invite/tok123");
+    });
+
+    it("preserves a query string across the rewrite", () => {
+      expect(safeNext("/invite/tok123/accept?from=email")).toBe(
+        "/invite/tok123?from=email",
+      );
+    });
+
+    it("leaves the invite preview path itself unchanged", () => {
+      expect(safeNext("/invite/tok123")).toBe("/invite/tok123");
+    });
+
+    it("leaves deeper non-terminal /accept/ segments unchanged", () => {
+      // Only the exact POST-only shape is rewritten — anything else is
+      // an ordinary same-origin path and passes through.
+      expect(safeNext("/invite/tok123/accept/extra")).toBe(
+        "/invite/tok123/accept/extra",
+      );
+    });
+  });
 });

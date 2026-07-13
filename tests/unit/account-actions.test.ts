@@ -195,6 +195,85 @@ describe("changePasswordAction", () => {
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
+  // #432 item 1 — the re-auth branch used to return
+  // auth_current_password_incorrect for ANY verify error. A rate-limited
+  // user holding the RIGHT password was told it was incorrect (the
+  // incident's exact failure shape on the password-change surface).
+  it("returns rate_limit (NOT auth_current_password_incorrect) when the verify call is 429-throttled", async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: null },
+      error: {
+        status: 429,
+        code: "over_request_rate_limit",
+        message: "Too many requests",
+      },
+    });
+
+    const result = await changePasswordAction({
+      currentPassword: "correct-password",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  // #432 item 2 — email_not_confirmed no longer lumps into "wrong current
+  // password"; the fix is in the inbox, not in retyping.
+  it("returns auth_email_not_confirmed when the verify call reports an unconfirmed email", async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: null },
+      error: {
+        status: 400,
+        code: "email_not_confirmed",
+        message: "Email not confirmed",
+      },
+    });
+
+    const result = await changePasswordAction({
+      currentPassword: "correct-password",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "auth_email_not_confirmed",
+    });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  // #432 item 2 — invalid_grant is session-class in modern GoTrue, not
+  // credential feedback (see lib/auth/auth-error-map.ts for the WHY).
+  it("returns network (NOT auth_current_password_incorrect) for invalid_grant on verify", async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: null },
+      error: { status: 400, code: "invalid_grant", message: "Invalid grant" },
+    });
+
+    const result = await changePasswordAction({
+      currentPassword: "correct-password",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "network" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("returns network for an unrecognized 500 on verify", async () => {
+    mockSignInWithPassword.mockResolvedValue({
+      data: { user: null },
+      error: { status: 500, code: null, message: "Internal Server Error" },
+    });
+
+    const result = await changePasswordAction({
+      currentPassword: "correct-password",
+      newPassword: "newpassword123",
+    });
+
+    expect(result).toEqual({ ok: false, errorKey: "network" });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
   it("returns validation_failed when newPassword is too short (under 6 chars)", async () => {
     const result = await changePasswordAction({
       currentPassword: "oldpassword",

@@ -1,4 +1,4 @@
-import { safeNext } from "@/lib/auth/safe-next";
+import { DEFAULT_NEXT, safeNext } from "@/lib/auth/safe-next";
 import { resolveCallbackResult } from "@/lib/auth/callback-handler";
 import { NextResponse } from "next/server";
 
@@ -41,5 +41,13 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}${result.next}`);
   }
 
-  return NextResponse.redirect(`${origin}/login?error=auth`);
+  // #433: carry the safeNext-validated `next` through the failure bounce —
+  // an invitee whose emailed code/link verification fails keeps the invite
+  // context on /login instead of being re-stranded. Skip the param when
+  // it's the default target so the common URL stays clean.
+  const nextSuffix =
+    params.next === DEFAULT_NEXT
+      ? ""
+      : `&next=${encodeURIComponent(params.next)}`;
+  return NextResponse.redirect(`${origin}/login?error=auth${nextSuffix}`);
 }

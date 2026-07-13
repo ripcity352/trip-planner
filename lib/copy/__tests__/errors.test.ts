@@ -21,6 +21,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "trip_create_failed",
   "trip_dates_reversed",
   "rsvp_save_failed",
+  // #432 — RSVP UPDATE matched no row (membership vanished mid-session);
+  // deterministic, retry-free
+  "rsvp_not_member",
   // M3 keys (Wave 0a)
   "itinerary_save_failed",
   "itinerary_delete_failed",

@@ -27,7 +27,6 @@
  */
 
 import { z } from "zod";
-import type { AuthError } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import type { ErrorKey } from "@/lib/copy/errors";
@@ -37,6 +36,7 @@ import {
   rateLimitedAction,
 } from "@/lib/rate-limit";
 import { markPasswordSet } from "@/lib/auth/has-password";
+import { mapAuthErrorToKey } from "@/lib/auth/auth-error-map";
 
 // ---------------------------------------------------------------------------
 // Zod schemas (M4 W1b — co-located with actions, never split)
@@ -76,29 +76,13 @@ export type ChangePasswordResult =
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Maps a Supabase AuthError to one of our error-toast keys.
- * Uses typed fields (status + code), never message-substring matching.
- */
-function mapAuthErrorToKey(
-  error:
-    | AuthError
-    | { status?: number; code?: string | null; message?: string }
-    | null,
-): ErrorKey | null {
-  if (!error) return null;
-  if (error.status === 429) return "rate_limit";
-  if (
-    error.status === 400 &&
-    (error.code === "invalid_credentials" ||
-      error.code === "email_not_confirmed" ||
-      error.code === "invalid_grant")
-  ) {
-    return "auth_current_password_incorrect";
-  }
-  if (error.code === "validation_failed") return "validation_failed";
-  return "network";
-}
+// mapAuthErrorToKey moved to lib/auth/auth-error-map.ts (#432) — shared
+// with the login surface so the two mappers can't drift again. This file
+// used to lump `email_not_confirmed` and `invalid_grant` into
+// "wrong current password" (PR #430 split them on the login side only);
+// the shared module carries the corrected taxonomy for both surfaces.
+// On this surface a rejected email+password combination maps to
+// `auth_current_password_incorrect`.
 
 /**
  * Revokes all OTHER sessions for the current user, swallowing transient
@@ -181,7 +165,16 @@ export async function changePasswordAction(input: {
             status: verifyErr.status,
             code: (verifyErr as { code?: string }).code,
           });
-          return { ok: false, errorKey: "auth_current_password_incorrect" };
+          // #432: run the verify error through the shared mapper — only a
+          // genuine credentials rejection (400 invalid_credentials) may
+          // read as "wrong current password". A rate-limited user holding
+          // the RIGHT password used to be told it was incorrect here (the
+          // 2026-07-11 incident's failure shape on this surface).
+          const mapped = mapAuthErrorToKey(
+            verifyErr,
+            "auth_current_password_incorrect",
+          );
+          return { ok: false, errorKey: mapped ?? "network" };
         }
 
         // 3. Update password.
@@ -194,7 +187,10 @@ export async function changePasswordAction(input: {
             status: updateErr.status,
             code: (updateErr as { code?: string }).code,
           });
-          const mapped = mapAuthErrorToKey(updateErr);
+          const mapped = mapAuthErrorToKey(
+            updateErr,
+            "auth_current_password_incorrect",
+          );
           return { ok: false, errorKey: mapped ?? "network" };
         }
 
@@ -308,7 +304,10 @@ export async function setPasswordViaRecoveryAction(input: {
               code: (updateErr as { code?: string }).code,
             },
           );
-          const mapped = mapAuthErrorToKey(updateErr);
+          const mapped = mapAuthErrorToKey(
+            updateErr,
+            "auth_current_password_incorrect",
+          );
           return { ok: false, errorKey: mapped ?? "network" };
         }
 
@@ -408,7 +407,10 @@ export async function setPasswordAction(input: {
             status: updateErr.status,
             code: (updateErr as { code?: string }).code,
           });
-          const mapped = mapAuthErrorToKey(updateErr);
+          const mapped = mapAuthErrorToKey(
+            updateErr,
+            "auth_current_password_incorrect",
+          );
           return { ok: false, errorKey: mapped ?? "network" };
         }
 

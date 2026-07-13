@@ -34,6 +34,7 @@ import {
 } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/auth/safe-next";
 import { markPasswordSet } from "@/lib/auth/has-password";
+import { mapAuthErrorToKey } from "@/lib/auth/auth-error-map";
 
 // ---------------------------------------------------------------------------
 // Zod schemas (M4 W1b — co-located with actions)
@@ -96,42 +97,12 @@ export type MagicLinkResult = AuthResult;
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Maps a Supabase AuthError to one of our error-toast keys.
- *
- * Uses typed fields (status + code) rather than message-substring matching.
- * Returns null when the input is null.
- */
-function mapAuthErrorToKey(
-  error: AuthError | { status?: number; code?: string | null; message?: string } | null,
-): ErrorKey | null {
-  if (!error) return null;
-  // Supabase surfaces rate-limit responses as HTTP 429.
-  if (error.status === 429) return "rate_limit";
-  // 422 otp_disabled — "email me a code" for an address with no account.
-  // shouldCreateUser:false (anti-phantom-account) means codes never create
-  // users, so a new invitee dead-ends here. Surface a clear "create an
-  // account" message instead of the generic network fallthrough below.
-  if (error.code === "otp_disabled") return "auth_no_account";
-  // Correct password, unconfirmed email (2026-07-11 incident #3). This used
-  // to collapse into auth_wrong_password below — users holding the RIGHT
-  // password were told "That combo didn't match". The fix is in their inbox,
-  // so it gets its own honest key.
-  if (error.code === "email_not_confirmed") return "auth_email_not_confirmed";
-  // Wrong password / invalid credentials — HTTP 400 with invalid_credentials code.
-  if (
-    error.status === 400 &&
-    (error.code === "invalid_credentials" ||
-      // Some Supabase versions use "invalid_grant" in error.code for bad creds
-      error.code === "invalid_grant")
-  ) {
-    return "auth_wrong_password";
-  }
-  // Typed validation-error code from the GoTrue REST API.
-  if (error.code === "validation_failed") return "validation_failed";
-  // Anything else is a network/server-class failure.
-  return "network";
-}
+// mapAuthErrorToKey moved to lib/auth/auth-error-map.ts (#432) — it is
+// shared with the account-security actions so the two surfaces can't
+// drift again. On this surface a rejected email+password combination
+// maps to `auth_wrong_password`. NOTE (#432 deliberate change): legacy
+// `invalid_grant` no longer reads as wrong-password — see the WHY
+// comment in the shared module.
 
 /**
  * Maps an OTP/code verification error to one of our error keys.
@@ -207,7 +178,7 @@ export async function signInWithPasswordAction(input: {
         code: (error as { code?: string }).code,
         name: error.name,
       });
-      const mapped = mapAuthErrorToKey(error);
+      const mapped = mapAuthErrorToKey(error, "auth_wrong_password");
       return { ok: false, errorKey: mapped ?? "network" };
     }
 
@@ -295,7 +266,7 @@ export async function signUpAction(input: {
       if ((error as { code?: string }).code === "user_already_exists") {
         return { ok: false, errorKey: "auth_account_exists" };
       }
-      const mapped = mapAuthErrorToKey(error);
+      const mapped = mapAuthErrorToKey(error, "auth_wrong_password");
       return { ok: false, errorKey: mapped ?? "network" };
     }
 
@@ -461,7 +432,7 @@ export async function requestEmailCode(
         name: error.name,
       });
     }
-    const mapped = mapAuthErrorToKey(error);
+    const mapped = mapAuthErrorToKey(error, "auth_wrong_password");
     if (mapped) {
       return { ok: false, errorKey: mapped };
     }

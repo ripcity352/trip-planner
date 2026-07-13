@@ -14,29 +14,64 @@
  *   - `next=javascript:alert(1)`    → click-through XSS if the result is
  *                                     ever surfaced as an href instead of
  *                                     handed to NextResponse.redirect().
+ *   - `next=/\evil.com`             → protocol-relative in disguise:
+ *                                     browsers normalize `\` to `/` when
+ *                                     resolving relative URLs, so
+ *                                     `new URL("/\\evil.com", origin)`
+ *                                     lands on `https://evil.com/`. Bites
+ *                                     client-side sinks
+ *                                     (`window.location.href = next`) —
+ *                                     exactly how the login form consumes
+ *                                     it. `%5C` is the percent-encoded
+ *                                     smuggle of the same vector.
  *
  * The contract: the returned string is either DEFAULT_NEXT or a same-origin
- * pathname that starts with exactly one slash (not two — protocol-relative)
- * and never decodes to a `scheme:` prefix.
+ * pathname that starts with exactly one slash (not two — protocol-relative),
+ * contains no backslash in raw or decoded form, never decodes to a
+ * `scheme:` prefix, and is GET-navigable (POST-only paths are rewritten to
+ * their GET-safe parent).
  */
 
-const DEFAULT_NEXT = "/trips";
+/** Fallback target when `next` is missing or unsafe. Exported so callers
+ * (e.g. `/auth/callback`) can detect "no real context" and keep URLs clean. */
+export const DEFAULT_NEXT = "/trips";
+
+// `next` targets are always consumed by GET redirects, but
+// `/invite/<token>/accept` is a POST-only route — a GET there dead-ends
+// in a 405 (#433, flagged LOW in the #430 security review). Capture the
+// GET-safe parent (the invite preview) and any query string.
+const POST_ONLY_INVITE_ACCEPT = /^(\/invite\/[^/?#]+)\/accept\/?(\?.*)?$/;
 
 export function safeNext(raw: string | null): string {
   if (!raw) return DEFAULT_NEXT;
+
+  // No backslashes, anywhere. Browsers treat `\` as `/` when resolving
+  // relative URLs, so `/\evil.com` is `//evil.com` in disguise — an open
+  // redirect through client-side sinks like `window.location.href`.
+  // Checked BEFORE everything else: no legitimate app path contains one.
+  if (raw.includes("\\")) return DEFAULT_NEXT;
 
   // Must start with a single `/`, not `//` (protocol-relative). The
   // negative lookahead is what closes the `//evil.com` vector.
   if (!/^\/(?!\/)/.test(raw)) return DEFAULT_NEXT;
 
-  // Reject anything that decodes to a scheme (`javascript:`, `data:`, etc.).
-  // We check the decoded form because percent-encoding lets an attacker
-  // sneak `%6avascript:alert(1)` past the surface check above.
+  // Reject anything that decodes to a scheme (`javascript:`, `data:`, etc.)
+  // or to a backslash (`%5C` smuggles the `/\evil.com` vector past the
+  // raw check above). We check the decoded form because percent-encoding
+  // lets an attacker sneak `%6avascript:alert(1)` past the surface checks.
   try {
     const decoded = decodeURIComponent(raw);
     if (/^\w+:/.test(decoded)) return DEFAULT_NEXT;
+    if (decoded.includes("\\")) return DEFAULT_NEXT;
   } catch {
     return DEFAULT_NEXT;
+  }
+
+  // Rewrite the POST-only invite-accept shape to its GET-safe parent,
+  // preserving any query string. Everything else passes through as-is.
+  const inviteAccept = POST_ONLY_INVITE_ACCEPT.exec(raw);
+  if (inviteAccept?.[1]) {
+    return inviteAccept[1] + (inviteAccept[2] ?? "");
   }
 
   return raw;
