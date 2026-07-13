@@ -66,6 +66,8 @@ stale local override. See ADR 2026-05-19 (late PM) in
 | **Email Templates → Magic Link** uses the cross-device-safe variant | Authentication → Email Templates → Magic Link | If template emits `{{ .ConfirmationURL }}` (PKCE-bound), cross-device clicks fail with `pkce_code_verifier_not_found` (#137). Template must emit a `token_hash` link consumable by `verifyOtp`. **Wave 0c (M3) flips this.** | 2026-05-20 (Wave 0c #137) |
 | **Realtime publication includes the right tables** | Database → Replication → Publications → `supabase_realtime` | Without `date_poll_votes` in the publication, PulsePoll renders but never updates live. M3 adds `announcements`. | 2026-05-19 (M2) / 2026-05-20 (M3 Wave 1 #79) |
 | **Confirm email (`mailer_autoconfirm`)** | Authentication → Sign In / Providers → Email → "Confirm email" | **The setting whose drift caused the 2026-07-11 invite-chain incident.** When `mailer_autoconfirm` is OFF (confirmations ON) but local `supabase/config.toml` ships `enable_confirmations=false`, `signUp()` returns no session in prod while every local/preview walk exercises the session-returned branch — the confirmation-ON path was structurally untested. Currently **autoconfirm ON / confirmations OFF** (flipped 2026-07-12 via Management API as part of Option A "instant-session signup"; see `notes/decisions.md` "Invite-chain incident 2026-07-11" ADR). New signups get an instant session; the "Confirm signup" email template (`{{ .ConfirmationURL }}`) is now unreachable but not deleted — see `notes/runbooks/auth-setup.md` §1 addendum. | **2026-07-12 (operator-confirmed, Management API flip)** |
+| **Per-address email cooldown (`smtp_max_frequency`) = 60s** | Authentication → Rate Limits (Management API `smtp_max_frequency`) | Every "Easy, tiger" 429 in the 2026-07-11 incident was this throttle: any second email to the SAME address within 60s returns `over_email_send_rate_limit`. Local `config.toml` sets `max_frequency = "1s"`, so **no local walk or e2e can reproduce prod's cooldown** — UI that offers a resend (OTP "email me a code", future resend button per #428) must disable/count down for ≥60s or users hammer straight into the throttle. Deliberately NOT mirrored locally (would slow e2e for no coverage gain). | **2026-07-12 (read via Management API, sweep #434)** |
+| **Auth email rate limit (`rate_limit_email_sent`) = 30/hr** | Authentication → Rate Limits → "Rate limit for sending emails" | Project-wide cap across ALL auth-email endpoints under custom SMTP. Local `config.toml` has `email_sent = 2` — stricter, but local flows are email-free (autoconfirm + instant signup) so it never bites. If a real trip's whole group chat (10+ invitees) hit an email-dependent path in one hour, this cap is the next cliff after the 60s cooldown. | **2026-07-12 (read via Management API, sweep #434)** |
 
 ---
 
@@ -211,6 +213,13 @@ signup (Option A)" ADR). The **Confirm email (`mailer_autoconfirm`)** row
 above is now part of the tracked auth snapshot and must be re-verified
 at every future closure walk alongside the 2026-06-17 rows, not treated
 as a one-off fix.
+
+**Addendum (same day, sweep #434):** the post-incident bug-class sweep
+diffed all 242 prod GoTrue settings against local `config.toml` and this
+snapshot. Everything behavioral is aligned except email throttling — the
+**60s per-address cooldown** and **30/hr project cap** rows added above.
+These are the last two prod-only auth behaviors no local walk can
+exercise; both are now tracked here instead of mirrored locally.
 
 ---
 
