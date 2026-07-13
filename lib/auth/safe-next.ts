@@ -16,11 +16,20 @@
  *                                     handed to NextResponse.redirect().
  *
  * The contract: the returned string is either DEFAULT_NEXT or a same-origin
- * pathname that starts with exactly one slash (not two — protocol-relative)
- * and never decodes to a `scheme:` prefix.
+ * pathname that starts with exactly one slash (not two — protocol-relative),
+ * never decodes to a `scheme:` prefix, and is GET-navigable (POST-only
+ * paths are rewritten to their GET-safe parent).
  */
 
-const DEFAULT_NEXT = "/trips";
+/** Fallback target when `next` is missing or unsafe. Exported so callers
+ * (e.g. `/auth/callback`) can detect "no real context" and keep URLs clean. */
+export const DEFAULT_NEXT = "/trips";
+
+// `next` targets are always consumed by GET redirects, but
+// `/invite/<token>/accept` is a POST-only route — a GET there dead-ends
+// in a 405 (#433, flagged LOW in the #430 security review). Capture the
+// GET-safe parent (the invite preview) and any query string.
+const POST_ONLY_INVITE_ACCEPT = /^(\/invite\/[^/?#]+)\/accept\/?(\?.*)?$/;
 
 export function safeNext(raw: string | null): string {
   if (!raw) return DEFAULT_NEXT;
@@ -37,6 +46,13 @@ export function safeNext(raw: string | null): string {
     if (/^\w+:/.test(decoded)) return DEFAULT_NEXT;
   } catch {
     return DEFAULT_NEXT;
+  }
+
+  // Rewrite the POST-only invite-accept shape to its GET-safe parent,
+  // preserving any query string. Everything else passes through as-is.
+  const inviteAccept = POST_ONLY_INVITE_ACCEPT.exec(raw);
+  if (inviteAccept?.[1]) {
+    return inviteAccept[1] + (inviteAccept[2] ?? "");
   }
 
   return raw;

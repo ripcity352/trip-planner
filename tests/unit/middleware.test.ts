@@ -119,6 +119,34 @@ describe("middleware — authed route guard (C3 regression guard)", () => {
   });
 
   // -------------------------------------------------------------------------
+  // #433: x-pathname stamp for the (authed) layout's defensive guard
+  // -------------------------------------------------------------------------
+
+  it("stamps x-pathname (path + query) on authed-route requests (#433)", async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-1", email: "dave@example.com" } },
+    });
+
+    const req = makeRequest("/trips/slug-123?tab=crew");
+    await middleware(req);
+
+    expect(req.headers.get("x-pathname")).toBe("/trips/slug-123?tab=crew");
+  });
+
+  it("overwrites a client-supplied x-pathname header (#433 anti-spoof)", async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-1", email: "dave@example.com" } },
+    });
+
+    const req = new NextRequest("http://localhost/trips/slug-123", {
+      headers: { "x-pathname": "/spoofed" },
+    });
+    await middleware(req);
+
+    expect(req.headers.get("x-pathname")).toBe("/trips/slug-123");
+  });
+
+  // -------------------------------------------------------------------------
   // /account/* (new in PR4)
   // -------------------------------------------------------------------------
 

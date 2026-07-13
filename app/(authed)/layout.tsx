@@ -1,15 +1,19 @@
 /**
- * Deep-link preservation across the login bounce is intentionally NOT
- * implemented here. Moving it to `middleware.ts` / `proxy.ts` (where
- * `request.nextUrl.pathname` is authoritative) is the correct place;
- * deferred to a follow-up PR. The simple redirect keeps the auth gate
- * honest in the meantime.
- *
- * Tracked in: https://github.com/ripcity352/trip-planner/issues/104
+ * Deep-link preservation across the login bounce lives primarily in
+ * `middleware.ts` (#104) — it redirects unauthenticated hits to
+ * `/login?next=<path>` before this layout ever renders. The guard below
+ * is defense-in-depth for the rare case where middleware saw a session
+ * but `getUser()` here doesn't (revoked mid-flight); it preserves the
+ * same context by reading the `x-pathname` header middleware stamps on
+ * every authed-route request (#433). safeNext() re-validates the value,
+ * so a spoofed header can never steer the redirect off-origin or onto a
+ * POST-only path.
  */
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { Header } from "@/components/trip/header";
+import { DEFAULT_NEXT, safeNext } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -34,7 +38,16 @@ export default async function AuthedLayout({
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/login");
+    // #433: keep parity with the middleware gate — both bounces carry
+    // `next`. When the header is missing/unsafe, safeNext falls back to
+    // DEFAULT_NEXT and we keep the bare /login (its form already defaults
+    // to /trips after sign-in).
+    const requestPath = safeNext((await headers()).get("x-pathname"));
+    redirect(
+      requestPath === DEFAULT_NEXT
+        ? "/login"
+        : `/login?next=${encodeURIComponent(requestPath)}`,
+    );
   }
 
   return (

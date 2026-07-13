@@ -42,6 +42,11 @@ export type ErrorKey =
   // the server backstop name the actual problem.
   | "trip_dates_reversed"
   | "rsvp_save_failed"
+  // #432 — RSVP UPDATE matched no row: the caller's membership vanished
+  // mid-session (removed from the trip / id mismatch). DETERMINISTIC —
+  // the retry-framed rsvp_save_failed would loop forever, so this key
+  // names the real state instead.
+  | "rsvp_not_member"
   // M3 error keys (Wave 0a). Naming follows the existing
   // `<feature>_<verb>_failed` pattern. Voice-tested — blame-free, warm,
   // specific. See `notes/m3-execution-plan.md` Override F.
@@ -169,6 +174,10 @@ export const ERRORS: Record<ErrorKey, string> = {
   // surfaced (was collapsing to the generic validation_failed).
   trip_dates_reversed: "End date can't be before the start date.",
   rsvp_save_failed: "RSVP didn't save. Tap it again — it'll catch.",
+  // #432 — deterministic, so no "tap again" framing: tapping again can't
+  // put them back on the roster.
+  rsvp_not_member:
+    "You're not on this trip's list anymore. Ask whoever's organizing.",
   // M3 error strings — same voice rules.
   itinerary_save_failed:
     "Didn't save. Give it another tap — your connection's flaky.",

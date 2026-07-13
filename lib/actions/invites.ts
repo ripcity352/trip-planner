@@ -215,11 +215,20 @@ export async function acceptInviteAction(
       slug = (tripRow as { slug?: string } | null)?.slug ?? null;
     }
   } catch {
-    // Fall through — we'll surface a recoverable error below.
+    // Fall through — the /trips fallback below handles it.
   }
 
   if (!slug) {
-    return { ok: false, errorKey: "network" };
+    // #432: the accept RPC has ALREADY succeeded — the caller IS on the
+    // trip. This cosmetic lookup failing used to return errorKey:"network",
+    // telling a successfully-joined member the join failed (false-failure
+    // class, same as the 2026-07-11 signup bug). Fall back to the trips
+    // list, where the fresh membership is visible, instead of lying.
+    console.error(
+      "[invites] post-accept slug lookup failed — falling back to /trips",
+      { memberId },
+    );
+    redirect("/trips");
   }
 
   redirect(`/trips/${slug}`);

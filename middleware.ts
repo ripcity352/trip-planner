@@ -52,6 +52,13 @@ export async function middleware(request: NextRequest) {
 
   // Only check auth on routes that require it. Skip public routes entirely.
   if (isAuthedRoute(pathname) && !isPublicRoute(pathname)) {
+    // #433: stamp the request path (incl. query) on a request header so the
+    // `(authed)` layout's defensive guard can preserve the deep link when it
+    // fires (the common not-authed case is handled by the redirect below).
+    // Set unconditionally so a client-supplied x-pathname can never survive;
+    // the layout re-validates through safeNext() regardless.
+    request.headers.set("x-pathname", pathname + request.nextUrl.search);
+
     // Build a minimal Supabase client to check the session. Cookie mutations
     // must be propagated via a NextResponse (same pattern as updateSession).
     let response = NextResponse.next({ request });
