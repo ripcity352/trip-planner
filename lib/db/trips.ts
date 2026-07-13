@@ -309,6 +309,32 @@ export async function createTrip(
 }
 
 /**
+ * Founder-only celebrant assignment via the `set_trip_celebrant`
+ * SECURITY DEFINER RPC (20260713090000). `memberId` null clears the
+ * trip's celebrant; a member id crowns that member and clears any
+ * previous holder atomically (the #418 WITH CHECK pins make
+ * is_celebrant unwritable through the base table, so the RPC is the
+ * single path). The function raises for non-founder callers and for
+ * targets outside the trip — those surface here as thrown Errors whose
+ * message the action layer maps to honest ErrorKeys. Naturally
+ * idempotent: replaying the same assignment is a no-op.
+ */
+export async function setTripCelebrant(
+  supabase: SupabaseClient,
+  tripId: string,
+  memberId: string | null
+): Promise<void> {
+  const { error } = await supabase.rpc("set_trip_celebrant", {
+    p_trip_id: tripId,
+    p_member_id: memberId,
+  });
+
+  if (error) {
+    throw new Error(`setTripCelebrant failed: ${error.message}`);
+  }
+}
+
+/**
  * #348: set the caller's per-trip display name on their own membership
  * row. RLS ("users can update their own RSVP" — whole-row, user_id-
  * scoped) means this can only ever touch the caller's row; passing a

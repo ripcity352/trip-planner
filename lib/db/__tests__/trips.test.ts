@@ -15,6 +15,7 @@ import {
   getTripMemberById,
   updateTripMemberRole,
   deleteTripMember,
+  setTripCelebrant,
 } from "../trips";
 
 const M1_COLUMNS = [
@@ -317,5 +318,57 @@ describe("deleteTripMember", () => {
       "member-1"
     );
     expect(count).toBe(0);
+  });
+});
+
+// Celebrant assignment — founder-only write through the
+// `set_trip_celebrant` SECURITY DEFINER RPC (the #418 WITH CHECK pins
+// make is_celebrant unwritable through the base table by design).
+describe("setTripCelebrant", () => {
+  function makeRpcClient(rpcReturn: {
+    data: unknown;
+    error: { message: string } | null;
+  }) {
+    const rpcMock = vi.fn<
+      (name: string, args: Record<string, unknown>) => Promise<typeof rpcReturn>
+    >(async () => rpcReturn);
+    const client = {
+      from: vi.fn(),
+      rpc: rpcMock,
+    } as unknown as SupabaseClient;
+    return { client, rpcMock };
+  }
+
+  it("calls set_trip_celebrant with the trip and member ids", async () => {
+    const { client, rpcMock } = makeRpcClient({ data: null, error: null });
+
+    await setTripCelebrant(client, "trip-1", "member-1");
+
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    const [fnName, args] = rpcMock.mock.calls[0];
+    expect(fnName).toBe("set_trip_celebrant");
+    expect(args).toEqual({ p_trip_id: "trip-1", p_member_id: "member-1" });
+  });
+
+  it("passes null through for the clear-the-seat path", async () => {
+    const { client, rpcMock } = makeRpcClient({ data: null, error: null });
+
+    await setTripCelebrant(client, "trip-1", null);
+
+    expect(rpcMock.mock.calls[0][1]).toEqual({
+      p_trip_id: "trip-1",
+      p_member_id: null,
+    });
+  });
+
+  it("throws with the RPC's message so the action can map founder/member denials", async () => {
+    const { client } = makeRpcClient({
+      data: null,
+      error: { message: "set_trip_celebrant: caller is not the trip founder" },
+    });
+
+    await expect(
+      setTripCelebrant(client, "trip-1", "member-1")
+    ).rejects.toThrow(/setTripCelebrant failed.*not the trip founder/);
   });
 });

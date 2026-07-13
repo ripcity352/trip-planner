@@ -110,6 +110,16 @@ export function RosterList({
 }: RosterListProps) {
   const canInvite =
     viewerRole !== undefined && ORGANIZER_ROLES.has(viewerRole);
+  // FOUNDER predicate (role='organizer' — the seat minted once by
+  // create_trip_with_organizer; same predicate as is_trip_founder).
+  // Celebrant assignment is founder-only, stricter than canInvite.
+  const viewerIsFounder = viewerRole === "organizer";
+  // Current guest of honor, if the seat is held — threaded into the
+  // manage panel so the reassign confirm can name who steps back.
+  const currentCelebrant = members.find((m) => m.isCelebrant);
+  const currentCelebrantName = currentCelebrant
+    ? currentCelebrant.displayName ?? M3_UI_STRINGS.roster_member_fallback_name
+    : null;
   // Members with a stored phone — used for both export paths.
   const membersWithPhone = members
     .filter((m): m is RosterMember & { phone: string } => m.phone !== null)
@@ -158,16 +168,27 @@ export function RosterList({
           {members.map((member) => {
             const label = roleLabel(member.role, member.isCelebrant);
             const chipLabel = rsvpChipLabel(member.rsvp);
-            // #386 — manage only renders for organizer viewers, and never
-            // on your own row, the celebrant, or the founder. The server
-            // action re-checks every guard; hiding here is rule 11
-            // (micro-affordances, not access-denied messages).
+            // #386 — role/remove manage renders for organizer viewers,
+            // and never on your own row, the celebrant, or the founder.
+            // The server action re-checks every guard; hiding here is
+            // rule 11 (micro-affordances, not access-denied messages).
             const manageable =
               canInvite &&
               tripId !== undefined &&
               !member.isViewer &&
               !member.isCelebrant &&
               member.role !== "organizer";
+            // Celebrant assignment — FOUNDER only, never on the
+            // founder's own row or seat. On the current celebrant's row
+            // this is the ONLY move (clear-mode), so the affordance
+            // renders there too — for the founder alone.
+            const celebrantEligible =
+              viewerIsFounder &&
+              tripId !== undefined &&
+              !member.isViewer &&
+              member.role !== "organizer";
+            const showManage =
+              manageable || (celebrantEligible && member.isCelebrant);
             return (
               <li
                 key={member.id}
@@ -194,7 +215,7 @@ export function RosterList({
                       {label}
                     </span>
                   )}
-                  {manageable && tripId ? (
+                  {showManage && tripId ? (
                     <MemberManage
                       tripId={tripId}
                       memberId={member.id}
@@ -206,6 +227,18 @@ export function RosterList({
                         member.role === "co_organizer"
                           ? "co_organizer"
                           : "attendee"
+                      }
+                      celebrant={
+                        celebrantEligible
+                          ? {
+                              isCelebrant: member.isCelebrant,
+                              // Null on the holder's own row — their
+                              // clear confirm uses memberName instead.
+                              currentCelebrantName: member.isCelebrant
+                                ? null
+                                : currentCelebrantName,
+                            }
+                          : undefined
                       }
                     />
                   ) : null}

@@ -516,6 +516,17 @@ export const M5_UI_STRINGS = {
   roster_manage_remove_confirm_template:
     "Remove {name} from the trip? They'd need a new invite to get back in.",
   roster_manage_close: "Never mind",
+  // Celebrant assignment — FOUNDER-only items in the same overflow
+  // panel. Register matches the guard copy ("guest of honor"). The
+  // reassign confirm is #210 two-step (it displaces the current
+  // holder); a first-ever assignment commits in one tap. Clearing gets
+  // the same two-step since it also unseats a current holder.
+  roster_manage_make_celebrant: "This trip's for them",
+  roster_manage_celebrant_reassign_confirm_template:
+    "Make {name} the guest of honor? {current} steps back into the crew.",
+  roster_manage_clear_celebrant: "Back into the crew",
+  roster_manage_celebrant_clear_confirm_template:
+    "{name} rejoins the crew — no guest of honor until you pick one.",
 } as const;
 
 /**

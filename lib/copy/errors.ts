@@ -154,7 +154,11 @@ export type ErrorKey =
   // Money-invariant guard (fix-first on PR #416): splits cascade with
   // the member row, so removal is refused while expense ties exist.
   // Deterministic rejection — retry-free copy.
-  | "member_remove_has_expenses";
+  | "member_remove_has_expenses"
+  // Celebrant assignment — transient `_failed` retry voice. The
+  // founder-only gate maps to rls_denied (non-founders never see the
+  // control, rule 11 — there is no "you can't" string to source).
+  | "celebrant_save_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -285,4 +289,7 @@ export const ERRORS: Record<ErrorKey, string> = {
     "That's whoever started this trip. Their seat stays put.",
   member_remove_has_expenses:
     "Settle their expenses first — they're on the hook for a few things.",
+  // Celebrant assignment — transient failure, retryable.
+  celebrant_save_failed:
+    "The guest of honor didn't stick. Try once more in a sec.",
 };

@@ -5,6 +5,46 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-13 — Celebrant assignment via SECURITY DEFINER RPC (keep the #418 pins)
+
+**Gap named:** no code path ever set `trip_members.is_celebrant=true`.
+`create_trip_with_organizer` inserts `false` ("set in a later step" —
+M2), `setMemberRoleAction` refuses celebrant rows, and the #418
+hardening pinned `is_celebrant` immutable via WITH CHECK for every
+writer path. Meanwhile hide_from_celebrant visibility, the
+celebrant-weighted date poll, and the celebrant badge all shipped
+waiting on a celebrant that nothing could create. The missing axis was
+a sanctioned assignment path, not a policy bug.
+
+**Decision:** a `set_trip_celebrant(p_trip_id, p_member_id)` SECURITY
+DEFINER RPC (`set search_path = ''`) rather than relaxing the #418
+WITH CHECK pins. The pins stay exactly as shipped — direct PostgREST
+writes still cannot flip `is_celebrant`. In-function checks: caller
+must be the trip FOUNDER (`role='organizer'`, the `is_trip_founder`
+predicate); a non-null target must be a member of the trip. Behavior:
+clear any existing celebrant, then set the target (`NULL` = just
+clear); one function body = one transaction, so the
+`trip_members_one_celebrant` partial unique index can never trip
+mid-swap. EXECUTE revoked from `public` AND `anon`, granted to
+`authenticated`, in the same migration (SECURITY-DEFINER-anon-oracle
+incident lesson). The RPC is naturally idempotent — the action
+validates the rule-9 key but doesn't persist it (removeMemberAction
+precedent). UI is rule-11: founder-only items inside the existing
+MemberManage overflow; non-founders never see the affordance; the
+reassign/clear confirms are #210 two-step, a first-ever assignment is
+one tap.
+
+**Alternatives considered:**
+- *Widen the founder branch of the #418 organizer-UPDATE policy and
+  write through the base table:* rejected — two UPDATEs from app code
+  race the partial unique index, and the pins were the load-bearing
+  outcome of #418.
+- *Assign at trip creation:* rejected — the creator is usually the
+  best man, not the groom (M2 DoD said "set in a later step" for
+  exactly this reason).
+
+---
+
 ## 2026-07-12 — Invite-chain incident 2026-07-11 → instant-session signup (Option A)
 
 **Incident:** two invitees failed to join "Winston Bachelor Trip" via a
