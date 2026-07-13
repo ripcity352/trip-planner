@@ -40,6 +40,7 @@ import {
   ERROR_SURFACE_CLASS,
   ERROR_SURFACE_BORDER_STYLE,
 } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { changePasswordAction, setPasswordViaRecoveryAction, setPasswordAction } from "./actions";
 import { requestEmailCode } from "@/app/login/actions";
 import {
@@ -119,10 +120,14 @@ export function SecurityForm({ identityState, userEmail, identitySubtype }: Secu
     setServerError(null);
     startTransition(async () => {
       // NOTE: no email field — server action pins it from the session.
-      const result = await changePasswordAction({
-        currentPassword: values.currentPassword,
-        newPassword: values.newPassword,
-      });
+      // #431: callAction resolves a rejected await (429/network drop) to
+      // the network envelope — same guard on all four handlers below.
+      const result = await callAction(() =>
+        changePasswordAction({
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword,
+        })
+      );
       if (result.ok) {
         setMode("success");
         return;
@@ -135,7 +140,7 @@ export function SecurityForm({ identityState, userEmail, identitySubtype }: Secu
     setServerError(null);
     setMode("C-requesting");
     startTransition(async () => {
-      const result = await requestEmailCode(userEmail);
+      const result = await callAction(() => requestEmailCode(userEmail));
       if (result.ok) {
         setMode("C-verify");
         return;
@@ -159,10 +164,12 @@ export function SecurityForm({ identityState, userEmail, identitySubtype }: Secu
   const handleSetNewPassword = newPasswordForm.handleSubmit((values) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await setPasswordViaRecoveryAction({
-        token: recoveryToken,
-        newPassword: values.newPassword,
-      });
+      const result = await callAction(() =>
+        setPasswordViaRecoveryAction({
+          token: recoveryToken,
+          newPassword: values.newPassword,
+        })
+      );
       if (result.ok) {
         setRecoveryToken("");
         setMode("success");
@@ -191,7 +198,9 @@ export function SecurityForm({ identityState, userEmail, identitySubtype }: Secu
   const handleSetPassword = setPasswordForm.handleSubmit((values) => {
     setServerError(null);
     startTransition(async () => {
-      const result = await setPasswordAction({ newPassword: values.newPassword });
+      const result = await callAction(() =>
+        setPasswordAction({ newPassword: values.newPassword })
+      );
       if (result.ok) {
         setMode("success");
         return;

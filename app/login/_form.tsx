@@ -46,6 +46,7 @@ import {
   ERROR_SURFACE_CLASS,
   ERROR_SURFACE_BORDER_STYLE,
 } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { cn } from "@/lib/utils";
 import {
   type Mode,
@@ -126,31 +127,22 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   // Handlers
   // -------------------------------------------------------------------------
 
-  /**
-   * Every awaited server action funnels through here. A middleware-edge 429
-   * (raw JSON, not an action result) or a network drop REJECTS the await
-   * inside startTransition — without a catch the rejection is swallowed and
-   * the button silently does nothing (2026-07-11 incident #4). On rejection
-   * we surface the existing "network" copy so the user always gets a signal.
-   */
-  const runAction = (fn: () => Promise<void>) => {
-    startTransition(async () => {
-      try {
-        await fn();
-      } catch (err) {
-        console.error("[auth] server action rejected", {
-          name: err instanceof Error ? err.name : "unknown",
-        });
-        setServerError("network");
-      }
-    });
-  };
+  // Every awaited server action funnels through `callAction`
+  // (lib/ui/call-action.ts — the shared #431 guard, extracted from the
+  // local runAction wrapper PR #430 added here). A middleware-edge 429
+  // (raw JSON, not an action result) or a network drop REJECTS the await
+  // inside startTransition — without the guard the rejection is swallowed
+  // and the button silently does nothing (2026-07-11 incident #4). On
+  // rejection the helper resolves to the "network" envelope so the user
+  // always gets a signal.
 
   // Starts a Google OAuth round-trip. The server returns a URL; we navigate there.
   const handleGoogleSignIn = () => {
     setServerError(null);
-    runAction(async () => {
-      const result = await signInWithOAuthAction({ provider: "google", next });
+    startTransition(async () => {
+      const result = await callAction(() =>
+        signInWithOAuthAction({ provider: "google", next })
+      );
       if (result.ok) {
         window.location.assign(result.url);
         return;
@@ -171,11 +163,13 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   const handleSignIn = passwordForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
-    runAction(async () => {
-      const result = await signInWithPasswordAction({
-        email: values.email,
-        password: values.password,
-      });
+    startTransition(async () => {
+      const result = await callAction(() =>
+        signInWithPasswordAction({
+          email: values.email,
+          password: values.password,
+        })
+      );
       if (result.ok) {
         window.location.href = next ?? "/trips";
         return;
@@ -195,8 +189,8 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   const handleEmailMeCode = () => {
     setServerError(null);
     setShowCreateAccount(false);
-    runAction(async () => {
-      const result = await requestEmailCode(email, next);
+    startTransition(async () => {
+      const result = await callAction(() => requestEmailCode(email, next));
       if (result.ok) {
         codeForm.setValue("email", email);
         setMode("code-verify");
@@ -214,11 +208,13 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
 
   const handleVerifyCode = codeForm.handleSubmit((values) => {
     setServerError(null);
-    runAction(async () => {
-      const result = await verifyEmailCodeAction({
-        email: values.email,
-        token: values.token,
-      });
+    startTransition(async () => {
+      const result = await callAction(() =>
+        verifyEmailCodeAction({
+          email: values.email,
+          token: values.token,
+        })
+      );
       if (result.ok) {
         window.location.href = next ?? "/trips";
         return;
@@ -235,12 +231,14 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   const handleCreateAccount = passwordForm.handleSubmit((values) => {
     setServerError(null);
     setShowCreateAccount(false);
-    runAction(async () => {
-      const result = await signUpAction({
-        email: values.email,
-        password: values.password,
-        next,
-      });
+    startTransition(async () => {
+      const result = await callAction(() =>
+        signUpAction({
+          email: values.email,
+          password: values.password,
+          next,
+        })
+      );
       if (result.ok) {
         window.location.href = next ?? "/trips";
         return;

@@ -26,6 +26,7 @@ import { ERRORS } from "@/lib/copy/errors";
 import { createInviteAction } from "@/lib/actions/invites";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
+import { callAction } from "@/lib/ui/call-action";
 import { fromDatetimeLocal } from "@/lib/utils/datetime";
 import type { Invite } from "@/lib/db/types";
 
@@ -86,9 +87,9 @@ export function CreateInviteForm({ tripId, onCreated }: CreateInviteFormProps) {
     // replay of this submit carries the same key and the DB's partial
     // unique index collapses it to one invite.
     const idempotencyKey = crypto.randomUUID();
-    const result = await createInviteAction(
-      { tripId, usesLeft, expiresAt },
-      idempotencyKey
+    // #431: rejected awaits resolve to the network envelope via callAction.
+    const result = await callAction(() =>
+      createInviteAction({ tripId, usesLeft, expiresAt }, idempotencyKey)
     );
 
     if (!result.ok) {
