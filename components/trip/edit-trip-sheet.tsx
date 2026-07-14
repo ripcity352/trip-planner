@@ -103,7 +103,15 @@ export function EditTripSheet({
       <button
         type="button"
         aria-label={TRIP_EDIT_UI_STRINGS.tripEdit_cta_aria}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // Re-seed from the latest server-rendered props on every open:
+          // RHF captures defaultValues once at mount, but this component
+          // stays mounted across RSC re-renders, so a concurrent
+          // organizer's rename would otherwise be silently reverted by a
+          // save from this stale snapshot.
+          reset({ name: initialName, location: initialLocation ?? "" });
+          setOpen(true);
+        }}
         className={cn(
           "focus-visible:ring-ring rounded-xs border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground",
           "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
