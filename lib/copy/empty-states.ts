@@ -408,6 +408,11 @@ export const M4_UI_STRINGS = {
   itineraryItem_memberFlag_heading: "Anything we should know?",
   itineraryItem_memberFlag_subhead:
     "Just for the organizer — private to you.",
+  // Freeform custom-flag entry (#398) — label doubles as the placeholder;
+  // separate keys so they can diverge without touching call sites.
+  itineraryItem_memberFlag_freeform_label: "Anything else?",
+  itineraryItem_memberFlag_freeform_placeholder: "Anything else?",
+  itineraryItem_memberFlag_freeform_add: "Add",
   // Itinerary item — dress-code chip picker
   itineraryItem_dressCode_placeholder: "Pick a vibe or type your own",
   // Itinerary item — activity-tag chip picker

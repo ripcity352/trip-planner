@@ -13,13 +13,14 @@
  */
 
 import { cn } from "@/lib/utils";
-import { MemberFlagPicker } from "./member-flag-picker";
+import { MemberFlagPicker, type MemberFlagRow } from "./member-flag-picker";
 
 export interface ItemFlagFormProps {
   itemId: string;
-  /** #365: flags the member already saved — pre-selects the chips so a
-   * second visit shows (and can edit) what was sent, not a blank form. */
-  initialFlags?: ReadonlyArray<string>;
+  /** #365: flag rows the member already saved — pre-selects the fixed chips
+   * and (#398) renders custom rows as removable entries, so a second visit
+   * shows (and can edit) what was sent, not a blank form. */
+  initialFlags?: ReadonlyArray<MemberFlagRow>;
   className?: string;
 }
 
