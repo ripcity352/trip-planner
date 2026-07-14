@@ -11,9 +11,13 @@
 -- celebrant that nothing could ever set.
 --
 -- Shape (operator-approved): a SECURITY DEFINER RPC rather than relaxing
--- the #418 WITH CHECK pins. The pins stay exactly as shipped — direct
--- PostgREST writes still cannot flip is_celebrant; this function is the
--- single sanctioned path, and it re-checks authorization in-function.
+-- the #418 WITH CHECK pins. The pins stay exactly as shipped; this
+-- function is the single APP-sanctioned path and re-checks authorization
+-- in-function. (Precision note: the #418 founder branch is a bare
+-- is_trip_founder() WITH CHECK with no column pins, so the founder
+-- could technically flip the column via a direct base-table write —
+-- the trip_members_one_celebrant partial unique index is the backstop
+-- there. Every non-founder writer is pinned out.)
 --
 -- Semantics:
 --   * caller must be the trip FOUNDER (role='organizer' — the seat
@@ -63,6 +67,20 @@ begin
       and id = p_member_id
   ) then
     raise exception 'set_trip_celebrant: target is not a member of this trip'
+      using errcode = '42501';
+  end if;
+
+  -- The founder row never wears the sash: founder+celebrant is the
+  -- exact anomaly the #418 pre-flight counted to zero (and the UI never
+  -- offers it — this guard keeps a forged direct RPC call honest too).
+  if p_member_id is not null and exists (
+    select 1
+    from public.trip_members
+    where trip_id = p_trip_id
+      and id = p_member_id
+      and role = 'organizer'
+  ) then
+    raise exception 'set_trip_celebrant: the founder cannot be the celebrant'
       using errcode = '42501';
   end if;
 

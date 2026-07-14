@@ -533,6 +533,17 @@ describe("setCelebrantAction", () => {
     expect(setTripCelebrantMock).not.toHaveBeenCalled();
   });
 
+  it("denies crowning the founder row — the founder never wears the sash", async () => {
+    getTripMemberByIdMock.mockResolvedValue({
+      ...ATTENDEE_TARGET,
+      role: "organizer",
+    });
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(setTripCelebrantMock).not.toHaveBeenCalled();
+  });
+
   it("no-ops (ok) when the target already holds the seat — natural idempotency", async () => {
     getTripMemberByIdMock.mockResolvedValue({
       ...ATTENDEE_TARGET,

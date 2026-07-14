@@ -12,7 +12,8 @@
  *   - `setCelebrantAction(input, idempotencyKey)` — FOUNDER-only
  *     assign/reassign/clear of the celebrant seat via the
  *     `set_trip_celebrant` SECURITY DEFINER RPC (the #418 pins make
- *     is_celebrant unwritable through the base table by design).
+ *     is_celebrant unwritable through the base table for every
+ *     non-founder writer).
  *
  * Authz split: RLS gates WHO can touch a trip_members row ("organizers
  * can update any trip member" UPDATE policy + "organizers can remove
@@ -273,6 +274,11 @@ export async function setCelebrantAction(
       if (!target) {
         return { ok: false, errorKey: "rls_denied" };
       }
+      // The founder row never wears the sash (mirrors the RPC's guard —
+      // the UI never offers this; a forged call gets the generic denial).
+      if (target.role === "organizer") {
+        return { ok: false, errorKey: "rls_denied" };
+      }
       // Already the celebrant — replay/double-tap no-op, skip the write.
       if (target.is_celebrant) {
         return { ok: true };
@@ -294,7 +300,8 @@ export async function setCelebrantAction(
     if (
       err instanceof Error &&
       (err.message.includes("caller is not the trip founder") ||
-        err.message.includes("target is not a member of this trip"))
+        err.message.includes("target is not a member of this trip") ||
+        err.message.includes("the founder cannot be the celebrant"))
     ) {
       return { ok: false, errorKey: "rls_denied" };
     }
