@@ -516,6 +516,23 @@ export const M5_UI_STRINGS = {
   roster_manage_remove_confirm_template:
     "Remove {name} from the trip? They'd need a new invite to get back in.",
   roster_manage_close: "Never mind",
+  // #368 / #262 (name half) — self-service /me profile editor. Rule 8:
+  // phone is opt-IN — no asterisk, no completion pressure, and the hint
+  // names the ONE real reason to add it (the roster's contact download,
+  // i.e. day-of texts). NOT a "complete your profile" surface — that
+  // pattern is hard-banned.
+  meProfile_edit_cta: "Edit",
+  meProfile_edit_aria: "Edit your name and phone",
+  meProfile_heading: "What should the crew call you?",
+  meProfile_name_label: "Name",
+  meProfile_phone_label: "Phone — only if you want",
+  meProfile_phone_hint:
+    "Goes in the roster's contact download so the crew can text you day-of.",
+  meProfile_phone_placeholder: "+1 415 555 1212",
+  meProfile_submit: "Save it",
+  meProfile_cancel: "Never mind",
+  // /me — phone row label (sits beside the M4 me_label_name/email pair)
+  me_label_phone: "Phone",
   // Celebrant assignment — FOUNDER-only items in the same overflow
   // panel. Register matches the guard copy ("guest of honor"). The
   // reassign confirm is #210 two-step (it displaces the current

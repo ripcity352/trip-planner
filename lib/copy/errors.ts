@@ -155,6 +155,11 @@ export type ErrorKey =
   // the member row, so removal is refused while expense ties exist.
   // Deterministic rejection — retry-free copy.
   | "member_remove_has_expenses"
+  // #368 / #262 — self-service /me profile editing. `profile_save_failed`
+  // is transient-retry voice; `profile_phone_taken` is DETERMINISTIC
+  // (the trip-scoped unique phone index matched a teammate's number).
+  | "profile_save_failed"
+  | "profile_phone_taken"
   // Celebrant assignment — transient `_failed` retry voice. The
   // founder-only gate maps to rls_denied (non-founders never see the
   // control, rule 11 — there is no "you can't" string to source).
@@ -289,6 +294,11 @@ export const ERRORS: Record<ErrorKey, string> = {
     "That's whoever started this trip. Their seat stays put.",
   member_remove_has_expenses:
     "Settle their expenses first — they're on the hook for a few things.",
+  // #368 / #262 — /me profile editor. Retry voice for the transient
+  // failure; the duplicate-phone line explains the rule, no retry bait.
+  profile_save_failed: "That didn't stick. Give it another go in a sec.",
+  profile_phone_taken:
+    "That number's already on the roster under someone else.",
   // Celebrant assignment — transient failure, retryable.
   celebrant_save_failed:
     "The guest of honor didn't stick. Try once more in a sec.",

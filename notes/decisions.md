@@ -5,6 +5,39 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-13 — Self-service profile editing: per-trip identity, no migration (#368 + name half of #262)
+
+**Decision:** display name + phone are edited on the member's OWN
+`trip_members` row via a new `updateMyProfileAction` — the identity grain
+is **per-trip** (issue #262's open question 1), not a global
+`profiles.display_name` write. The /me editor is the single self-serve
+capture surface; invite-accept (#348, already shipped) stays the
+first-touch capture.
+
+**Rationale:**
+- Schema + RLS already carry this exactly: `trip_members.display_name` /
+  `phone_e164` exist since m1_foundation, and the #418-hardened self-row
+  UPDATE policy permits the write while pinning `role`/`is_celebrant`
+  via WITH CHECK. **ZERO migration.**
+- Per-trip grain matches the privacy story ("groom in one trip, +1 in
+  another") and every read path (`resolveMemberName`, roster, vCard)
+  already resolves from `trip_members` first.
+- Phone is normalized to E.164 at ONE choke point
+  (`lib/utils/phone.ts`, lenient in / strict out, bare-10-digit → +1 US
+  assumption) because the vCard export and the `(trip_id, phone_e164)`
+  unique index both trust the stored format. The unique-index collision
+  surfaces as a deterministic `profile_phone_taken` rejection.
+- The shared 80-char name bound moved to
+  `lib/utils/member-display.ts:DISPLAY_NAME_MAX_LENGTH` so the two
+  capture surfaces (invite-accept + /me) can't drift.
+
+**Deliberately NOT built (scope of #262 part 2, still open):** clickable
+crew profile pages, bio/avatar fields (Crew Cards was killed), any
+global-profile default, and any profile-completeness affordance
+(hard-banned).
+
+---
+
 ## 2026-07-13 — Celebrant assignment via SECURITY DEFINER RPC (keep the #418 pins)
 
 **Gap named:** no code path ever set `trip_members.is_celebrant=true`.

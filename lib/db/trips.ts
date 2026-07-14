@@ -94,6 +94,8 @@ export interface ViewerMember {
   role: TripRole;
   is_celebrant: boolean;
   display_name: string | null;
+  phone_e164: string | null;
+  idempotency_key: string | null;
 }
 
 /**
@@ -108,7 +110,7 @@ export async function getViewerMember(
 ): Promise<ViewerMember | null> {
   const { data, error } = await supabase
     .from("trip_members")
-    .select("id, role, is_celebrant, display_name")
+    .select("id, role, is_celebrant, display_name, phone_e164, idempotency_key")
     .eq("trip_id", tripId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -353,4 +355,55 @@ export async function setMemberDisplayName(
   if (error) {
     throw new Error(`setMemberDisplayName failed: ${error.message}`);
   }
+}
+
+/** Outcomes of `updateMyMemberProfile` the action maps to error copy. */
+export type UpdateMyMemberProfileResult =
+  | "updated"
+  | "missing"
+  | "duplicate_phone";
+
+/**
+ * #368 / #262 (name half): self-service write of the caller's own
+ * display_name + phone_e164 on ONE trip_members row, scoped by BOTH
+ * trip_id and id (multi-tenant rule 6). RLS ("users can update their own
+ * RSVP" — user_id-scoped, with role/is_celebrant pinned by the #418
+ * WITH CHECK) is the real gate: a foreign memberId matches zero rows.
+ * We chain `.select().maybeSingle()` so a policy-swallowed zero-row
+ * update returns "missing" instead of lying about success.
+ *
+ * `phoneE164` must already be normalized (lib/utils/phone.ts) or null
+ * to clear. The (trip_id, phone_e164) partial unique index surfaces a
+ * teammate-already-has-that-number collision as "duplicate_phone" —
+ * a deterministic rejection, not a throw.
+ */
+export async function updateMyMemberProfile(
+  supabase: SupabaseClient,
+  tripId: string,
+  memberId: string,
+  displayName: string,
+  phoneE164: string | null,
+  idempotencyKey: string
+): Promise<UpdateMyMemberProfileResult> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .update({
+      display_name: displayName,
+      phone_e164: phoneE164,
+      idempotency_key: idempotencyKey,
+    })
+    .eq("trip_id", tripId)
+    .eq("id", memberId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    // 23505 = unique_violation — the trip-scoped phone index.
+    if (error.code === "23505") {
+      return "duplicate_phone";
+    }
+    throw new Error(`updateMyMemberProfile failed: ${error.message}`);
+  }
+
+  return data !== null ? "updated" : "missing";
 }
