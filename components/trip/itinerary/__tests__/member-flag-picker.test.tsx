@@ -252,6 +252,31 @@ describe("MemberFlagPicker", () => {
     });
   });
 
+  it("reflects a fixed-chip name typed into freeform as a pressed chip, not a custom row", async () => {
+    // Typing "Vegan" into freeform must match the reload-derived state:
+    // pressed chip, no removable custom row.
+    mockAdd.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    renderPicker();
+    const input = screen.getByPlaceholderText(/anything else/i);
+    fireEvent.change(input, { target: { value: "Vegan" } });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /add/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Vegan" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+    });
+    expect(
+      screen.queryByRole("button", { name: 'Remove "Vegan"' })
+    ).not.toBeInTheDocument();
+  });
+
   it("clears freeform input after successful submit", async () => {
     // Delay widens the race window for this async freeform submit.
     mockAdd.mockImplementation(async () => {

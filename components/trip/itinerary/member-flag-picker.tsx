@@ -181,12 +181,19 @@ export function MemberFlagPicker({
         return;
       }
 
-      // #398: reflect the stored row immediately (dedupe on flag text so a
-      // double-submit doesn't render twice).
-      setCustomFlags((prev) => [
-        ...prev.filter((f) => f.flag !== cleanFlag),
-        { flag: cleanFlag, note: cleanNote },
-      ]);
+      // If the typed text matches a fixed chip (e.g. "Vegan"), reflect it as
+      // a pressed chip — not a custom row — so the immediate post-submit UI
+      // matches what a reload derives from initialFlags.
+      if (FIXED_CHIPS.includes(cleanFlag)) {
+        setSelected((prev) => new Set([...prev, cleanFlag]));
+      } else {
+        // #398: reflect the stored row immediately (dedupe on flag text so a
+        // double-submit doesn't render twice).
+        setCustomFlags((prev) => [
+          ...prev.filter((f) => f.flag !== cleanFlag),
+          { flag: cleanFlag, note: cleanNote },
+        ]);
+      }
       setFreeformFlag("");
       setNote("");
       setSaved(true);
@@ -302,7 +309,7 @@ export function MemberFlagPicker({
               className="text-muted-foreground text-xs font-medium"
               htmlFor={`flag-freeform-${itemId}`}
             >
-              Anything else?
+              {M4_UI_STRINGS.itineraryItem_memberFlag_freeform_label}
             </label>
             <input
               id={`flag-freeform-${itemId}`}
@@ -314,7 +321,7 @@ export function MemberFlagPicker({
                 setFreeformFlag(clean);
                 setSaved(false);
               }}
-              placeholder="Anything else?"
+              placeholder={M4_UI_STRINGS.itineraryItem_memberFlag_freeform_placeholder}
               maxLength={FLAG_MAX}
               disabled={isPending}
               className={cn(
@@ -340,7 +347,7 @@ export function MemberFlagPicker({
                 setNote(clean);
                 setSaved(false);
               }}
-              placeholder="More context for the organizers…"
+              placeholder={M3_UI_STRINGS.itinerary_item_flag_note_placeholder}
               maxLength={NOTE_MAX}
               rows={2}
               disabled={isPending}
@@ -362,7 +369,7 @@ export function MemberFlagPicker({
                 "border-border bg-muted text-muted-foreground hover:bg-muted/80"
               )}
             >
-              Add
+              {M4_UI_STRINGS.itineraryItem_memberFlag_freeform_add}
             </button>
           </form>
 
