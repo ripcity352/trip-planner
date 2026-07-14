@@ -459,6 +459,13 @@ export const M5_UI_STRINGS = {
   expensesForm_amount_placeholder: "120 or 120.50",
   expensesForm_date_label: "When? (today if blank)",
   expensesForm_split_label: "Who's splitting it?",
+  // #391 — split-chip attendance notes. Surface the stored RSVP right
+  // where the money splits (rule 8: don't assume everyone's in). Plain
+  // statements of fact, zero nudge — you'd say any of these across the
+  // dinner table while pointing at the tab.
+  expensesForm_split_note_maybe: "said maybe",
+  expensesForm_split_note_declined: "not coming",
+  expensesForm_split_note_pending: "hasn't said yet",
   expensesForm_visibility_label: "Who sees this?",
   expensesForm_submit: "Log it",
   expensesForm_cancel: "Never mind",

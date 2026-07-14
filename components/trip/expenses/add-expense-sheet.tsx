@@ -4,10 +4,13 @@
  * AddExpenseSheet — toggle + form for logging a spend (#372).
  *
  * Mirrors the AddItemFormSheet show/hide pattern (no animation lib).
- * Split membership is chip-based: every member starts SELECTED (one tap
- * removes someone) — the payer is making an explicit authored choice,
- * which is the rule-8-compliant framing for a payer-side split; attendee
- * self-defaults are a different axis (the M5 opt-in money pool).
+ * Split membership is chip-based. #391: pre-selection follows the stored
+ * RSVP — 'going' and 'maybe' start selected; 'declined' and 'pending'
+ * start UNSELECTED but stay in the chip row, one tap away (rule 8: the
+ * non-default attendee opts IN, they're not assumed-in with an opt-out).
+ * Non-'going' chips carry a subtle attendance note so inclusion is a
+ * deliberate, informed choice. Attendee self-defaults are a different
+ * axis (the gated #46/#47 per-line opt-in — untouched here).
  *
  * Amount is a dollars string (decimal, ≤2 places) converted to integer
  * cents here — the action and DB only ever see cents.
@@ -27,6 +30,7 @@ import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { callAction } from "@/lib/ui/call-action";
 import { FIELD_ERRORS } from "@/lib/copy/field-errors";
 import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
+import type { RsvpStatus } from "@/lib/db/types";
 import {
   readableVisibilityOptions,
   type ViewerVisibilityContext,
@@ -62,11 +66,39 @@ export interface SplitCandidate {
   /** trip_members.id */
   memberId: string;
   name: string;
+  /** Stored RSVP (#391) — drives pre-selection + the chip note. */
+  rsvpStatus: RsvpStatus;
+}
+
+/**
+ * #391 — attendance note per RSVP state. 'going' gets none (it's the
+ * unremarkable default); everything else states the stored fact.
+ */
+const SPLIT_NOTE_BY_STATUS: Readonly<
+  Partial<Record<RsvpStatus, string>>
+> = {
+  maybe: M5_UI_STRINGS.expensesForm_split_note_maybe,
+  declined: M5_UI_STRINGS.expensesForm_split_note_declined,
+  pending: M5_UI_STRINGS.expensesForm_split_note_pending,
+};
+
+/**
+ * Members whose RSVP earns pre-selection: going + maybe. Declined and
+ * pending stay tappable-in but never assumed-in (rule 8).
+ */
+export function defaultSplitIds(
+  members: readonly SplitCandidate[]
+): Set<string> {
+  return new Set(
+    members
+      .filter((m) => m.rsvpStatus === "going" || m.rsvpStatus === "maybe")
+      .map((m) => m.memberId)
+  );
 }
 
 export interface AddExpenseSheetProps {
   tripId: string;
-  members: SplitCandidate[];
+  members: readonly SplitCandidate[];
   /**
    * Viewer's seat (#384): the visibility options are filtered to what
    * this member could still read — the celebrant never sees the hiding
@@ -92,9 +124,10 @@ export function AddExpenseSheet({
   const [serverErrorKey, setServerErrorKey] = React.useState<ErrorKey | null>(
     null
   );
-  // Everyone starts in the split; the payer taps people out.
-  const [splitIds, setSplitIds] = React.useState<Set<string>>(
-    () => new Set(members.map((m) => m.memberId))
+  // #391: going + maybe start in the split; declined + pending start
+  // out but are one tap away. Never assume the non-default attendee in.
+  const [splitIds, setSplitIds] = React.useState<Set<string>>(() =>
+    defaultSplitIds(members)
   );
 
   const {
@@ -147,7 +180,7 @@ export function AddExpenseSheet({
     }
 
     reset();
-    setSplitIds(new Set(members.map((m) => m.memberId)));
+    setSplitIds(defaultSplitIds(members));
     setOpen(false);
     router.refresh();
   };
@@ -162,7 +195,20 @@ export function AddExpenseSheet({
 
   if (!open) {
     return (
-      <Button type="button" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        onClick={() => {
+          // Re-seed on every open, not just at mount: the component stays
+          // mounted across open/close, so (a) a cancel must not leak stale
+          // taps or half-typed fields into the next open, and (b) `members`
+          // may have changed via router.refresh() (RSVP flip, join/leave) —
+          // each open must reflect the current RSVP defaults (#391).
+          reset();
+          setServerErrorKey(null);
+          setSplitIds(defaultSplitIds(members));
+          setOpen(true);
+        }}
+      >
         {M5_UI_STRINGS.expenses_add_cta}
       </Button>
     );
@@ -252,6 +298,7 @@ export function AddExpenseSheet({
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {members.map((m) => {
             const selected = splitIds.has(m.memberId);
+            const note = SPLIT_NOTE_BY_STATUS[m.rsvpStatus];
             return (
               <button
                 key={m.memberId}
@@ -268,6 +315,16 @@ export function AddExpenseSheet({
                 )}
               >
                 {m.name}
+                {/* #391: stated fact, not a nudge — opacity keeps it
+                    subordinate on both selected + unselected surfaces.
+                    The literal space is load-bearing: it separates name
+                    from note in the accessible name too. */}
+                {note ? (
+                  <>
+                    {" "}
+                    <span className="opacity-70">{note}</span>
+                  </>
+                ) : null}
               </button>
             );
           })}
