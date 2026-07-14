@@ -27,6 +27,10 @@ export const FIELD_ERRORS = {
   expense_amount_required: "How much? Pop in an amount over $0.",
   expense_amount_invalid: "How much? Pop in an amount over $0.",
 
+  // Dashboard-header trip edit sheet
+  trip_name_required: "The trip needs a name — even a working title.",
+  trip_name_too_long: "That's a mouthful. Trim the name down a bit.",
+  trip_location_too_long: "That's a lot of address. Keep it short.",
   // /me profile editor (#368 / #262)
   profile_name_required: "Put down a name the crew will recognize.",
   profile_name_too_long: "That's a lot of name. Trim it down a bit.",

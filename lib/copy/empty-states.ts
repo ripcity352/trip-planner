@@ -577,6 +577,25 @@ export const MEMBER_DAYS_UI_STRINGS = {
 export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;
 
 /**
+ * Dashboard-header trip edit (name + location). Rule 11: the trigger is
+ * an organizer micro-affordance — non-organizers never see it, so there
+ * is no locked/disabled register here. Dates are deliberately absent:
+ * they belong to the /dates poll flow, not a form field.
+ */
+export const TRIP_EDIT_UI_STRINGS = {
+  tripEdit_cta: "Edit",
+  // Screen-reader expansion of the small "Edit" trigger next to the h1.
+  tripEdit_cta_aria: "Edit trip name and location",
+  tripEdit_name_label: "Trip name",
+  tripEdit_location_label: "Where's it happening?",
+  tripEdit_location_placeholder: "City, house, boat…",
+  tripEdit_submit: "Save it",
+  tripEdit_cancel: "Never mind",
+} as const;
+
+export type TripEditUIStringKey = keyof typeof TRIP_EDIT_UI_STRINGS;
+
+/**
  * Dashboard glance lines (glanceability sweep) — the muted one-line
  * facts under each dashboard link-card title. Same voice test as every
  * palette. Hard boundary: these are FACTS in text-muted-foreground,
