@@ -86,6 +86,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "member_organizer_locked",
   // fix-first on #416 — money-invariant guard (deterministic, retry-free)
   "member_remove_has_expenses",
+  // celebrant assignment — transient-retry voice (founder gate maps to
+  // rls_denied; no dedicated "you can't" string, rule 11)
+  "celebrant_save_failed",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

@@ -15,9 +15,11 @@ import { MemberManage } from "../member-manage";
 
 const setMemberRoleActionMock = vi.fn();
 const removeMemberActionMock = vi.fn();
+const setCelebrantActionMock = vi.fn();
 vi.mock("@/lib/actions/members", () => ({
   setMemberRoleAction: (...args: unknown[]) => setMemberRoleActionMock(...args),
   removeMemberAction: (...args: unknown[]) => removeMemberActionMock(...args),
+  setCelebrantAction: (...args: unknown[]) => setCelebrantActionMock(...args),
 }));
 
 const refreshMock = vi.fn();
@@ -48,9 +50,11 @@ describe("MemberManage", () => {
   beforeEach(() => {
     setMemberRoleActionMock.mockReset();
     removeMemberActionMock.mockReset();
+    setCelebrantActionMock.mockReset();
     refreshMock.mockReset();
     setMemberRoleActionMock.mockResolvedValue({ ok: true, role: "co_organizer" });
     removeMemberActionMock.mockResolvedValue({ ok: true });
+    setCelebrantActionMock.mockResolvedValue({ ok: true });
   });
 
   it("renders only a quiet overflow trigger until tapped", () => {
@@ -146,5 +150,122 @@ describe("MemberManage", () => {
     expect(screen.queryByText("Remove from trip")).not.toBeInTheDocument();
     expect(setMemberRoleActionMock).not.toHaveBeenCalled();
     expect(removeMemberActionMock).not.toHaveBeenCalled();
+  });
+
+  // Celebrant assignment — FOUNDER-only capability, threaded via the
+  // `celebrant` prop by the parent (rule 11: absent = invisible).
+  describe("celebrant assignment", () => {
+    function openCelebrantPanel(celebrant: {
+      isCelebrant: boolean;
+      currentCelebrantName: string | null;
+    }) {
+      render(
+        <MemberManage
+          tripId={TRIP_ID}
+          memberId={MEMBER_ID}
+          memberName="Kevin"
+          currentRole="attendee"
+          celebrant={celebrant}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Manage Kevin" }));
+    }
+
+    it("renders no celebrant move at all when the prop is absent (non-founder viewers)", () => {
+      openPanel();
+      expect(
+        screen.queryByText("This trip's for them")
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Back into the crew")).not.toBeInTheDocument();
+    });
+
+    it("assigns in ONE tap when the seat is empty", async () => {
+      openCelebrantPanel({ isCelebrant: false, currentCelebrantName: null });
+      fireEvent.click(
+        screen.getByRole("button", { name: "This trip's for them" })
+      );
+
+      await waitFor(() => expect(setCelebrantActionMock).toHaveBeenCalled());
+      const [input, key] = setCelebrantActionMock.mock.calls[0] as [
+        Record<string, unknown>,
+        string,
+      ];
+      expect(input).toEqual({ tripId: TRIP_ID, memberId: MEMBER_ID });
+      expect(key).toMatch(/^[0-9a-f-]{36}$/);
+      await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    });
+
+    it("arms a confirm naming BOTH seats when reassigning off a current holder", () => {
+      openCelebrantPanel({ isCelebrant: false, currentCelebrantName: "Mike" });
+      fireEvent.click(
+        screen.getByRole("button", { name: "This trip's for them" })
+      );
+
+      expect(setCelebrantActionMock).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(
+          "Make Kevin the guest of honor? Mike steps back into the crew."
+        )
+      ).toBeInTheDocument();
+    });
+
+    it("reassigns on the second tap", async () => {
+      openCelebrantPanel({ isCelebrant: false, currentCelebrantName: "Mike" });
+      const button = screen.getByRole("button", {
+        name: "This trip's for them",
+      });
+      fireEvent.click(button);
+      fireEvent.click(button);
+
+      await waitFor(() => expect(setCelebrantActionMock).toHaveBeenCalled());
+      const [input] = setCelebrantActionMock.mock.calls[0] as [
+        Record<string, unknown>,
+      ];
+      expect(input).toEqual({ tripId: TRIP_ID, memberId: MEMBER_ID });
+    });
+
+    it("shows ONLY the clear move on the current celebrant's row and clears two-step", async () => {
+      openCelebrantPanel({ isCelebrant: true, currentCelebrantName: null });
+
+      // Clear-mode: no role flip, no remove — the seat is protected.
+      expect(
+        screen.queryByText("Make co-organizer")
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Remove from trip")).not.toBeInTheDocument();
+
+      const button = screen.getByRole("button", { name: "Back into the crew" });
+      fireEvent.click(button);
+      expect(setCelebrantActionMock).not.toHaveBeenCalled();
+      expect(
+        screen.getByText(
+          "Kevin rejoins the crew — no guest of honor until you pick one."
+        )
+      ).toBeInTheDocument();
+
+      fireEvent.click(button);
+      await waitFor(() => expect(setCelebrantActionMock).toHaveBeenCalled());
+      const [input] = setCelebrantActionMock.mock.calls[0] as [
+        Record<string, unknown>,
+      ];
+      expect(input).toEqual({ tripId: TRIP_ID, memberId: null });
+    });
+
+    it("surfaces the copy-palette error line when the action fails", async () => {
+      setCelebrantActionMock.mockResolvedValue({
+        ok: false,
+        errorKey: "celebrant_save_failed",
+      });
+      openCelebrantPanel({ isCelebrant: false, currentCelebrantName: null });
+      fireEvent.click(
+        screen.getByRole("button", { name: "This trip's for them" })
+      );
+
+      expect(
+        await screen.findByText(
+          "The guest of honor didn't stick. Try once more in a sec."
+        )
+      ).toBeInTheDocument();
+      expect(refreshMock).not.toHaveBeenCalled();
+    });
   });
 });
