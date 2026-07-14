@@ -49,8 +49,21 @@ const MOCK_DELAY_MS = 30;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** The #399 disclosure trigger — the voice-locked heading is its name. */
+function getDisclosureTrigger() {
+  return screen.getByRole("button", {
+    name: M4_UI_STRINGS.itineraryItem_memberFlag_heading,
+  });
+}
+
+/** Render and (if closed) open the #399 disclosure so panel content is reachable. */
 function renderPicker(props?: Partial<React.ComponentProps<typeof MemberFlagPicker>>) {
-  return render(<MemberFlagPicker itemId={ITEM_ID} {...props} />);
+  const utils = render(<MemberFlagPicker itemId={ITEM_ID} {...props} />);
+  const trigger = getDisclosureTrigger();
+  if (trigger.getAttribute("aria-expanded") === "false") {
+    fireEvent.click(trigger);
+  }
+  return utils;
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -358,5 +371,145 @@ describe("MemberFlagPicker", () => {
     const { container } = renderPicker();
     // Smoke: component renders without throwing
     expect(container.firstChild).toBeInTheDocument();
+  });
+});
+
+// ─── #399: disclosure — collapse the panel behind the heading ─────────────────
+
+describe("MemberFlagPicker — disclosure (#399)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAdd.mockResolvedValue({ ok: true });
+    mockRemove.mockResolvedValue({ ok: true });
+  });
+
+  it("defaults CLOSED when the member has no saved flags", () => {
+    render(<MemberFlagPicker itemId={ITEM_ID} />);
+    expect(getDisclosureTrigger()).toHaveAttribute("aria-expanded", "false");
+    // Panel content is not rendered while closed
+    expect(
+      screen.queryByRole("button", { name: "Vegan" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText(/anything else/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("auto-opens when the member already has a saved fixed flag", () => {
+    render(
+      <MemberFlagPicker
+        itemId={ITEM_ID}
+        initialFlags={[{ flag: "Sober", note: null }]}
+      />
+    );
+    expect(getDisclosureTrigger()).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", { name: "Sober", pressed: true })
+    ).toBeInTheDocument();
+  });
+
+  it("auto-opens when the member already has a saved custom flag", () => {
+    render(
+      <MemberFlagPicker
+        itemId={ITEM_ID}
+        initialFlags={[{ flag: "low-FODMAP diet", note: null }]}
+      />
+    );
+    expect(getDisclosureTrigger()).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("low-FODMAP diet")).toBeInTheDocument();
+  });
+
+  it("toggles aria-expanded (and the panel) on click", () => {
+    render(<MemberFlagPicker itemId={ITEM_ID} />);
+    const trigger = getDisclosureTrigger();
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Vegan" })).toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "Vegan" })
+    ).not.toBeInTheDocument();
+  });
+});
+
+// ─── #398: stored custom flags render back as removable rows ──────────────────
+
+describe("MemberFlagPicker — stored custom flags (#398)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAdd.mockResolvedValue({ ok: true });
+    mockRemove.mockResolvedValue({ ok: true });
+  });
+
+  it("renders a stored custom flag with its note alongside", () => {
+    renderPicker({
+      initialFlags: [
+        { flag: "low-FODMAP diet", note: "Happy to sort my own meal" },
+      ],
+    });
+    expect(screen.getByText("low-FODMAP diet")).toBeInTheDocument();
+    expect(screen.getByText("Happy to sort my own meal")).toBeInTheDocument();
+    // Custom flags are NOT fixed chips — no pressed chip carries the text
+    expect(
+      screen.queryByRole("button", { name: "low-FODMAP diet", pressed: true })
+    ).not.toBeInTheDocument();
+  });
+
+  it("removes a stored custom flag via its remove control", async () => {
+    const user = userEvent.setup();
+    renderPicker({
+      initialFlags: [{ flag: "low-FODMAP diet", note: null }],
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "low-FODMAP diet"' })
+    );
+
+    await waitFor(() => {
+      expect(mockRemove).toHaveBeenCalledWith(ITEM_ID, "low-FODMAP diet");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("low-FODMAP diet")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the row and shows the error line when removal fails", async () => {
+    mockRemove.mockResolvedValue({
+      ok: false,
+      errorKey: "item_flag_save_failed",
+    });
+    const user = userEvent.setup();
+    renderPicker({
+      initialFlags: [{ flag: "low-FODMAP diet", note: null }],
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "low-FODMAP diet"' })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(screen.getByText("low-FODMAP diet")).toBeInTheDocument();
+  });
+
+  it("appends a newly submitted freeform flag as a removable row", async () => {
+    const user = userEvent.setup();
+    renderPicker();
+
+    fireEvent.change(screen.getByPlaceholderText(/anything else/i), {
+      target: { value: "low-FODMAP diet" },
+    });
+    await user.click(screen.getByRole("button", { name: /add/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("low-FODMAP diet")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: 'Remove "low-FODMAP diet"' })
+    ).toBeInTheDocument();
   });
 });
