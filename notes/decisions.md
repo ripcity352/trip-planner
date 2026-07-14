@@ -5,6 +5,79 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-13 — Self-service profile editing: per-trip identity, no migration (#368 + name half of #262)
+
+**Decision:** display name + phone are edited on the member's OWN
+`trip_members` row via a new `updateMyProfileAction` — the identity grain
+is **per-trip** (issue #262's open question 1), not a global
+`profiles.display_name` write. The /me editor is the single self-serve
+capture surface; invite-accept (#348, already shipped) stays the
+first-touch capture.
+
+**Rationale:**
+- Schema + RLS already carry this exactly: `trip_members.display_name` /
+  `phone_e164` exist since m1_foundation, and the #418-hardened self-row
+  UPDATE policy permits the write while pinning `role`/`is_celebrant`
+  via WITH CHECK. **ZERO migration.**
+- Per-trip grain matches the privacy story ("groom in one trip, +1 in
+  another") and every read path (`resolveMemberName`, roster, vCard)
+  already resolves from `trip_members` first.
+- Phone is normalized to E.164 at ONE choke point
+  (`lib/utils/phone.ts`, lenient in / strict out, bare-10-digit → +1 US
+  assumption) because the vCard export and the `(trip_id, phone_e164)`
+  unique index both trust the stored format. The unique-index collision
+  surfaces as a deterministic `profile_phone_taken` rejection.
+- The shared 80-char name bound moved to
+  `lib/utils/member-display.ts:DISPLAY_NAME_MAX_LENGTH` so the two
+  capture surfaces (invite-accept + /me) can't drift.
+
+**Deliberately NOT built (scope of #262 part 2, still open):** clickable
+crew profile pages, bio/avatar fields (Crew Cards was killed), any
+global-profile default, and any profile-completeness affordance
+(hard-banned).
+
+---
+
+## 2026-07-13 — Celebrant assignment via SECURITY DEFINER RPC (keep the #418 pins)
+
+**Gap named:** no code path ever set `trip_members.is_celebrant=true`.
+`create_trip_with_organizer` inserts `false` ("set in a later step" —
+M2), `setMemberRoleAction` refuses celebrant rows, and the #418
+hardening pinned `is_celebrant` immutable via WITH CHECK for every
+writer path. Meanwhile hide_from_celebrant visibility, the
+celebrant-weighted date poll, and the celebrant badge all shipped
+waiting on a celebrant that nothing could create. The missing axis was
+a sanctioned assignment path, not a policy bug.
+
+**Decision:** a `set_trip_celebrant(p_trip_id, p_member_id)` SECURITY
+DEFINER RPC (`set search_path = ''`) rather than relaxing the #418
+WITH CHECK pins. The pins stay exactly as shipped — direct PostgREST
+writes still cannot flip `is_celebrant`. In-function checks: caller
+must be the trip FOUNDER (`role='organizer'`, the `is_trip_founder`
+predicate); a non-null target must be a member of the trip. Behavior:
+clear any existing celebrant, then set the target (`NULL` = just
+clear); one function body = one transaction, so the
+`trip_members_one_celebrant` partial unique index can never trip
+mid-swap. EXECUTE revoked from `public` AND `anon`, granted to
+`authenticated`, in the same migration (SECURITY-DEFINER-anon-oracle
+incident lesson). The RPC is naturally idempotent — the action
+validates the rule-9 key but doesn't persist it (removeMemberAction
+precedent). UI is rule-11: founder-only items inside the existing
+MemberManage overflow; non-founders never see the affordance; the
+reassign/clear confirms are #210 two-step, a first-ever assignment is
+one tap.
+
+**Alternatives considered:**
+- *Widen the founder branch of the #418 organizer-UPDATE policy and
+  write through the base table:* rejected — two UPDATEs from app code
+  race the partial unique index, and the pins were the load-bearing
+  outcome of #418.
+- *Assign at trip creation:* rejected — the creator is usually the
+  best man, not the groom (M2 DoD said "set in a later step" for
+  exactly this reason).
+
+---
+
 ## 2026-07-12 — Invite-chain incident 2026-07-11 → instant-session signup (Option A)
 
 **Incident:** two invitees failed to join "Winston Bachelor Trip" via a

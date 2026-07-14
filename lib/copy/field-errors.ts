@@ -31,6 +31,11 @@ export const FIELD_ERRORS = {
   trip_name_required: "The trip needs a name — even a working title.",
   trip_name_too_long: "That's a mouthful. Trim the name down a bit.",
   trip_location_too_long: "That's a lot of address. Keep it short.",
+  // /me profile editor (#368 / #262)
+  profile_name_required: "Put down a name the crew will recognize.",
+  profile_name_too_long: "That's a lot of name. Trim it down a bit.",
+  profile_phone_invalid:
+    "That number doesn't look dialable — area code helps.",
 } as const;
 
 export type FieldErrorKey = keyof typeof FIELD_ERRORS;

@@ -9,6 +9,11 @@
  *     from the trip. Deletes are idempotent by nature: the key is
  *     validated per rule 9 but not persisted, and a target that is
  *     already gone returns ok.
+ *   - `setCelebrantAction(input, idempotencyKey)` — FOUNDER-only
+ *     assign/reassign/clear of the celebrant seat via the
+ *     `set_trip_celebrant` SECURITY DEFINER RPC (the #418 pins make
+ *     is_celebrant unwritable through the base table for every
+ *     non-founder writer).
  *
  * Authz split: RLS gates WHO can touch a trip_members row ("organizers
  * can update any trip member" UPDATE policy + "organizers can remove
@@ -54,6 +59,7 @@ import {
   deleteTripMember,
   getTripMemberById,
   getViewerMember,
+  setTripCelebrant,
   updateTripMemberRole,
 } from "@/lib/db/trips";
 import { memberHasExpenseTies } from "@/lib/db/expenses";
@@ -94,14 +100,25 @@ const removeMemberSchema = z.object({
   memberId: z.string().uuid(),
 });
 
+// Celebrant assignment: memberId null = clear the seat entirely.
+const setCelebrantSchema = z.object({
+  tripId: z.string().uuid(),
+  memberId: z.string().uuid().nullable(),
+});
+
 export type SetMemberRoleInput = z.infer<typeof setMemberRoleSchema>;
 export type RemoveMemberInput = z.infer<typeof removeMemberSchema>;
+export type SetCelebrantInput = z.infer<typeof setCelebrantSchema>;
 
 export type SetMemberRoleResult =
   | { ok: true; role: SettableMemberRole }
   | { ok: false; errorKey: ErrorKey };
 
 export type RemoveMemberResult =
+  | { ok: true }
+  | { ok: false; errorKey: ErrorKey };
+
+export type SetCelebrantResult =
   | { ok: true }
   | { ok: false; errorKey: ErrorKey };
 
@@ -203,6 +220,93 @@ export async function setMemberRoleAction(
     }
     console.error("[members] setMemberRoleAction unexpected:", err);
     return { ok: false, errorKey: "member_role_save_failed" };
+  }
+}
+
+/**
+ * Assign, reassign, or clear the trip's celebrant (guest of honor).
+ *
+ * FOUNDER-only — the strictest gate in the roster. The RLS #418 WITH
+ * CHECK pins deliberately make `is_celebrant` unwritable through the
+ * base table for everyone, so the write goes through the
+ * `set_trip_celebrant` SECURITY DEFINER RPC, which re-checks the
+ * founder gate (role='organizer' — the is_trip_founder predicate) and
+ * trip membership in-function.
+ *
+ * Idempotency: the RPC is naturally idempotent — clear-then-set of a
+ * flag converges on replay, so (like removeMemberAction / the delete
+ * path) the key is validated per rule 9 but not persisted. A drunk
+ * double-tap lands on the same end state.
+ */
+export async function setCelebrantAction(
+  input: SetCelebrantInput,
+  idempotencyKey: string
+): Promise<SetCelebrantResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const parsed = setCelebrantSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { tripId, memberId } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  try {
+    // FOUNDER gate — stricter than loadManageContext's organizer check.
+    // Same wire-shape as an RLS-hidden row: non-founders never see the
+    // affordance (rule 11), so a forged call gets the generic denial.
+    const viewer = await getViewerMember(supabase, tripId, userId);
+    if (!viewer || viewer.role !== "organizer") {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+
+    if (memberId !== null) {
+      const target = await getTripMemberById(supabase, tripId, memberId);
+      if (!target) {
+        return { ok: false, errorKey: "rls_denied" };
+      }
+      // The founder row never wears the sash (mirrors the RPC's guard —
+      // the UI never offers this; a forged call gets the generic denial).
+      if (target.role === "organizer") {
+        return { ok: false, errorKey: "rls_denied" };
+      }
+      // Already the celebrant — replay/double-tap no-op, skip the write.
+      if (target.is_celebrant) {
+        return { ok: true };
+      }
+    }
+
+    await rateLimitedAction(RATE_LIMIT_SCOPES.SET_CELEBRANT, userId, () =>
+      setTripCelebrant(supabase, tripId, memberId)
+    );
+
+    revalidatePath("/trips", "layout");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    // The RPC raises 42501 with these markers when its in-function
+    // checks fail — surface them as the honest denial, not a retry hint.
+    if (
+      err instanceof Error &&
+      (err.message.includes("caller is not the trip founder") ||
+        err.message.includes("target is not a member of this trip") ||
+        err.message.includes("the founder cannot be the celebrant"))
+    ) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    console.error("[members] setCelebrantAction unexpected:", err);
+    return { ok: false, errorKey: "celebrant_save_failed" };
   }
 }
 

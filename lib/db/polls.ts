@@ -64,6 +64,32 @@ export async function listPolls(
 }
 
 /**
+ * Count of OPEN polls the viewer can see (RLS applies the visibility
+ * axis) — the dashboard Announcements-card discoverability line. Head
+ * count only, zero row payload.
+ *
+ * Open mirrors `isPollClosed` (#211 date-only register): no deadline,
+ * or `closes_on >= today` (a poll stays open THROUGH its close date).
+ * `todayIso` is `YYYY-MM-DD`, computed once by the caller.
+ */
+export async function countOpenPolls(
+  supabase: SupabaseClient,
+  tripId: string,
+  todayIso: string
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("polls")
+    .select("id", { count: "exact", head: true })
+    .eq("trip_id", tripId)
+    .or(`closes_on.is.null,closes_on.gte.${todayIso}`);
+
+  if (error) {
+    throw new Error(`countOpenPolls failed: ${error.message}`);
+  }
+  return count ?? 0;
+}
+
+/**
  * Composite view-model fetch — one round-trip per resource, joined in
  * TS (same deliberate no-PostgREST-embeds shape as the date poll: each
  * call has a single responsibility, and the row counts on this surface

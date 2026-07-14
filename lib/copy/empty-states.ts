@@ -516,6 +516,34 @@ export const M5_UI_STRINGS = {
   roster_manage_remove_confirm_template:
     "Remove {name} from the trip? They'd need a new invite to get back in.",
   roster_manage_close: "Never mind",
+  // #368 / #262 (name half) — self-service /me profile editor. Rule 8:
+  // phone is opt-IN — no asterisk, no completion pressure, and the hint
+  // names the ONE real reason to add it (the roster's contact download,
+  // i.e. day-of texts). NOT a "complete your profile" surface — that
+  // pattern is hard-banned.
+  meProfile_edit_cta: "Edit",
+  meProfile_edit_aria: "Edit your name and phone",
+  meProfile_heading: "What should the crew call you?",
+  meProfile_name_label: "Name",
+  meProfile_phone_label: "Phone — only if you want",
+  meProfile_phone_hint:
+    "Goes in the roster's contact download so the crew can text you day-of.",
+  meProfile_phone_placeholder: "+1 415 555 1212",
+  meProfile_submit: "Save it",
+  meProfile_cancel: "Never mind",
+  // /me — phone row label (sits beside the M4 me_label_name/email pair)
+  me_label_phone: "Phone",
+  // Celebrant assignment — FOUNDER-only items in the same overflow
+  // panel. Register matches the guard copy ("guest of honor"). The
+  // reassign confirm is #210 two-step (it displaces the current
+  // holder); a first-ever assignment commits in one tap. Clearing gets
+  // the same two-step since it also unseats a current holder.
+  roster_manage_make_celebrant: "This trip's for them",
+  roster_manage_celebrant_reassign_confirm_template:
+    "Make {name} the guest of honor? {current} steps back into the crew.",
+  roster_manage_clear_celebrant: "Back into the crew",
+  roster_manage_celebrant_clear_confirm_template:
+    "{name} rejoins the crew — no guest of honor until you pick one.",
 } as const;
 
 /**
@@ -539,6 +567,11 @@ export const MEMBER_DAYS_UI_STRINGS = {
   // Screen-reader expansion of the mono "thu 8 · fri 12" line — the
   // compact register is ambiguous read aloud ("thu 8" could be a date).
   memberDays_headcount_day_aria_template: "{count} in on {day}",
+  // Glanceability sweep — reciprocal one-line text links between the
+  // /me day-chips editor and the roster DayHeadcount block. Plain
+  // wayfinding, no nudge: neither line implies you're behind on anything.
+  memberDays_link_to_headcount: "See who's around when",
+  memberDays_link_to_editor: "Set which days you're around",
 } as const;
 
 export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;
@@ -561,3 +594,39 @@ export const TRIP_EDIT_UI_STRINGS = {
 } as const;
 
 export type TripEditUIStringKey = keyof typeof TRIP_EDIT_UI_STRINGS;
+
+/**
+ * Dashboard glance lines (glanceability sweep) — the muted one-line
+ * facts under each dashboard link-card title. Same voice test as every
+ * palette. Hard boundary: these are FACTS in text-muted-foreground,
+ * never badges / unread dots / counts styled as notifications
+ * (CLAUDE.md hard-bans). Templates use the `.replace("{x}", …)` pattern
+ * shared with M2/M3.
+ *
+ * Card empty states reuse the page-level `EMPTY_STATES` /
+ * `M3_UI_STRINGS.arrivals_empty` strings so the two surfaces never say
+ * different things about the same silence.
+ */
+export const DASHBOARD_GLANCE_STRINGS = {
+  // Itinerary card — items exist but the last one is already behind us
+  // (the true "nothing booked" case reuses EMPTY_STATES.itinerary).
+  glance_itinerary_wrapped: "That's a wrap — nothing left on the plan.",
+  // Arrivals card. {when} is "Sat 2:00 pm" (trip-tz, lowercase am/pm).
+  glance_arrivals_landed_next_template: "{landed} landed · next {when}",
+  glance_arrivals_all_landed_template: "{landed} landed — everyone's in",
+  glance_arrivals_first_template: "First one lands {when}",
+  // Expenses card — the viewer's OWN net position only. A who-owes-who
+  // list is killed scope (notes/killed-and-deferred.md); never widen this.
+  glance_expenses_up_template: "You're up {amount}",
+  glance_expenses_down_template: "You're down {amount}",
+  glance_expenses_even: "All square so far",
+  // Invites card (organizer-only) — live link count, stated plainly.
+  glance_invites_one: "1 link out",
+  glance_invites_other_template: "{count} links out",
+  // Announcements card — open-poll discoverability line (polls live on
+  // the announcements page; non-organizers had no way to know).
+  glance_polls_open_one: "1 question up for a vote",
+  glance_polls_open_other_template: "{count} questions up for a vote",
+} as const;
+
+export type DashboardGlanceStringKey = keyof typeof DASHBOARD_GLANCE_STRINGS;
