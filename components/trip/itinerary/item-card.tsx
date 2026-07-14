@@ -193,11 +193,12 @@ export function ItemCard({
 
       {/* Per-item flag form — only for non-organizer members. itemFlags is
           RLS-scoped to the viewer's own rows here, so it doubles as the
-          rehydration source (#365). */}
+          rehydration source (#365). Full rows pass through so custom flags
+          (and their notes) render back as removable entries (#398). */}
       {!isOrganizer ? (
         <ItemFlagForm
           itemId={item.id}
-          initialFlags={itemFlags.map((f) => f.flag)}
+          initialFlags={itemFlags.map(({ flag, note }) => ({ flag, note }))}
         />
       ) : null}
     </article>

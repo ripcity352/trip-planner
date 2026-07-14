@@ -40,7 +40,8 @@ vi.mock("../item-flag-form", () => ({
     initialFlags,
   }: {
     itemId: string;
-    initialFlags?: ReadonlyArray<string>;
+    // #398: full rows (flag + note) now pass through, not bare strings
+    initialFlags?: ReadonlyArray<{ flag: string; note: string | null }>;
   }) => (
     <div
       data-testid="flag-form"
@@ -360,8 +361,9 @@ describe("ItemCard — member flags (#365)", () => {
       />
     );
     const form = screen.getByTestId("flag-form");
+    // #398: rows (flag + note) pass through so custom flags render back
     expect(form.getAttribute("data-initial-flags")).toBe(
-      JSON.stringify(["Late arrival"])
+      JSON.stringify([{ flag: "Late arrival", note: null }])
     );
   });
 });
