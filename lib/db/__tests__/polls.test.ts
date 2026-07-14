@@ -23,6 +23,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   buildPollViews,
+  countOpenPolls,
   getPollsViewModel,
   isPollClosed,
   leadingOptions,
@@ -282,5 +283,59 @@ describe("getPollsViewModel", () => {
     await expect(
       getPollsViewModel(client, "trip-1", "m1")
     ).rejects.toThrow(/getPollsViewModel failed: nope/);
+  });
+});
+
+// -------------------------------------------------------------------
+// countOpenPolls — the dashboard discoverability head count. We assert
+// the openness predicate mirrors `isPollClosed` (open through closes_on
+// inclusive: null deadline OR closes_on >= today).
+// -------------------------------------------------------------------
+describe("countOpenPolls", () => {
+  function makeCountBuilder(count: number | null, error: unknown = null) {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const handler: ProxyHandler<Record<string, unknown>> = {
+      get(_target, prop: string) {
+        if (prop === "then") {
+          const p = Promise.resolve({ count, error });
+          return p.then.bind(p);
+        }
+        return (...args: unknown[]) => {
+          calls.push({ method: prop, args });
+          return proxy;
+        };
+      },
+    };
+    const proxy: Record<string, unknown> = new Proxy({}, handler);
+    return { calls, client: { from: vi.fn(() => proxy) } };
+  }
+
+  it("returns the head count with the inclusive-openness predicate", async () => {
+    const { calls, client } = makeCountBuilder(2);
+    const result = await countOpenPolls(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      "2026-07-13"
+    );
+    expect(result).toBe(2);
+
+    const orCall = calls.find((c) => c.method === "or");
+    expect(orCall?.args[0]).toBe("closes_on.is.null,closes_on.gte.2026-07-13");
+    const selectCall = calls.find((c) => c.method === "select");
+    expect(selectCall?.args[1]).toEqual({ count: "exact", head: true });
+  });
+
+  it("returns 0 when the count comes back null", async () => {
+    const { client } = makeCountBuilder(null);
+    await expect(
+      countOpenPolls(client as unknown as SupabaseClient, "trip-1", "2026-07-13")
+    ).resolves.toBe(0);
+  });
+
+  it("throws with context on error", async () => {
+    const { client } = makeCountBuilder(null, { message: "boom" });
+    await expect(
+      countOpenPolls(client as unknown as SupabaseClient, "trip-1", "2026-07-13")
+    ).rejects.toThrow(/countOpenPolls failed: boom/);
   });
 });

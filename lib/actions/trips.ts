@@ -19,10 +19,11 @@
  */
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { createTrip } from "@/lib/db/trips";
+import { createTrip, updateTrip } from "@/lib/db/trips";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -197,5 +198,100 @@ export async function createTripAction(
       throw err;
     }
     return { ok: false, errorKey: "trip_create_failed" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// updateTripAction — dashboard-header name/location edit
+// ---------------------------------------------------------------------------
+
+const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
+
+/**
+ * Exactly the two header fields. Dates are deliberately excluded — the
+ * trip window is decided by the /dates poll flow, and letting this
+ * action touch starts_at/ends_at would bypass the vote. Bounds mirror
+ * `createTripAction` (name ≤ 100, location ≤ 200); an empty/whitespace
+ * location clears the field (Trip.location is nullable).
+ */
+const updateTripSchema = z.object({
+  tripId: z.string().uuid(),
+  name: z.string().trim().min(1).max(100),
+  location: z
+    .string()
+    .trim()
+    .max(200)
+    .transform((v) => (v.length > 0 ? v : null))
+    .nullable(),
+});
+
+export interface UpdateTripActionInput {
+  tripId: string;
+  name: string;
+  location?: string | null;
+}
+
+export type UpdateTripResult =
+  | { ok: true }
+  | { ok: false; errorKey: ErrorKey };
+
+/**
+ * Update a trip's name + location. Organizer-gated by RLS ("organizers
+ * can update their trips") — there is no app-level role check, and the
+ * action stays honest when the policy swallows the write: a zero-row
+ * update (detected via the `.select()`-chained write in `updateTrip`)
+ * returns `rls_denied`, never a fake success.
+ *
+ * Idempotency (rule 9): the client-minted key is validated but not
+ * persisted — this is a last-write-wins update of two mutable columns
+ * on one row (same rationale as `setTripNotes` / `removeMemberAction`),
+ * so a drunk double-tap replays the identical write harmlessly.
+ */
+export async function updateTripAction(
+  input: UpdateTripActionInput,
+  idempotencyKey: string
+): Promise<UpdateTripResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const parsed = updateTripSchema.safeParse({
+    tripId: input.tripId,
+    name: input.name,
+    location: input.location ?? null,
+  });
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { tripId, name, location } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  try {
+    const updated = await rateLimitedAction(
+      RATE_LIMIT_SCOPES.UPDATE_TRIP,
+      userId,
+      () => updateTrip(supabase, tripId, { name, location })
+    );
+    if (!updated) {
+      // RLS swallowed the write — the caller isn't an organizer of this
+      // trip (or the trip doesn't exist). Same wire-shape either way.
+      return { ok: false, errorKey: "rls_denied" };
+    }
+
+    revalidatePath("/trips", "layout");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[trips] updateTripAction unexpected:", err);
+    return { ok: false, errorKey: "trip_update_failed" };
   }
 }

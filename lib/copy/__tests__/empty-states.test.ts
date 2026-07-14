@@ -9,6 +9,7 @@ import {
   EMPTY_STATES,
   EMPTY_STATE_CTAS,
   ATTENDEE_COUNT_BUCKET_LABELS,
+  DASHBOARD_GLANCE_STRINGS,
   M2_UI_STRINGS,
   M3_UI_STRINGS,
   type EmptyStateKey,
@@ -193,5 +194,44 @@ describe("M3_UI_STRINGS", () => {
     // remaining count, no original max. The template now reads "{remaining} left".
     expect(M3_UI_STRINGS.invitesPage_uses_template).not.toContain("{total}");
     expect(M3_UI_STRINGS.invitesPage_expires_template).toContain("{when}");
+  });
+});
+
+// Dashboard glance lines (glanceability sweep) — same sweep + placeholder
+// pins as the milestone palettes above.
+describe("DASHBOARD_GLANCE_STRINGS", () => {
+  it("every value is a non-empty string under 120 chars", () => {
+    Object.values(DASHBOARD_GLANCE_STRINGS).forEach((value) => {
+      expect(typeof value).toBe("string");
+      expect(value.trim().length).toBeGreaterThan(0);
+      expect(value.length).toBeLessThanOrEqual(MAX_LENGTH);
+    });
+  });
+
+  it("templates carry their placeholders", () => {
+    expect(
+      DASHBOARD_GLANCE_STRINGS.glance_arrivals_landed_next_template
+    ).toContain("{landed}");
+    expect(
+      DASHBOARD_GLANCE_STRINGS.glance_arrivals_landed_next_template
+    ).toContain("{when}");
+    expect(
+      DASHBOARD_GLANCE_STRINGS.glance_arrivals_all_landed_template
+    ).toContain("{landed}");
+    expect(DASHBOARD_GLANCE_STRINGS.glance_arrivals_first_template).toContain(
+      "{when}"
+    );
+    expect(DASHBOARD_GLANCE_STRINGS.glance_expenses_up_template).toContain(
+      "{amount}"
+    );
+    expect(DASHBOARD_GLANCE_STRINGS.glance_expenses_down_template).toContain(
+      "{amount}"
+    );
+    expect(DASHBOARD_GLANCE_STRINGS.glance_invites_other_template).toContain(
+      "{count}"
+    );
+    expect(DASHBOARD_GLANCE_STRINGS.glance_polls_open_other_template).toContain(
+      "{count}"
+    );
   });
 });

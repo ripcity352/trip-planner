@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createInviteRecord, revokeInvite } from "@/lib/db/invites";
 import { setMemberDisplayName } from "@/lib/db/trips";
 import { setProfileDisplayNameIfEmpty } from "@/lib/db/profiles";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/utils/member-display";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -101,8 +102,9 @@ const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
 
 // #348: display-name clamp at the accept boundary. Length only — the
 // roster renders via React (no injection surface) and names are personal;
-// don't over-police what people call themselves.
-const DISPLAY_NAME_MAX = 80;
+// don't over-police what people call themselves. Shared with the /me
+// profile editor (#368/#262) so the two capture surfaces can't drift.
+const DISPLAY_NAME_MAX = DISPLAY_NAME_MAX_LENGTH;
 
 const createInviteSchema = z.object({
   tripId: z.string().uuid(),

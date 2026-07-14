@@ -8,10 +8,17 @@
  *   - "Remove from trip" — #210 two-step destructive (first tap arms the
  *     persimmon confirm naming the object + consequence, second commits)
  *
+ * Celebrant assignment (FOUNDER viewers only — parent gates via the
+ * `celebrant` prop): a third move on ordinary rows ("This trip's for
+ * them"; two-step only when it unseats a current holder), and on the
+ * current celebrant's own row the panel becomes a single clear
+ * affordance ("Back into the crew", always two-step).
+ *
  * Rule 11: this is a micro-affordance, not an admin panel. Eligibility
- * (never on your own row, the celebrant, or the founder) is decided by
- * the PARENT — this component assumes it was rendered for a manageable
- * row; the server action re-checks every guard regardless.
+ * (never on your own row or the founder; the celebrant row only in the
+ * founder's clear-mode) is decided by the PARENT — this component
+ * assumes it was rendered for a manageable row; the server action
+ * re-checks every guard regardless.
  */
 
 import * as React from "react";
@@ -23,11 +30,27 @@ import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { callAction } from "@/lib/ui/call-action";
 import {
   removeMemberAction,
+  setCelebrantAction,
   setMemberRoleAction,
   type SettableMemberRole,
 } from "@/lib/actions/members";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
+
+/**
+ * Celebrant capability — threaded only for FOUNDER viewers (rule 11:
+ * non-founders never see the affordance, no disabled states).
+ */
+export interface CelebrantManage {
+  /** True when THIS row is the trip's current celebrant (clear-mode). */
+  isCelebrant: boolean;
+  /**
+   * Resolved name of the trip's current celebrant on ANOTHER row, or
+   * null when the seat is empty (or this row holds it). Non-null makes
+   * the assign move a #210 two-step, since it unseats them.
+   */
+  currentCelebrantName: string | null;
+}
 
 export interface MemberManageProps {
   tripId: string;
@@ -35,6 +58,7 @@ export interface MemberManageProps {
   /** Resolved display name — used in the aria-label and confirm copy. */
   memberName: string;
   currentRole: SettableMemberRole;
+  celebrant?: CelebrantManage;
   className?: string;
 }
 
@@ -43,13 +67,18 @@ export function MemberManage({
   memberId,
   memberName,
   currentRole,
+  celebrant,
   className,
 }: MemberManageProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [removeArmed, setRemoveArmed] = React.useState(false);
+  const [celebrantArmed, setCelebrantArmed] = React.useState(false);
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
+
+  // Clear-mode: this row IS the celebrant — the only move is unseating.
+  const celebrantClearMode = celebrant?.isCelebrant === true;
 
   const nextRole: SettableMemberRole =
     currentRole === "co_organizer" ? "attendee" : "co_organizer";
@@ -61,7 +90,47 @@ export function MemberManage({
   const close = () => {
     setOpen(false);
     setRemoveArmed(false);
+    setCelebrantArmed(false);
     setErrorKey(null);
+  };
+
+  const commitCelebrant = (targetMemberId: string | null) => {
+    startTransition(async () => {
+      setErrorKey(null);
+      const result = await callAction(() =>
+        setCelebrantAction(
+          { tripId, memberId: targetMemberId },
+          crypto.randomUUID()
+        )
+      );
+      if (!result.ok) {
+        setErrorKey(result.errorKey);
+        setCelebrantArmed(false);
+        return;
+      }
+      close();
+      router.refresh();
+    });
+  };
+
+  const handleMakeCelebrant = () => {
+    // #210 two-step ONLY when someone currently holds the seat — a
+    // first-ever assignment commits in one tap.
+    if (celebrant?.currentCelebrantName != null && !celebrantArmed) {
+      setCelebrantArmed(true);
+      setRemoveArmed(false);
+      return;
+    }
+    commitCelebrant(memberId);
+  };
+
+  const handleClearCelebrant = () => {
+    // Always two-step: it unseats the current guest of honor.
+    if (!celebrantArmed) {
+      setCelebrantArmed(true);
+      return;
+    }
+    commitCelebrant(null);
   };
 
   const handleRoleFlip = () => {
@@ -81,9 +150,11 @@ export function MemberManage({
   };
 
   const handleRemove = () => {
-    // #210 two-step: first tap arms, second commits.
+    // #210 two-step: first tap arms, second commits. Arming remove
+    // disarms a pending celebrant confirm — one armed move at a time.
     if (!removeArmed) {
       setRemoveArmed(true);
+      setCelebrantArmed(false);
       return;
     }
     startTransition(async () => {
@@ -129,36 +200,63 @@ export function MemberManage({
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={handleRoleFlip}
-          disabled={isPending}
-          className={cn(
-            "focus-visible:ring-ring rounded-xs border border-border bg-muted px-3 py-1.5 text-xs font-medium",
-            "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
-            "disabled:cursor-not-allowed disabled:opacity-60"
-          )}
-        >
-          {roleLabel}
-        </button>
+        {!celebrantClearMode ? (
+          <button
+            type="button"
+            onClick={handleRoleFlip}
+            disabled={isPending}
+            className={cn(
+              "focus-visible:ring-ring rounded-xs border border-border bg-muted px-3 py-1.5 text-xs font-medium",
+              "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
+          >
+            {roleLabel}
+          </button>
+        ) : null}
+
+        {/* Founder-only celebrant moves (parent threads `celebrant`).
+            On the celebrant's own row the panel is JUST the clear
+            affordance; elsewhere it's a third quiet move. */}
+        {celebrant ? (
+          <button
+            type="button"
+            onClick={
+              celebrantClearMode ? handleClearCelebrant : handleMakeCelebrant
+            }
+            disabled={isPending}
+            className={cn(
+              "focus-visible:ring-ring rounded-xs border border-border bg-muted px-3 py-1.5 text-xs font-medium",
+              "hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+              "disabled:cursor-not-allowed disabled:opacity-60",
+              celebrantArmed && "border-foreground/40 bg-muted/80"
+            )}
+          >
+            {celebrantClearMode
+              ? M5_UI_STRINGS.roster_manage_clear_celebrant
+              : M5_UI_STRINGS.roster_manage_make_celebrant}
+          </button>
+        ) : null}
 
         {/* #210 two-step destructive: armed state escalates the
             persimmon outline — never a solid destructive flood. */}
-        <button
-          type="button"
-          onClick={handleRemove}
-          disabled={isPending}
-          className={cn(
-            "focus-visible:ring-ring rounded-xs border px-3 py-1.5 text-xs font-medium",
-            "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
-            "disabled:cursor-not-allowed disabled:opacity-60",
-            removeArmed
-              ? "border-destructive bg-destructive/10 text-destructive"
-              : "border-destructive/40 text-destructive hover:bg-destructive/10"
-          )}
-        >
-          {M5_UI_STRINGS.roster_manage_remove}
-        </button>
+        {!celebrantClearMode ? (
+          <button
+            type="button"
+            onClick={handleRemove}
+            disabled={isPending}
+            className={cn(
+              "focus-visible:ring-ring rounded-xs border px-3 py-1.5 text-xs font-medium",
+              "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+              "disabled:cursor-not-allowed disabled:opacity-60",
+              removeArmed
+                ? "border-destructive bg-destructive/10 text-destructive"
+                : "border-destructive/40 text-destructive hover:bg-destructive/10"
+            )}
+          >
+            {M5_UI_STRINGS.roster_manage_remove}
+          </button>
+        ) : null}
 
         <button
           type="button"
@@ -180,6 +278,24 @@ export function MemberManage({
             "{name}",
             memberName
           )}
+        </p>
+      ) : null}
+
+      {/* Celebrant confirm — names both seats changing hands. Not a
+          destructive move, so it stays in ink, not persimmon. */}
+      {celebrantArmed ? (
+        <p className="text-xs font-medium">
+          {celebrantClearMode
+            ? M5_UI_STRINGS.roster_manage_celebrant_clear_confirm_template.replace(
+                "{name}",
+                memberName
+              )
+            : M5_UI_STRINGS.roster_manage_celebrant_reassign_confirm_template
+                .replace("{name}", memberName)
+                .replace(
+                  "{current}",
+                  celebrant?.currentCelebrantName ?? ""
+                )}
         </p>
       ) : null}
 
