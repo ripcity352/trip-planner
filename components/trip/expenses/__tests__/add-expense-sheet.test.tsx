@@ -15,10 +15,47 @@ vi.mock("next/navigation", () => ({
 }));
 
 const MEMBERS = [
-  { memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c01", name: "Dave" },
-  { memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c02", name: "Mike" },
-  { memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c03", name: "Pete" },
-];
+  {
+    memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c01",
+    name: "Dave",
+    rsvpStatus: "going",
+  },
+  {
+    memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c02",
+    name: "Mike",
+    rsvpStatus: "going",
+  },
+  {
+    memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c03",
+    name: "Pete",
+    rsvpStatus: "going",
+  },
+] as const;
+
+// #391 fixture — one member per RSVP state. Sam (maybe) is the persona
+// case from the issue; Ray (declined) and Ken (pending) start unselected.
+const MIXED_MEMBERS = [
+  {
+    memberId: "c1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c01",
+    name: "Dave",
+    rsvpStatus: "going",
+  },
+  {
+    memberId: "c1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c02",
+    name: "Sam",
+    rsvpStatus: "maybe",
+  },
+  {
+    memberId: "c1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c03",
+    name: "Ray",
+    rsvpStatus: "declined",
+  },
+  {
+    memberId: "c1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c04",
+    name: "Ken",
+    rsvpStatus: "pending",
+  },
+] as const;
 
 const ORGANIZER = { isOrganizer: true, isCelebrant: false };
 const PLAIN_MEMBER = { isOrganizer: false, isCelebrant: false };
@@ -42,18 +79,18 @@ describe("AddExpenseSheet", () => {
     addExpenseActionMock.mockResolvedValue({ ok: true, expense: { id: "e-1" } });
   });
 
-  function openSheet(viewer = ORGANIZER) {
+  function openSheet(viewer = ORGANIZER, members: typeof MEMBERS | typeof MIXED_MEMBERS = MEMBERS) {
     render(
       <AddExpenseSheet
         tripId="a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-        members={MEMBERS}
+        members={members}
         viewer={viewer}
       />
     );
     fireEvent.click(screen.getByRole("button", { name: "Log a spend" }));
   }
 
-  it("submits cents, all members preselected, and a submit-time key", async () => {
+  it("submits cents, all 'going' members preselected, and a submit-time key", async () => {
     openSheet();
     fireEvent.change(screen.getByLabelText("What was it?"), {
       target: { value: "First round" },
@@ -153,6 +190,78 @@ describe("AddExpenseSheet", () => {
       "true"
     );
     expect(addExpenseActionMock).not.toHaveBeenCalled();
+  });
+
+  describe("attendance-aware split defaults (#391)", () => {
+    it("pre-selects going + maybe; declined + pending start unselected", () => {
+      openSheet(ORGANIZER, MIXED_MEMBERS);
+      expect(screen.getByRole("button", { name: "Dave" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+      expect(
+        screen.getByRole("button", { name: "Sam said maybe" })
+      ).toHaveAttribute("aria-pressed", "true");
+      expect(
+        screen.getByRole("button", { name: "Ray not coming" })
+      ).toHaveAttribute("aria-pressed", "false");
+      expect(
+        screen.getByRole("button", { name: "Ken hasn't said yet" })
+      ).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("submits only going + maybe by default", async () => {
+      openSheet(ORGANIZER, MIXED_MEMBERS);
+      fireEvent.change(screen.getByLabelText("What was it?"), {
+        target: { value: "Boat deposit" },
+      });
+      fireEvent.change(screen.getByLabelText("How much?"), {
+        target: { value: "450" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Log it" }));
+
+      await waitFor(() => expect(addExpenseActionMock).toHaveBeenCalled());
+      const [input] = addExpenseActionMock.mock.calls[0] as [
+        { splitMemberIds: string[] },
+      ];
+      expect(input.splitMemberIds.sort()).toEqual(
+        [MIXED_MEMBERS[0].memberId, MIXED_MEMBERS[1].memberId].sort()
+      );
+    });
+
+    it("annotates non-going chips only — the going chip carries no note", () => {
+      openSheet(ORGANIZER, MIXED_MEMBERS);
+      expect(screen.getByText("said maybe")).toBeInTheDocument();
+      expect(screen.getByText("not coming")).toBeInTheDocument();
+      expect(screen.getByText("hasn't said yet")).toBeInTheDocument();
+      // Dave (going) is just his name — no annotation span.
+      expect(
+        screen.getByRole("button", { name: "Dave" })
+      ).toHaveTextContent(/^Dave$/);
+    });
+
+    it("a declined member can still be tapped in", async () => {
+      openSheet(ORGANIZER, MIXED_MEMBERS);
+      fireEvent.change(screen.getByLabelText("What was it?"), {
+        target: { value: "Airport pizza" },
+      });
+      fireEvent.change(screen.getByLabelText("How much?"), {
+        target: { value: "30" },
+      });
+      // Ray's in for this one after all.
+      fireEvent.click(screen.getByRole("button", { name: "Ray not coming" }));
+      expect(
+        screen.getByRole("button", { name: "Ray not coming" })
+      ).toHaveAttribute("aria-pressed", "true");
+      fireEvent.click(screen.getByRole("button", { name: "Log it" }));
+
+      await waitFor(() => expect(addExpenseActionMock).toHaveBeenCalled());
+      const [input] = addExpenseActionMock.mock.calls[0] as [
+        { splitMemberIds: string[] },
+      ];
+      expect(input.splitMemberIds).toContain(MIXED_MEMBERS[2].memberId);
+      expect(input.splitMemberIds).toHaveLength(3);
+    });
   });
 
   describe("role-filtered visibility options (#384)", () => {

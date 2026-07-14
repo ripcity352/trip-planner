@@ -47,7 +47,7 @@ import { EXPENSE_VISIBILITY_LABELS } from "./visibility-labels";
 export interface EditExpenseSheetProps {
   tripId: string;
   expense: Expense;
-  members: SplitCandidate[];
+  members: readonly SplitCandidate[];
   /** trip_members.id values currently in the split. */
   initialSplitMemberIds: string[];
   /** Viewer's seat — same option filtering as the add sheet (#384). */

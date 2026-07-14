@@ -19,11 +19,25 @@ vi.mock("next/navigation", () => ({
 
 const TRIP_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
 
+// rsvpStatus is required on SplitCandidate since #391 (it drives the
+// ADD sheet's pre-selection; the edit sheet keeps the stored split).
 const MEMBERS = [
-  { memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c01", name: "Dave" },
-  { memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c02", name: "Mike" },
-  { memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c03", name: "Pete" },
-];
+  {
+    memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c01",
+    name: "Dave",
+    rsvpStatus: "going",
+  },
+  {
+    memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c02",
+    name: "Mike",
+    rsvpStatus: "going",
+  },
+  {
+    memberId: "b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c03",
+    name: "Pete",
+    rsvpStatus: "going",
+  },
+] as const;
 
 const EXPENSE: Expense = {
   id: "c1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c77",
