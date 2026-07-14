@@ -15,36 +15,69 @@
  */
 
 import type { Expense, ExpenseSplit } from "@/lib/db/types";
+import type { ArrivalInstant } from "@/lib/db/travel-legs";
 
 export interface ArrivalsGlance {
-  /** Legs whose arrival instant is at or before `now`. */
+  /** Distinct MEMBERS with at least one arrival at or before `now`. */
   landed: number;
-  /** Earliest arrival strictly after `now`, or null when none remain. */
+  /**
+   * Earliest future arrival among members who have NOT yet landed at
+   * all, or null when none remain. Members are the unit, not legs:
+   * a connecting second leg or a logged return trip of someone who
+   * already landed never shows up as "next".
+   */
   nextArrival: Date | null;
 }
 
 /**
  * Summarize arrival instants for the dashboard Arrivals card.
- * `arriveTimes` is the slim `getArrivalTimesByTrip` read — ISO
- * timestamps, nulls already filtered out at the DB layer. Order is not
- * assumed.
+ * `arrivals` is the slim `getArrivalTimesByTrip` read — member id +
+ * ISO timestamp, nulls already filtered out at the DB layer. Order is
+ * not assumed. Legs are per-leg (connections, return trips), so the
+ * math groups by member: a person has "landed" once any of their
+ * arrivals is in the past.
  */
 export function summarizeArrivals(
-  arriveTimes: readonly string[],
+  arrivals: readonly ArrivalInstant[],
   now: Date
 ): ArrivalsGlance {
-  return arriveTimes.reduce<ArrivalsGlance>(
-    (acc, iso) => {
-      const at = new Date(iso);
-      if (at.getTime() <= now.getTime()) {
-        return { ...acc, landed: acc.landed + 1 };
-      }
-      const isSooner =
-        acc.nextArrival === null || at.getTime() < acc.nextArrival.getTime();
-      return isSooner ? { ...acc, nextArrival: at } : acc;
-    },
-    { landed: 0, nextArrival: null }
-  );
+  const nowMs = now.getTime();
+
+  const byMember = arrivals.reduce<
+    ReadonlyMap<string, { hasLanded: boolean; earliestFutureMs: number | null }>
+  >((acc, { trip_member_id, arrive_at }) => {
+    const atMs = new Date(arrive_at).getTime();
+    const prev = acc.get(trip_member_id) ?? {
+      hasLanded: false,
+      earliestFutureMs: null,
+    };
+    const entry =
+      atMs <= nowMs
+        ? { ...prev, hasLanded: true }
+        : {
+            ...prev,
+            earliestFutureMs:
+              prev.earliestFutureMs === null || atMs < prev.earliestFutureMs
+                ? atMs
+                : prev.earliestFutureMs,
+          };
+    return new Map(acc).set(trip_member_id, entry);
+  }, new Map());
+
+  let landed = 0;
+  let nextMs: number | null = null;
+  for (const entry of byMember.values()) {
+    if (entry.hasLanded) {
+      landed += 1;
+    } else if (
+      entry.earliestFutureMs !== null &&
+      (nextMs === null || entry.earliestFutureMs < nextMs)
+    ) {
+      nextMs = entry.earliestFutureMs;
+    }
+  }
+
+  return { landed, nextArrival: nextMs === null ? null : new Date(nextMs) };
 }
 
 export interface ViewerNetPosition {

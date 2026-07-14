@@ -17,6 +17,11 @@ import {
 const NOW = new Date("2026-07-13T12:00:00Z");
 
 describe("summarizeArrivals", () => {
+  const leg = (trip_member_id: string, arrive_at: string) => ({
+    trip_member_id,
+    arrive_at,
+  });
+
   it("returns zero landed / no next for an empty list", () => {
     expect(summarizeArrivals([], NOW)).toEqual({
       landed: 0,
@@ -24,9 +29,9 @@ describe("summarizeArrivals", () => {
     });
   });
 
-  it("counts arrivals at or before now as landed (inclusive boundary)", () => {
+  it("counts members arrived at or before now as landed (inclusive boundary)", () => {
     const result = summarizeArrivals(
-      ["2026-07-13T09:00:00Z", "2026-07-13T12:00:00Z"],
+      [leg("m-1", "2026-07-13T09:00:00Z"), leg("m-2", "2026-07-13T12:00:00Z")],
       NOW
     );
     expect(result.landed).toBe(2);
@@ -35,11 +40,39 @@ describe("summarizeArrivals", () => {
 
   it("picks the earliest future arrival regardless of input order", () => {
     const result = summarizeArrivals(
-      ["2026-07-14T18:00:00Z", "2026-07-13T09:00:00Z", "2026-07-13T15:00:00Z"],
+      [
+        leg("m-1", "2026-07-14T18:00:00Z"),
+        leg("m-2", "2026-07-13T09:00:00Z"),
+        leg("m-3", "2026-07-13T15:00:00Z"),
+      ],
       NOW
     );
     expect(result.landed).toBe(1);
     expect(result.nextArrival?.toISOString()).toBe("2026-07-13T15:00:00.000Z");
+  });
+
+  it("counts a multi-leg connection as ONE person, landed once any leg is past", () => {
+    // Dave's two-leg connection: first hop landed, second still in the air.
+    const result = summarizeArrivals(
+      [leg("m-dave", "2026-07-13T09:00:00Z"), leg("m-dave", "2026-07-13T14:00:00Z")],
+      NOW
+    );
+    expect(result.landed).toBe(1);
+    // His second hop is not "next" — he's already here.
+    expect(result.nextArrival).toBeNull();
+  });
+
+  it("ignores a landed member's logged return leg when picking next", () => {
+    const result = summarizeArrivals(
+      [
+        leg("m-1", "2026-07-13T09:00:00Z"), // landed
+        leg("m-1", "2026-07-16T20:00:00Z"), // trip-home leg
+        leg("m-2", "2026-07-14T10:00:00Z"), // genuinely inbound
+      ],
+      NOW
+    );
+    expect(result.landed).toBe(1);
+    expect(result.nextArrival?.toISOString()).toBe("2026-07-14T10:00:00.000Z");
   });
 });
 

@@ -56,7 +56,10 @@ import { getItineraryByTrip } from "@/lib/db/itinerary";
 import { getTripNotes } from "@/lib/db/trip-notes";
 import { isDatePollDecided } from "@/lib/db/date-poll";
 import { getLatestAnnouncement } from "@/lib/db/announcements";
-import { getArrivalTimesByTrip } from "@/lib/db/travel-legs";
+import {
+  getArrivalTimesByTrip,
+  type ArrivalInstant,
+} from "@/lib/db/travel-legs";
 import { countOpenPolls } from "@/lib/db/polls";
 import { countActiveInvites } from "@/lib/db/invites";
 import { getExpensesByTrip, getSplitsByTrip } from "@/lib/db/expenses";
@@ -392,7 +395,7 @@ export default async function TripDashboardPage({ params }: PageProps) {
  * names — no arrival forensics.
  */
 function formatArrivalsLine(
-  arrivalTimes: readonly string[],
+  arrivalTimes: readonly ArrivalInstant[],
   now: Date,
   tripTimezone: string
 ): string {

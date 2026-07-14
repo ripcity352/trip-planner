@@ -34,20 +34,27 @@ export async function getTravelLegsByTrip(
   return (data ?? []) as TravelLeg[];
 }
 
+export interface ArrivalInstant {
+  trip_member_id: string;
+  arrive_at: string;
+}
+
 /**
  * Slim arrival-instants read for the dashboard Arrivals glance line —
- * one column, legs without an arrival time filtered at the DB. The
- * aggregate landed/next math lives in
+ * member id + instant only, legs without an arrival time filtered at
+ * the DB. The member id is needed because legs are per-leg, not
+ * per-person (connections, return trips), and the glance line counts
+ * PEOPLE. The aggregate landed/next math lives in
  * `lib/utils/dashboard-glance.ts#summarizeArrivals`; only counts and
  * the next instant ever render (no names — no arrival forensics).
  */
 export async function getArrivalTimesByTrip(
   supabase: SupabaseClient,
   tripId: string
-): Promise<string[]> {
+): Promise<ArrivalInstant[]> {
   const { data, error } = await supabase
     .from("travel_legs")
-    .select("arrive_at")
+    .select("trip_member_id, arrive_at")
     .eq("trip_id", tripId)
     .not("arrive_at", "is", null);
 
@@ -55,7 +62,5 @@ export async function getArrivalTimesByTrip(
     throw new Error(`getArrivalTimesByTrip failed: ${error.message}`);
   }
 
-  return ((data ?? []) as Array<{ arrive_at: string }>).map(
-    (row) => row.arrive_at
-  );
+  return (data ?? []) as ArrivalInstant[];
 }
