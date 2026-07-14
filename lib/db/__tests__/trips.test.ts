@@ -15,6 +15,8 @@ import {
   getTripMemberById,
   updateTripMemberRole,
   deleteTripMember,
+  updateMyMemberProfile,
+  setTripCelebrant,
 } from "../trips";
 
 const M1_COLUMNS = [
@@ -317,5 +319,176 @@ describe("deleteTripMember", () => {
       "member-1"
     );
     expect(count).toBe(0);
+  });
+});
+
+// #368 / #262 — self-service /me profile write (own row only via RLS).
+describe("updateMyMemberProfile", () => {
+  const KEY = "11111111-2222-4333-8444-555555555555";
+
+  /** makeBuilder variant that resolves with a Supabase-shaped error. */
+  function makeFailingBuilder(error: { code: string; message: string }) {
+    const thenable: PromiseLike<{ data: null; error: typeof error }> = {
+      then(onfulfilled) {
+        return Promise.resolve({ data: null, error }).then(onfulfilled);
+      },
+    };
+    const handler: ProxyHandler<Record<string, unknown>> = {
+      get(_target, prop: string) {
+        if (prop === "then") return thenable.then.bind(thenable);
+        return () => proxy;
+      },
+    };
+    const proxy: Record<string, unknown> = new Proxy({}, handler);
+    return { client: { from: vi.fn(() => proxy) } };
+  }
+
+  it("writes display_name + phone_e164 + idempotency_key scoped by trip AND member id", async () => {
+    const { calls, client } = makeBuilder({ id: "member-1" });
+
+    const outcome = await updateMyMemberProfile(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      "member-1",
+      "Carl",
+      "+14155551212",
+      KEY
+    );
+
+    expect(outcome).toBe("updated");
+    const update = calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({
+      display_name: "Carl",
+      phone_e164: "+14155551212",
+      idempotency_key: KEY,
+    });
+    // Multi-tenant rule 6: BOTH trip_id and id must scope the write.
+    const eqArgs = calls
+      .filter((c) => c.method === "eq")
+      .map((c) => `${c.args[0]}=${c.args[1]}`);
+    expect(eqArgs).toContain("trip_id=trip-1");
+    expect(eqArgs).toContain("id=member-1");
+    // Honest-write chain: .select().maybeSingle() so zero rows is visible.
+    expect(calls.some((c) => c.method === "select")).toBe(true);
+    expect(calls.some((c) => c.method === "maybeSingle")).toBe(true);
+  });
+
+  it("passes phone null through to clear the stored number", async () => {
+    const { calls, client } = makeBuilder({ id: "member-1" });
+
+    await updateMyMemberProfile(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      "member-1",
+      "Carl",
+      null,
+      KEY
+    );
+
+    const update = calls.find((c) => c.method === "update");
+    expect(update?.args[0]).toEqual({
+      display_name: "Carl",
+      phone_e164: null,
+      idempotency_key: KEY,
+    });
+  });
+
+  it("returns 'missing' when RLS swallows the update (no row comes back)", async () => {
+    const { client } = makeBuilder(null);
+    const outcome = await updateMyMemberProfile(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      "member-x",
+      "Carl",
+      null,
+      KEY
+    );
+    expect(outcome).toBe("missing");
+  });
+
+  it("maps a 23505 unique violation to 'duplicate_phone' instead of throwing", async () => {
+    const { client } = makeFailingBuilder({
+      code: "23505",
+      message:
+        'duplicate key value violates unique constraint "trip_members_unique_phone"',
+    });
+    const outcome = await updateMyMemberProfile(
+      client as unknown as SupabaseClient,
+      "trip-1",
+      "member-1",
+      "Carl",
+      "+14155551212",
+      KEY
+    );
+    expect(outcome).toBe("duplicate_phone");
+  });
+
+  it("throws on any other database error", async () => {
+    const { client } = makeFailingBuilder({
+      code: "XX000",
+      message: "boom",
+    });
+    await expect(
+      updateMyMemberProfile(
+        client as unknown as SupabaseClient,
+        "trip-1",
+        "member-1",
+        "Carl",
+        null,
+        KEY
+      )
+    ).rejects.toThrow(/updateMyMemberProfile failed: boom/);
+  });
+});
+
+// Celebrant assignment — founder-only write through the
+// `set_trip_celebrant` SECURITY DEFINER RPC (the #418 WITH CHECK pins
+// make is_celebrant unwritable through the base table by design).
+describe("setTripCelebrant", () => {
+  function makeRpcClient(rpcReturn: {
+    data: unknown;
+    error: { message: string } | null;
+  }) {
+    const rpcMock = vi.fn<
+      (name: string, args: Record<string, unknown>) => Promise<typeof rpcReturn>
+    >(async () => rpcReturn);
+    const client = {
+      from: vi.fn(),
+      rpc: rpcMock,
+    } as unknown as SupabaseClient;
+    return { client, rpcMock };
+  }
+
+  it("calls set_trip_celebrant with the trip and member ids", async () => {
+    const { client, rpcMock } = makeRpcClient({ data: null, error: null });
+
+    await setTripCelebrant(client, "trip-1", "member-1");
+
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    const [fnName, args] = rpcMock.mock.calls[0];
+    expect(fnName).toBe("set_trip_celebrant");
+    expect(args).toEqual({ p_trip_id: "trip-1", p_member_id: "member-1" });
+  });
+
+  it("passes null through for the clear-the-seat path", async () => {
+    const { client, rpcMock } = makeRpcClient({ data: null, error: null });
+
+    await setTripCelebrant(client, "trip-1", null);
+
+    expect(rpcMock.mock.calls[0][1]).toEqual({
+      p_trip_id: "trip-1",
+      p_member_id: null,
+    });
+  });
+
+  it("throws with the RPC's message so the action can map founder/member denials", async () => {
+    const { client } = makeRpcClient({
+      data: null,
+      error: { message: "set_trip_celebrant: caller is not the trip founder" },
+    });
+
+    await expect(
+      setTripCelebrant(client, "trip-1", "member-1")
+    ).rejects.toThrow(/setTripCelebrant failed.*not the trip founder/);
   });
 });
