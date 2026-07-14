@@ -27,10 +27,22 @@ vi.mock("../copy-numbers-button", () => ({
 }));
 
 // #386 — the member-manage client component has its own suite; here we
-// only assert WHICH rows get the affordance.
+// only assert WHICH rows get the affordance (and whether the founder's
+// celebrant capability was threaded).
 vi.mock("../member-manage", () => ({
-  MemberManage: ({ memberId }: { memberId: string }) => (
-    <button data-testid={`manage-${memberId}`}>manage</button>
+  MemberManage: ({
+    memberId,
+    celebrant,
+  }: {
+    memberId: string;
+    celebrant?: { isCelebrant: boolean; currentCelebrantName: string | null };
+  }) => (
+    <button
+      data-testid={`manage-${memberId}`}
+      data-celebrant={celebrant ? JSON.stringify(celebrant) : undefined}
+    >
+      manage
+    </button>
   ),
 }));
 
@@ -189,7 +201,7 @@ describe("RosterList", () => {
       { id: "m4", displayName: "Kevin", phone: null, role: "attendee", isCelebrant: false },
     ];
 
-    it("renders the affordance only on non-self, non-celebrant, non-founder rows for an organizer viewer", () => {
+    it("renders the affordance on every non-self, non-founder row for the FOUNDER (celebrant row = clear-mode)", () => {
       render(
         <RosterList
           members={crew}
@@ -199,9 +211,42 @@ describe("RosterList", () => {
         />
       );
       expect(screen.queryByTestId("manage-m1")).not.toBeInTheDocument();
-      expect(screen.queryByTestId("manage-m2")).not.toBeInTheDocument();
+      // The celebrant row now renders for the founder — clear-mode only.
+      expect(screen.getByTestId("manage-m2")).toHaveAttribute(
+        "data-celebrant",
+        JSON.stringify({ isCelebrant: true, currentCelebrantName: null })
+      );
       expect(screen.getByTestId("manage-m3")).toBeInTheDocument();
       expect(screen.getByTestId("manage-m4")).toBeInTheDocument();
+      // Ordinary rows get the assign capability, naming the holder so
+      // the reassign confirm can say who steps back.
+      expect(screen.getByTestId("manage-m4")).toHaveAttribute(
+        "data-celebrant",
+        JSON.stringify({ isCelebrant: false, currentCelebrantName: "Mike" })
+      );
+    });
+
+    it("threads NO celebrant capability to a co-organizer viewer (founder-only, rule 11)", () => {
+      const coCrew: RosterMember[] = [
+        { id: "m0", displayName: "Dave", phone: null, role: "organizer", isCelebrant: false },
+        { id: "m2", displayName: "Mike", phone: null, role: "attendee", isCelebrant: true },
+        { id: "m3", displayName: "Rob", phone: null, role: "co_organizer", isCelebrant: false, isViewer: true },
+        { id: "m4", displayName: "Kevin", phone: null, role: "attendee", isCelebrant: false },
+      ];
+      render(
+        <RosterList
+          members={coCrew}
+          tripName="Test Trip"
+          tripId={TRIP_ID}
+          viewerRole="co_organizer"
+        />
+      );
+      // Celebrant row stays unmanageable for non-founders.
+      expect(screen.queryByTestId("manage-m2")).not.toBeInTheDocument();
+      // Ordinary rows keep role/remove but get no celebrant capability.
+      expect(screen.getByTestId("manage-m4")).not.toHaveAttribute(
+        "data-celebrant"
+      );
     });
 
     it("never renders the founder's row as manageable, even for a co-organizer viewer", () => {

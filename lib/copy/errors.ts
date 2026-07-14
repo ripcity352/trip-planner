@@ -159,7 +159,11 @@ export type ErrorKey =
   // is transient-retry voice; `profile_phone_taken` is DETERMINISTIC
   // (the trip-scoped unique phone index matched a teammate's number).
   | "profile_save_failed"
-  | "profile_phone_taken";
+  | "profile_phone_taken"
+  // Celebrant assignment — transient `_failed` retry voice. The
+  // founder-only gate maps to rls_denied (non-founders never see the
+  // control, rule 11 — there is no "you can't" string to source).
+  | "celebrant_save_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -295,4 +299,7 @@ export const ERRORS: Record<ErrorKey, string> = {
   profile_save_failed: "That didn't stick. Give it another go in a sec.",
   profile_phone_taken:
     "That number's already on the roster under someone else.",
+  // Celebrant assignment — transient failure, retryable.
+  celebrant_save_failed:
+    "The guest of honor didn't stick. Try once more in a sec.",
 };
