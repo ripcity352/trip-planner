@@ -79,9 +79,12 @@ export default async function ExpensesPage({ params }: PageProps) {
   // default); first expense's currency wins for the aggregate line.
   const headlineCurrency = expenses[0]?.currency ?? "USD";
 
+  // #391: rsvp_status rides along so the split chooser can pre-select
+  // going/maybe only and annotate the rest — the data was already here.
   const splitCandidates = tripMembers.map((m) => ({
     memberId: m.id,
     name: resolveMemberName(memberMap, m.id),
+    rsvpStatus: m.rsvp_status,
   }));
 
   // #405-B: celebrant display name for the hide-from-celebrant badge —
