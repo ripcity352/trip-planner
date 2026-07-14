@@ -1756,3 +1756,37 @@ styling. Confirmed with a Playwright click-precision probe in
 This does not change `notes/design-system.md`'s radius/height scale —
 the 2px-hairline button and 36px chip visual heights from #304 are
 untouched. It adds a hit-area axis on top of them.
+
+## Dashboard link-card context lines (glanceability sweep, 2026-07-13)
+
+**Gap named:** the dashboard's six sub-route link cards were bare
+`CardTitle`-only tiles — a nav index with zero glance value (§"Home tab
+anatomy" already diagnosed the nav-index-pretending-to-be-content slip;
+the ratified three-block home + tab bar remains a deferred feat). Until
+that refactor lands, the interim idiom moves the cards *toward* "home is
+a status surface":
+
+- **One muted context line per card** — a `CardDescription`
+  (`text-muted-foreground text-sm`), `truncate`d to a single line at
+  375px. Read-only facts sourced from cheap RSC reads (limit-1 /
+  head-count / single-column), batched in the page's `Promise.all`.
+- **Facts, never notifications.** No badges, no unread dots, no counts
+  styled as attention-demands (CLAUDE.md hard-bans). "3 landed · next
+  Sat 2:00 pm" is a fact; a red "3" is not.
+- **Boundaries carried through:** Expenses shows the viewer's OWN net
+  position only (who-owes-who is killed scope); Arrivals is aggregate
+  counts + next instant, never names; Roster reuses the page's existing
+  RSVP count line (no second query).
+- **Urgency-proportional placement:** while the trip dates are undecided
+  (`isDatePollDecided` false) the dates poll is a full link card at the
+  top of the stack; once locked it demotes to the quiet text link. No
+  nudge copy either way.
+- **Copy:** all strings in `lib/copy/empty-states.ts`
+  (`DASHBOARD_GLANCE_STRINGS`); card empty states reuse the page-level
+  `EMPTY_STATES` strings so the two surfaces never disagree about the
+  same silence. Relative times use the §"Date and time" Relative tier
+  ("22h", never "about 22 hours ago") via `lib/utils/relative-short.ts`.
+
+When the deferred home refactor deletes the nav rows, these context
+lines fold into whatever replaces them (tab-bar badges are still banned;
+the facts move, the register stays).

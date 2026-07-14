@@ -24,6 +24,7 @@ const getViewerMemberMock = vi.fn();
 const getTripMemberByIdMock = vi.fn();
 const updateTripMemberRoleMock = vi.fn();
 const deleteTripMemberMock = vi.fn();
+const setTripCelebrantMock = vi.fn();
 vi.mock("@/lib/db/trips", async () => {
   const actual = await vi.importActual<typeof import("@/lib/db/trips")>(
     "@/lib/db/trips"
@@ -38,6 +39,8 @@ vi.mock("@/lib/db/trips", async () => {
       updateTripMemberRoleMock(...(args as [])),
     deleteTripMember: (...args: unknown[]) =>
       deleteTripMemberMock(...(args as [])),
+    setTripCelebrant: (...args: unknown[]) =>
+      setTripCelebrantMock(...(args as [])),
   };
 });
 
@@ -113,6 +116,7 @@ function resetMocks() {
   getTripMemberByIdMock.mockReset();
   updateTripMemberRoleMock.mockReset();
   deleteTripMemberMock.mockReset();
+  setTripCelebrantMock.mockReset();
   memberHasExpenseTiesMock.mockReset();
   rateLimitedActionMock.mockClear();
   revalidatePathMock.mockReset();
@@ -126,6 +130,7 @@ function resetMocks() {
   getTripMemberByIdMock.mockResolvedValue(ATTENDEE_TARGET);
   updateTripMemberRoleMock.mockResolvedValue(true);
   deleteTripMemberMock.mockResolvedValue(1);
+  setTripCelebrantMock.mockResolvedValue(undefined);
   memberHasExpenseTiesMock.mockResolvedValue(false);
   vi.spyOn(console, "error").mockImplementation(() => {});
 }
@@ -463,5 +468,148 @@ describe("removeMemberAction", () => {
     const { removeMemberAction } = await import("@/lib/actions/members");
     const result = await removeMemberAction(REMOVE_INPUT, KEY);
     expect(result).toEqual({ ok: false, errorKey: "member_remove_failed" });
+  });
+});
+
+// Celebrant assignment — FOUNDER-only (role='organizer', stricter than
+// the organizer-or-co gate of the sibling actions). The write goes
+// through the naturally idempotent set_trip_celebrant RPC, so the key
+// is validated per rule 9 but not persisted (same as removeMemberAction).
+describe("setCelebrantAction", () => {
+  beforeEach(resetMocks);
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  const ASSIGN_INPUT = { tripId: TRIP_ID, memberId: TARGET_MEMBER_ID };
+  const CLEAR_INPUT = { tripId: TRIP_ID, memberId: null };
+
+  it("rejects a non-UUID idempotency key", async () => {
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, "nope");
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(setTripCelebrantMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed member id", async () => {
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(
+      { ...ASSIGN_INPUT, memberId: "42" },
+      KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns auth_failed when there is no session", async () => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error: null });
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+  });
+
+  it("denies a co-organizer viewer — the gate is FOUNDER, not organizer-or-co", async () => {
+    getViewerMemberMock.mockResolvedValue({
+      ...ORGANIZER_VIEWER,
+      role: "co_organizer",
+    });
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(setTripCelebrantMock).not.toHaveBeenCalled();
+  });
+
+  it("denies when the viewer is not a member at all", async () => {
+    getViewerMemberMock.mockResolvedValue(null);
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("denies when the target row is not visible (cross-trip probe)", async () => {
+    getTripMemberByIdMock.mockResolvedValue(null);
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(setTripCelebrantMock).not.toHaveBeenCalled();
+  });
+
+  it("denies crowning the founder row — the founder never wears the sash", async () => {
+    getTripMemberByIdMock.mockResolvedValue({
+      ...ATTENDEE_TARGET,
+      role: "organizer",
+    });
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(setTripCelebrantMock).not.toHaveBeenCalled();
+  });
+
+  it("no-ops (ok) when the target already holds the seat — natural idempotency", async () => {
+    getTripMemberByIdMock.mockResolvedValue({
+      ...ATTENDEE_TARGET,
+      is_celebrant: true,
+    });
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: true });
+    expect(setTripCelebrantMock).not.toHaveBeenCalled();
+  });
+
+  it("assigns under the dedicated setCelebrant scope and revalidates", async () => {
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+
+    expect(result).toEqual({ ok: true });
+    expect(rateLimitedActionMock).toHaveBeenCalledWith(
+      "setCelebrant",
+      "u-viewer",
+      expect.any(Function)
+    );
+    expect(setTripCelebrantMock).toHaveBeenCalledWith(
+      expect.anything(),
+      TRIP_ID,
+      TARGET_MEMBER_ID
+    );
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("clears the seat when memberId is null without fetching a target", async () => {
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(CLEAR_INPUT, KEY);
+
+    expect(result).toEqual({ ok: true });
+    expect(getTripMemberByIdMock).not.toHaveBeenCalled();
+    expect(setTripCelebrantMock).toHaveBeenCalledWith(
+      expect.anything(),
+      TRIP_ID,
+      null
+    );
+  });
+
+  it("maps the RPC's founder denial to rls_denied (app check raced the DB)", async () => {
+    setTripCelebrantMock.mockRejectedValue(
+      new Error(
+        "setTripCelebrant failed: set_trip_celebrant: caller is not the trip founder"
+      )
+    );
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("maps RateLimitError to rate_limit", async () => {
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("setCelebrant", { reset: 0, remaining: 0 })
+    );
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+
+  it("maps an unexpected db failure to celebrant_save_failed", async () => {
+    setTripCelebrantMock.mockRejectedValue(new Error("boom"));
+    const { setCelebrantAction } = await import("@/lib/actions/members");
+    const result = await setCelebrantAction(ASSIGN_INPUT, KEY);
+    expect(result).toEqual({ ok: false, errorKey: "celebrant_save_failed" });
   });
 });

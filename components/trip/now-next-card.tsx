@@ -20,10 +20,11 @@
  * server's local clock at render time. Deferred to M4+ (#108).
  */
 
-import { differenceInCalendarDays, format } from "date-fns";
+import { differenceInCalendarDays } from "date-fns";
 
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { whatsHappeningNow } from "@/lib/utils/whats-happening-now";
+import { formatNextWhen, formatTimeShort } from "@/lib/utils/itinerary-when";
 import { parseDateOnly } from "@/lib/utils/date-only";
 import type { ItineraryItem, Trip } from "@/lib/db/types";
 
@@ -131,31 +132,6 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
       ) : null}
     </div>
   );
-}
-
-/**
- * "Up next" when-line (#404-A). A next item on a different calendar day
- * than `now` carries its day ("Wed Jul 29 · 6:30 PM"); a same-day item
- * keeps the bare time ("6:30 PM"). A whole-day future item (no start_time)
- * renders just the day. Returns "" when there's nothing to show (same-day
- * whole-day item), which the caller treats as "render no line".
- */
-function formatNextWhen(item: ItineraryItem, now: Date): string {
-  const onDifferentDay = item.day !== format(now, "yyyy-MM-dd");
-  const dayLabel = onDifferentDay
-    ? format(parseDateOnly(item.day), "EEE MMM d")
-    : null;
-  const timeLabel = item.start_time ? formatTimeShort(item.start_time) : null;
-
-  if (dayLabel && timeLabel) return `${dayLabel} · ${timeLabel}`;
-  return dayLabel ?? timeLabel ?? "";
-}
-
-function formatTimeShort(time: string): string {
-  const [h, m] = time.split(":").map(Number);
-  const period = h < 12 ? "AM" : "PM";
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 function formatDaysUntil(target: Date, now: Date): string {

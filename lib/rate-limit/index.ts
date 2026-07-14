@@ -142,6 +142,18 @@ export const RATE_LIMIT_SCOPES = {
   // must not brick them).
   SET_MEMBER_ROLE: "setMemberRole",
   REMOVE_MEMBER: "removeMember",
+  // #368 / #262 — self-service name + phone editing on /me. Own bucket
+  // so a fumbled profile save can't starve roster-management budgets.
+  // Default 30/60s; NOT in FAIL_CLOSED_ON_SHIM (identity strings on the
+  // caller's own row, not credential minting). RLS pins WHO (own row
+  // only) and keeps role/is_celebrant immutable via the #418 WITH CHECK.
+  UPDATE_MY_PROFILE: "updateMyProfile",
+  // Celebrant assignment — founder-only, at most a handful of taps per
+  // trip lifetime, but it shares the roster-management posture: own
+  // bucket, default 30/60s, NOT in FAIL_CLOSED_ON_SHIM (authed trip
+  // mutation; a bootstrapping deploy must not brick it). The RPC itself
+  // is naturally idempotent, so a rate-limited retry is always safe.
+  SET_CELEBRANT: "setCelebrant",
   // M4 W0c — issue #166: server-side proxy to Google Places Autocomplete.
   // Isolated bucket so a burst of typeahead requests doesn't starve
   // other action budgets. 30 req / 60s matches the default; fail-CLOSED
@@ -165,6 +177,11 @@ export const RATE_LIMIT_SCOPES = {
   // fail-OPEN on shim (votes aren't credential minting).
   CREATE_POLL: "createPoll",
   CAST_POLL_VOTE: "castPollVote",
+  // Trip name/location edit from the dashboard header. Low-tap organizer
+  // surface; own bucket so header edits can't starve other budgets.
+  // Default 30/60s; fail-OPEN on shim (trip metadata, not credential
+  // minting) — same posture as UPDATE_TRIP_NOTES.
+  UPDATE_TRIP: "updateTrip",
 } as const;
 
 export type RateLimitScope =

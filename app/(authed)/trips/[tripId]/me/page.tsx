@@ -24,7 +24,12 @@ import { getTripBySlug } from "@/lib/db/trips";
 import { getViewerMember } from "@/lib/db/trips";
 import { getMemberDays } from "@/lib/db/trip-member-days";
 import { signOut } from "@/lib/actions/auth";
-import { M4_UI_STRINGS, MEMBER_DAYS_UI_STRINGS } from "@/lib/copy/empty-states";
+import {
+  M4_UI_STRINGS,
+  M5_UI_STRINGS,
+  MEMBER_DAYS_UI_STRINGS,
+} from "@/lib/copy/empty-states";
+import { ProfileEditor } from "@/components/trip/me/profile-editor";
 import { AUTH_COPY } from "@/lib/copy/auth";
 import { parseDateOnly } from "@/lib/utils/date-only";
 import {
@@ -99,6 +104,17 @@ export default async function MePage({ params }: PageProps) {
               </dt>
               <dd className="text-foreground mt-0.5 text-sm">{displayName}</dd>
             </div>
+            {/* #368 — phone renders only once the member opted in. */}
+            {member.phone_e164 ? (
+              <div>
+                <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                  {M5_UI_STRINGS.me_label_phone}
+                </dt>
+                <dd className="text-foreground mt-0.5 text-sm">
+                  {member.phone_e164}
+                </dd>
+              </div>
+            ) : null}
             {email ? (
               <div>
                 <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
@@ -108,6 +124,14 @@ export default async function MePage({ params }: PageProps) {
               </div>
             ) : null}
           </dl>
+          {/* #368 / #262 — self-service name + phone editing. */}
+          <div className="mt-3">
+            <ProfileEditor
+              tripId={trip.id}
+              initialName={member.display_name ?? ""}
+              initialPhone={member.phone_e164 ?? ""}
+            />
+          </div>
         </div>
 
         {/* #388 — which days are you around? (rule 8: opt-in framing) */}
@@ -120,6 +144,18 @@ export default async function MePage({ params }: PageProps) {
               {MEMBER_DAYS_UI_STRINGS.memberDays_subhead}
             </p>
             <DayAttendanceChips tripId={trip.id} days={dayChips} />
+            {/* Glanceability sweep: reciprocal wayfinding to the roster's
+                organizer-only DayHeadcount block these chips feed.
+                Organizer-gated so the link never promises a block the
+                viewer's roster won't render (rule 11 — no dead ends). */}
+            {member.role === "organizer" || member.role === "co_organizer" ? (
+              <Link
+                href={`/trips/${tripId}/roster`}
+                className="text-primary mt-3 inline-block text-sm underline-offset-4 hover:underline"
+              >
+                {MEMBER_DAYS_UI_STRINGS.memberDays_link_to_headcount}
+              </Link>
+            ) : null}
           </div>
         ) : null}
 

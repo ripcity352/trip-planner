@@ -94,6 +94,8 @@ export interface ViewerMember {
   role: TripRole;
   is_celebrant: boolean;
   display_name: string | null;
+  phone_e164: string | null;
+  idempotency_key: string | null;
 }
 
 /**
@@ -108,7 +110,7 @@ export async function getViewerMember(
 ): Promise<ViewerMember | null> {
   const { data, error } = await supabase
     .from("trip_members")
-    .select("id, role, is_celebrant, display_name")
+    .select("id, role, is_celebrant, display_name, phone_e164, idempotency_key")
     .eq("trip_id", tripId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -309,6 +311,69 @@ export async function createTrip(
 }
 
 /**
+ * Fields the dashboard-header edit may touch. Dates are deliberately
+ * NOT here — they're owned by the /dates poll flow (`decide_trip_dates`),
+ * and routing them through a free-text edit would bypass the vote.
+ */
+export interface UpdateTripInput {
+  name: string;
+  location: string | null;
+}
+
+/**
+ * Update a trip's name + location. RLS ("organizers can update their
+ * trips", 0001_init.sql) gates WHO can write — no app-level role check
+ * here, per the lib/db contract. We chain `.select(...).maybeSingle()`
+ * so a policy-swallowed zero-row update is detectable: returns the
+ * updated Trip, or null when RLS hid the row (non-organizer / not a
+ * member / no such trip) instead of lying about success.
+ */
+export async function updateTrip(
+  supabase: SupabaseClient,
+  tripId: string,
+  input: UpdateTripInput
+): Promise<Trip | null> {
+  const { data, error } = await supabase
+    .from("trips")
+    .update({ name: input.name, location: input.location })
+    .eq("id", tripId)
+    .select(TRIP_COLUMNS)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`updateTrip failed: ${error.message}`);
+  }
+
+  return data as Trip | null;
+}
+
+/**
+ * Founder-only celebrant assignment via the `set_trip_celebrant`
+ * SECURITY DEFINER RPC (20260713090000). `memberId` null clears the
+ * trip's celebrant; a member id crowns that member and clears any
+ * previous holder atomically (the #418 WITH CHECK pins make
+ * is_celebrant unwritable through the base table, so the RPC is the
+ * single path). The function raises for non-founder callers and for
+ * targets outside the trip — those surface here as thrown Errors whose
+ * message the action layer maps to honest ErrorKeys. Naturally
+ * idempotent: replaying the same assignment is a no-op.
+ */
+export async function setTripCelebrant(
+  supabase: SupabaseClient,
+  tripId: string,
+  memberId: string | null
+): Promise<void> {
+  const { error } = await supabase.rpc("set_trip_celebrant", {
+    p_trip_id: tripId,
+    p_member_id: memberId,
+  });
+
+  if (error) {
+    throw new Error(`setTripCelebrant failed: ${error.message}`);
+  }
+}
+
+/**
  * #348: set the caller's per-trip display name on their own membership
  * row. RLS ("users can update their own RSVP" — whole-row, user_id-
  * scoped) means this can only ever touch the caller's row; passing a
@@ -327,4 +392,55 @@ export async function setMemberDisplayName(
   if (error) {
     throw new Error(`setMemberDisplayName failed: ${error.message}`);
   }
+}
+
+/** Outcomes of `updateMyMemberProfile` the action maps to error copy. */
+export type UpdateMyMemberProfileResult =
+  | "updated"
+  | "missing"
+  | "duplicate_phone";
+
+/**
+ * #368 / #262 (name half): self-service write of the caller's own
+ * display_name + phone_e164 on ONE trip_members row, scoped by BOTH
+ * trip_id and id (multi-tenant rule 6). RLS ("users can update their own
+ * RSVP" — user_id-scoped, with role/is_celebrant pinned by the #418
+ * WITH CHECK) is the real gate: a foreign memberId matches zero rows.
+ * We chain `.select().maybeSingle()` so a policy-swallowed zero-row
+ * update returns "missing" instead of lying about success.
+ *
+ * `phoneE164` must already be normalized (lib/utils/phone.ts) or null
+ * to clear. The (trip_id, phone_e164) partial unique index surfaces a
+ * teammate-already-has-that-number collision as "duplicate_phone" —
+ * a deterministic rejection, not a throw.
+ */
+export async function updateMyMemberProfile(
+  supabase: SupabaseClient,
+  tripId: string,
+  memberId: string,
+  displayName: string,
+  phoneE164: string | null,
+  idempotencyKey: string
+): Promise<UpdateMyMemberProfileResult> {
+  const { data, error } = await supabase
+    .from("trip_members")
+    .update({
+      display_name: displayName,
+      phone_e164: phoneE164,
+      idempotency_key: idempotencyKey,
+    })
+    .eq("trip_id", tripId)
+    .eq("id", memberId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    // 23505 = unique_violation — the trip-scoped phone index.
+    if (error.code === "23505") {
+      return "duplicate_phone";
+    }
+    throw new Error(`updateMyMemberProfile failed: ${error.message}`);
+  }
+
+  return data !== null ? "updated" : "missing";
 }

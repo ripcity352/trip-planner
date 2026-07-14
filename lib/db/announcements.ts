@@ -79,6 +79,35 @@ export async function getAnnouncements(
   return (data ?? []) as Announcement[];
 }
 
+/** Slim shape for the dashboard glance line — body + timestamp only. */
+export type LatestAnnouncement = Pick<Announcement, "body" | "created_at">;
+
+/**
+ * The newest announcement the viewer can see (RLS-filtered), or null
+ * when the feed is empty. Dashboard glance-line read: `limit(1)` with a
+ * two-column payload — deliberately ignores `pinned` ordering because
+ * the card answers "what's the latest?", not "what's at the top of the
+ * feed?".
+ */
+export async function getLatestAnnouncement(
+  supabase: SupabaseClient,
+  tripId: string
+): Promise<LatestAnnouncement | null> {
+  const { data, error } = await supabase
+    .from("announcements")
+    .select("body, created_at")
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getLatestAnnouncement failed: ${error.message}`);
+  }
+
+  return (data ?? null) as LatestAnnouncement | null;
+}
+
 /**
  * Realtime channel factory for the announcements feed.
  *
