@@ -195,7 +195,20 @@ export function AddExpenseSheet({
 
   if (!open) {
     return (
-      <Button type="button" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        onClick={() => {
+          // Re-seed on every open, not just at mount: the component stays
+          // mounted across open/close, so (a) a cancel must not leak stale
+          // taps or half-typed fields into the next open, and (b) `members`
+          // may have changed via router.refresh() (RSVP flip, join/leave) —
+          // each open must reflect the current RSVP defaults (#391).
+          reset();
+          setServerErrorKey(null);
+          setSplitIds(defaultSplitIds(members));
+          setOpen(true);
+        }}
+      >
         {M5_UI_STRINGS.expenses_add_cta}
       </Button>
     );

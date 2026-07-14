@@ -240,6 +240,29 @@ describe("AddExpenseSheet", () => {
       ).toHaveTextContent(/^Dave$/);
     });
 
+    it("re-seeds RSVP defaults on reopen after a cancel — stale taps don't stick", () => {
+      openSheet(ORGANIZER, MIXED_MEMBERS);
+      // Tap Ray in and Dave out, type a description, then bail.
+      fireEvent.click(screen.getByRole("button", { name: "Ray not coming" }));
+      fireEvent.click(screen.getByRole("button", { name: "Dave" }));
+      fireEvent.change(screen.getByLabelText("What was it?"), {
+        target: { value: "Abandoned draft" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Never mind" }));
+
+      // Reopen: the sheet shows RSVP-derived defaults + a clean form,
+      // not the prior taps (the component stays mounted across toggles).
+      fireEvent.click(screen.getByRole("button", { name: "Log a spend" }));
+      expect(screen.getByRole("button", { name: "Dave" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+      expect(
+        screen.getByRole("button", { name: "Ray not coming" })
+      ).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByLabelText("What was it?")).toHaveValue("");
+    });
+
     it("a declined member can still be tapped in", async () => {
       openSheet(ORGANIZER, MIXED_MEMBERS);
       fireEvent.change(screen.getByLabelText("What was it?"), {
