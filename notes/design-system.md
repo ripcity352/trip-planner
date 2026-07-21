@@ -265,6 +265,23 @@ Switzer so the voice moments *feel* different.
 The arrow in **Range** is `→` (U+2192), not a hyphen — the hyphen reads
 as a date-input separator; the arrow reads as motion through time.
 
+### Cross-day time range (#504)
+
+The five tiers above were silent on a *time range that crosses a day
+boundary* — an item starting Sun 8:00 am and ending Tue 12:00 pm. That
+silence is what let the schema drop the end date entirely (the gap #504
+names). The tier:
+
+| Case | Example | Rule |
+|---|---|---|
+| Same-day range | `7:00 pm – 9:00 pm` | en dash (`–`, U+2013), no dates — the day header already carries the date |
+| Cross-day range | `8:00 am → Aug 18, 12:00 pm` | Range-tier arrow (`→`) + `Mmm d` on the end time only; start date still comes from the day header |
+
+Both cases inherit the Absolute-time tier's lowercase am/pm. The
+separator *switch* is the signal: en dash = within the day, arrow =
+motion across days (same semantics as the Range tier). Never repeat the
+start date, never add the year.
+
 ### Anti-tells (these fail the voice/visual bar)
 
 - Uppercase day headers (`FRIDAY · AUG 14`) — AI-tracked-eyebrow tell.

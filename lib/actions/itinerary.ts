@@ -27,7 +27,7 @@ import type { ErrorKey } from "@/lib/copy/errors";
 import type { ItineraryItem } from "@/lib/db/types";
 import { getTripById } from "@/lib/db/trips";
 import { getItineraryItem } from "@/lib/db/itinerary";
-import { isoToDbTime } from "@/lib/utils/format-trip-tz";
+import { isoToDbDate, isoToDbTime } from "@/lib/utils/format-trip-tz";
 
 // ---------------------------------------------------------------------------
 // Shared schemas
@@ -191,6 +191,9 @@ export async function addItineraryItem(
             day,
             start_time: tripTimezone ? isoToDbTime(startTime, tripTimezone) : null,
             end_time: tripTimezone ? isoToDbTime(endTime, tripTimezone) : null,
+            // #504: keep the end *date* — a multi-day item's end instant
+            // falls on a later trip-local day than `day`.
+            end_day: tripTimezone ? isoToDbDate(endTime, tripTimezone) : null,
             location: location ?? null,
             address: address ?? null,
             address_place_id: addressPlaceId ?? null,
@@ -205,7 +208,7 @@ export async function addItineraryItem(
             created_by: userId,
           })
           .select(
-            "id, trip_id, day, start_time, end_time, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
+            "id, trip_id, day, start_time, end_time, end_day, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
           )
           .single();
 
@@ -216,7 +219,7 @@ export async function addItineraryItem(
             const { data: existing, error: fetchError } = await supabase
               .from("itinerary_items")
               .select(
-                "id, trip_id, day, start_time, end_time, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
+                "id, trip_id, day, start_time, end_time, end_day, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
               )
               .eq("trip_id", tripId)
               .eq("idempotency_key", idempotencyKey)
@@ -337,6 +340,9 @@ export async function updateItineraryItem(
   if (fields.endTime !== undefined) {
     updatePayload.end_time =
       fields.endTime == null ? null : isoToDbTime(fields.endTime, tripTimezone!);
+    // #504: end_day rides along with every endTime write (and clears with it).
+    updatePayload.end_day =
+      fields.endTime == null ? null : isoToDbDate(fields.endTime, tripTimezone!);
   }
   if (fields.location !== undefined) updatePayload.location = fields.location;
   if (fields.address !== undefined) updatePayload.address = fields.address;
@@ -359,7 +365,7 @@ export async function updateItineraryItem(
           .update(updatePayload)
           .eq("id", itemId)
           .select(
-            "id, trip_id, day, start_time, end_time, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
+            "id, trip_id, day, start_time, end_time, end_day, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key"
           )
           .single();
 

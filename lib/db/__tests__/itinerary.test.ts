@@ -68,6 +68,7 @@ const mockItem: ItineraryItem = {
   day: "2026-06-15",
   start_time: "10:00",
   end_time: "12:00",
+  end_day: null,
   title: "Morning hike",
   location: "Trailhead",
   address: "123 Trail Rd",

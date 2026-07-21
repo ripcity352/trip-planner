@@ -261,6 +261,12 @@ export interface ItineraryItem {
   day: string;
   start_time: string | null;
   end_time: string | null;
+  /**
+   * ISO date — `YYYY-MM-DD`. Trip-local day this item *ends* (#504).
+   * `null` = same-day item: the item ends on `day`. Readers rendering or
+   * rehydrating `end_time` must use `end_day ?? day` as its date.
+   */
+  end_day: string | null;
   title: string;
   location: string | null;
   address: string | null;

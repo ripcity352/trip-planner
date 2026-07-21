@@ -52,6 +52,7 @@ function makeItem(id: string, day: string, title: string): ItineraryItem {
     day,
     start_time: "10:00",
     end_time: "12:00",
+    end_day: null,
     title,
     location: null,
     address: null,

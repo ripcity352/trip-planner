@@ -21,6 +21,7 @@ function item(
     day,
     start_time,
     end_time,
+    end_day: null,
     title: "Dinner",
     location: null,
     address: null,

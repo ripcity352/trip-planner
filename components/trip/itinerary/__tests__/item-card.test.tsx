@@ -85,6 +85,7 @@ const makeItem = (overrides: Partial<ItineraryItem> = {}): ItineraryItem => ({
   day: "2026-08-01",
   start_time: "19:00",
   end_time: "21:00",
+  end_day: null,
   location: null,
   address: "3131 Las Vegas Blvd S, Las Vegas, NV 89109",
   notes: null,
@@ -152,6 +153,52 @@ describe("ItemCard", () => {
   it("renders the item title", () => {
     render(<ItemCard item={makeItem()} {...baseProps} />);
     expect(screen.getByText("Dinner at the Wynn")).toBeInTheDocument();
+  });
+
+  // #504 + design-system date/time register — time-range rendering.
+  describe("time range", () => {
+    it("renders a same-day range with lowercase am/pm (anti-tell guard)", () => {
+      render(<ItemCard item={makeItem()} {...baseProps} />);
+      expect(screen.getByText("7:00 pm – 9:00 pm")).toBeInTheDocument();
+    });
+
+    it("never emits uppercase AM/PM", () => {
+      const { container } = render(
+        <ItemCard item={makeItem({ start_time: "09:00", end_time: null })} {...baseProps} />
+      );
+      expect(screen.getByText("9:00 am")).toBeInTheDocument();
+      expect(container.textContent).not.toMatch(/\d\s?[AP]M/);
+    });
+
+    it("appends the end date with the range arrow when end_day differs from day", () => {
+      render(
+        <ItemCard
+          item={makeItem({
+            day: "2026-08-16",
+            start_time: "08:00",
+            end_time: "12:00",
+            end_day: "2026-08-18",
+          })}
+          {...baseProps}
+        />
+      );
+      expect(screen.getByText("8:00 am → Aug 18, 12:00 pm")).toBeInTheDocument();
+    });
+
+    it("does not append a date when end_day equals day", () => {
+      render(
+        <ItemCard
+          item={makeItem({
+            day: "2026-08-16",
+            start_time: "08:00",
+            end_time: "12:00",
+            end_day: "2026-08-16",
+          })}
+          {...baseProps}
+        />
+      );
+      expect(screen.getByText("8:00 am – 12:00 pm")).toBeInTheDocument();
+    });
   });
 
   it("renders a MapsLink when address is present", () => {

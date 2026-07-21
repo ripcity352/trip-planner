@@ -34,6 +34,7 @@ function item(
     day,
     start_time,
     end_time,
+    end_day: null,
     title,
     location: null,
     address: null,

@@ -117,7 +117,9 @@ export function EditItemForm({
       // ISO-8601 instant from day + DB time, in the trip's timezone —
       // the inverse of the server-side write conversion.
       startTime: dbTimeToIso(item.day, item.start_time, tripTimezone),
-      endTime: dbTimeToIso(item.day, item.end_time, tripTimezone),
+      // #504: a multi-day item's end time lives on `end_day`, not the start
+      // day — `?? item.day` keeps the same-day majority unchanged.
+      endTime: dbTimeToIso(item.end_day ?? item.day, item.end_time, tripTimezone),
       address: item.address ?? "",
       addressPlaceId: item.address_place_id ?? undefined,
       addressProvider: (item.address_provider as "google" | undefined) ?? undefined,
