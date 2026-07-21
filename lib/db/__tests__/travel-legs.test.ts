@@ -102,3 +102,68 @@ describe("getTravelLegsByTrip", () => {
     expect(result[0].arrive_at).toBeNull();
   });
 });
+
+describe("TRAVEL_LEG_COLUMNS coverage", () => {
+  // Regression for #453: TRAVEL_LEG_COLUMNS omitted airline_iata /
+  // flight_number, so the read path (arrivals manifest + edit-form
+  // hydration) never saw them. Because the edit form pre-fills from this
+  // read, the missing fields round-tripped as `undefined` and the next
+  // save's `?? null` fallback silently nulled both columns on write —
+  // psql-verified data loss (2026-07-20 audit). This test pins the select
+  // list to a superset of every key `upsertTravelLeg` (lib/actions/travel-legs.ts)
+  // writes on insert/update, so the next column added to one and not the
+  // other fails loudly here instead of hydrating blank in prod.
+  const ACTION_WRITTEN_KEYS = [
+    "id",
+    "trip_id",
+    "trip_member_id",
+    "kind",
+    "depart_at",
+    "arrive_at",
+    "carrier",
+    "confirmation_code",
+    "notes",
+    "idempotency_key",
+    "created_at",
+    "airline_iata",
+    "flight_number",
+  ] as const;
+
+  function makeColumnCapturingClient(capture: { columns: string }) {
+    const buildProxy = (): Record<string, unknown> => {
+      const handler: ProxyHandler<Record<string, unknown>> = {
+        get(_target, prop: string) {
+          if (prop === "select") {
+            return (columns: string) => {
+              capture.columns = columns;
+              return proxy;
+            };
+          }
+          if (prop === "then") {
+            return (onfulfilled: (v: unknown) => unknown) =>
+              Promise.resolve({ data: [], error: null }).then(onfulfilled);
+          }
+          return () => proxy;
+        },
+      };
+      const proxy: Record<string, unknown> = new Proxy({}, handler);
+      return proxy;
+    };
+
+    return {
+      from: vi.fn(() => buildProxy()),
+    } as unknown as SupabaseClient;
+  }
+
+  it("selects every column upsertTravelLeg writes (prevents hydration drift)", async () => {
+    const capture = { columns: "" };
+    const client = makeColumnCapturingClient(capture);
+
+    await getTravelLegsByTrip(client, TRIP_ID);
+
+    const selected = new Set(capture.columns.split(",").map((c) => c.trim()));
+    for (const key of ACTION_WRITTEN_KEYS) {
+      expect(selected.has(key)).toBe(true);
+    }
+  });
+});
