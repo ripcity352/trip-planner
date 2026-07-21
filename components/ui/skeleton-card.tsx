@@ -110,7 +110,7 @@ export function SkeletonPage({
     <div
       role="status"
       aria-label={A11Y_UI_STRINGS.loading}
-      className={cn("px-4 py-4", className)}
+      className={cn("py-4", className)}
     >
       <div
         className={cn(
