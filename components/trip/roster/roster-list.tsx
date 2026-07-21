@@ -194,7 +194,7 @@ export function RosterList({
                 key={member.id}
                 className="flex flex-wrap items-center justify-between gap-y-2 rounded-md border border-border px-4 py-3 min-h-11"
               >
-                <span className="font-medium text-sm">
+                <span className="min-w-0 flex-1 truncate font-medium text-sm">
                   {member.isViewer
                     ? M3_UI_STRINGS.roster_member_you
                     : member.displayName ?? M3_UI_STRINGS.roster_member_fallback_name}

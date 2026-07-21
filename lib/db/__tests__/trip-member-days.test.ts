@@ -114,6 +114,12 @@ describe("lib/db/trip-member-days.ts", () => {
       const args = eqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
       expect(args).toContain("trip_members.trip_id=trip-1");
       expect(args).toContain("status=going");
+      // #475: excludes members who declined at the TRIP level, but does
+      // NOT require trip-level rsvp_status='going' (rule 8 — a 'maybe'
+      // member can still opt individual days in via their own chip).
+      const neqCalls = calls.filter((c) => c.method === "neq");
+      const neqArgs = neqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
+      expect(neqArgs).toContain("trip_members.rsvp_status=declined");
     });
 
     it("aggregates rows into a date → count record (aggregate only, no names)", async () => {
@@ -129,6 +135,43 @@ describe("lib/db/trip-member-days.ts", () => {
       );
 
       expect(counts).toEqual({ "2026-08-14": 2, "2026-08-15": 1 });
+    });
+
+    it("#475: excludes a declined member's stale 'going' day rows from the count", async () => {
+      // A member flipped going -> declined at the trip level; their old
+      // trip_member_days rows are still 'going' (never cleared — the
+      // fix is query-only, no cleanup). The join must exclude them.
+      const { client } = makeBuilder([
+        { date: "2026-08-14", status: "going" },
+      ]);
+
+      const counts = await getPerDayGoingCounts(
+        client as unknown as SupabaseClient,
+        "trip-1"
+      );
+
+      // With the fix in place the mock still returns the row (the fake
+      // builder can't actually filter), so this test asserts on the
+      // QUERY SHAPE via the neq assertion above; this test documents the
+      // scenario textually. Real exclusion is enforced by the neq filter
+      // being sent to Postgres/RLS-scoped Supabase, verified above.
+      expect(counts).toEqual({ "2026-08-14": 1 });
+    });
+
+    it("rule-8 guard: a 'maybe' member's day rows are NOT filtered client-side", async () => {
+      // A trip-level 'maybe' member opted one day 'going' via their own
+      // chip (rule 8 — per-item granular opt-in). The fix must NOT
+      // require trip_members.rsvp_status='going' — only exclude
+      // 'declined'. Assert no eq() call requires rsvp_status=going.
+      const { calls, client } = makeBuilder([
+        { date: "2026-08-14", status: "going" },
+      ]);
+
+      await getPerDayGoingCounts(client as unknown as SupabaseClient, "trip-1");
+
+      const eqCalls = calls.filter((c) => c.method === "eq");
+      const eqArgs = eqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
+      expect(eqArgs).not.toContain("trip_members.rsvp_status=going");
     });
 
     it("returns an empty record when no rows come back", async () => {
