@@ -10,7 +10,7 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { RosterList } from "../roster-list";
+import { RosterList, rsvpChipLabel } from "../roster-list";
 import type { RosterMember } from "../roster-list";
 
 // Mock client sub-components to avoid testing their internals here
@@ -175,10 +175,10 @@ describe("RosterList", () => {
       { id: "m5", displayName: "Quinn", phone: null, role: "attendee", isCelebrant: false, rsvp: null },
     ];
 
-    it("renders a Maybe chip for maybe and an Invited chip for pending", () => {
+    it("renders a Maybe chip for maybe and a No answer yet chip for pending", () => {
       render(<RosterList members={rsvpMembers} tripName="Test Trip" />);
       expect(screen.getByText("Maybe")).toBeInTheDocument();
-      expect(screen.getByText("Invited")).toBeInTheDocument();
+      expect(screen.getByText("No answer yet")).toBeInTheDocument();
     });
 
     it("renders nothing for going — the default row stays unmarked", () => {
@@ -199,7 +199,7 @@ describe("RosterList", () => {
     it("renders no chip when rsvp is not provided (callers that don't thread it)", () => {
       render(<RosterList members={sampleMembers} tripName="Test Trip" />);
       expect(screen.queryByText("Maybe")).not.toBeInTheDocument();
-      expect(screen.queryByText("Invited")).not.toBeInTheDocument();
+      expect(screen.queryByText("No answer yet")).not.toBeInTheDocument();
     });
   });
 
@@ -299,6 +299,33 @@ describe("RosterList", () => {
         <RosterList members={crew} tripName="Test Trip" viewerRole="organizer" />
       );
       expect(screen.queryByTestId("manage-m4")).not.toBeInTheDocument();
+    });
+  });
+
+  // #503 — rsvpChipLabel mapping test
+  describe("rsvpChipLabel (#503)", () => {
+    it("returns 'Maybe' for maybe status", () => {
+      expect(rsvpChipLabel("maybe")).toBe("Maybe");
+    });
+
+    it("returns 'No answer yet' for pending status (issue #503 fix)", () => {
+      expect(rsvpChipLabel("pending")).toBe("No answer yet");
+    });
+
+    it("returns 'Can't make it' for declined status", () => {
+      expect(rsvpChipLabel("declined")).toBe("Can't make it");
+    });
+
+    it("returns null for going status (render nothing per anti-shame boundary)", () => {
+      expect(rsvpChipLabel("going")).toBeNull();
+    });
+
+    it("returns null for null status (redacted decline)", () => {
+      expect(rsvpChipLabel(null)).toBeNull();
+    });
+
+    it("returns null for undefined status (caller didn't thread rsvp)", () => {
+      expect(rsvpChipLabel(undefined)).toBeNull();
     });
   });
 });
