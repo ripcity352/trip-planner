@@ -101,6 +101,12 @@ export type ErrorKey =
   | "expense_update_failed"
   | "expense_delete_failed"
   | "expense_visibility_self_hidden"
+  // #468 — zero split members selected. DETERMINISTIC rejection (like
+  // expense_visibility_self_hidden): retrying can't conjure a split, so
+  // the copy names the fix, never "try again". Surfaced client-side at
+  // the chip chooser AND by the action's zod-issue narrowing — the old
+  // collapse to validation_failed left the user guessing what was wrong.
+  | "expense_split_empty"
   // #389 — announcement reactions (the ack loop). Same voice rules.
   | "reaction_save_failed"
   // #388 — day-scoped attendance. Own-day chip save failure; transient,
@@ -113,6 +119,13 @@ export type ErrorKey =
   // specific, no corporate language. Exact strings pinned in
   // lib/copy/__tests__/m5-auth-voice-locks.test.ts (Phase 4 audit H7).
   | "auth_wrong_password"
+  // #471 — the password field's client-side zod errors used to collapse
+  // empty and too-short into the generic `validation_failed`, so the user
+  // couldn't tell which problem to fix. Two field-specific keys instead:
+  // required (empty field) and too_short (1–5 chars). Schemas check
+  // emptiness before length, so an empty field never reads "too short".
+  | "auth_password_required"
+  | "auth_password_too_short"
   | "auth_code_invalid"
   | "auth_code_expired"
   // Returned when "email me a code" hits a 422 otp_disabled — i.e. no
@@ -261,6 +274,9 @@ export const ERRORS: Record<ErrorKey, string> = {
   expense_delete_failed: "Couldn't take that one off the tab. Try once more.",
   expense_visibility_self_hidden:
     "That'd hide it from you too. Pick one you'd still see.",
+  // #468 — zero-member split. Deterministic; names the fix ("pick one"),
+  // register-matched to its visibility sibling above.
+  expense_split_empty: "Pick at least one person to split this with.",
   // #389 — announcement reactions. Blame-free, retry-framed (a toggle on
   // flaky cell signal is always safe to tap again).
   reaction_save_failed: "Didn't stick. Give it another tap.",
@@ -282,6 +298,11 @@ export const ERRORS: Record<ErrorKey, string> = {
   // clinical; "combo" is casual, "get a code emailed" mirrors the button.
   auth_wrong_password:
     "That combo didn't match. Try again — or get a code emailed instead.",
+  // #471 — empty vs too-short split. Field-specific, blame-free, no
+  // "invalid input" SaaS-speak. Empty field asks for a password; a
+  // too-short one names the one rule that matters (6+ chars).
+  auth_password_required: "Enter your password first.",
+  auth_password_too_short: "Passwords need at least 6 characters.",
   auth_code_invalid:
     "That code didn't take. Double-check or get a fresh one.",
   auth_code_expired: "Code's stale. Get a fresh one.",
