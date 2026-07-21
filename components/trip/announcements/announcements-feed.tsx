@@ -10,11 +10,17 @@
  * Realtime channel (which #349 already flags as unreliable on the local
  * stack, and which should never be the *only* path to the poster seeing
  * their own post).
+ *
+ * #470 compact-top relayout: the full composer defaults to a one-line
+ * trigger (`AnnouncementComposerTrigger`) instead of rendering inline —
+ * see that component for the disclosure behavior. `datePollLinkRow` is
+ * server-computed JSX (or null) passed through to `AnnouncementList`,
+ * which slots it between the pinned banner and the regular feed.
  */
 
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 
-import { AnnouncementComposer } from "./announcement-composer";
+import { AnnouncementComposerTrigger } from "./announcement-composer-trigger";
 import {
   AnnouncementList,
   type AnnouncementListHandle,
@@ -41,6 +47,12 @@ interface AnnouncementsFeedProps {
    * The poster IS the viewer, so we optimistically stamp their own name.
    */
   viewerDisplayName?: string | null;
+  /**
+   * #470 — the "Dates are still up for a vote →" link row, computed
+   * server-side from `isDatePollDecided(trip)`. `null` when the dates
+   * are already locked, so nothing renders.
+   */
+  datePollLinkRow?: ReactNode;
 }
 
 export function AnnouncementsFeed({
@@ -51,13 +63,14 @@ export function AnnouncementsFeed({
   reactionsByAnnouncement,
   celebrantName,
   viewerDisplayName,
+  datePollLinkRow = null,
 }: AnnouncementsFeedProps) {
   const listRef = useRef<AnnouncementListHandle>(null);
 
   return (
     <>
       <div className="mb-6">
-        <AnnouncementComposer
+        <AnnouncementComposerTrigger
           tripId={tripId}
           isOrganizer={isOrganizer}
           onPosted={(announcement) =>
@@ -79,6 +92,7 @@ export function AnnouncementsFeed({
         memberUserMap={memberUserMap}
         reactionsByAnnouncement={reactionsByAnnouncement}
         celebrantName={celebrantName}
+        datePollLinkRow={datePollLinkRow}
       />
     </>
   );
