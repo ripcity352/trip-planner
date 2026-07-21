@@ -35,6 +35,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { getViewerMember } from "@/lib/db/trips";
+import { isOrganizerRole } from "@/lib/utils/expense-visibility";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -535,5 +537,107 @@ export async function lockInCandidateAction(
   } catch (err) {
     console.error("[date-poll] lockInCandidate unexpected:", err);
     return { ok: false, errorKey: "network" };
+  }
+}
+
+// =============================================================
+// deleteDateCandidate
+// =============================================================
+
+export type DeleteDateCandidateResult =
+  | { ok: true }
+  | { ok: false; errorKey: ErrorKey };
+
+/**
+ * Organizer-only: delete a candidate window (#481). The RLS policy
+ * "candidates: organizers can delete" already existed
+ * (20260519204313_m2_date_poll.sql) — this action + the UI affordance
+ * were the missing piece; propose was the only write path before now.
+ *
+ * Scope-check mirrors `lib/actions/members.ts`'s `loadManageContext`:
+ * resolve the caller's `trip_members` row via `getViewerMember` and
+ * require an organizer role (`isOrganizerRole`) as app-level
+ * defense-in-depth alongside the RLS gate (rule 5 — RLS is the source
+ * of truth, not the only check).
+ *
+ * Delete semantics (simplest per the DOGE review — no vote-clearing
+ * built): only allowed while the window has zero votes. A window with
+ * votes returns the deterministic `date_candidate_has_votes` rejection
+ * rather than silently clearing anyone's vote.
+ *
+ * No idempotency key: like `removeMemberAction`, delete is naturally
+ * idempotent — a target that's already gone (or was never an organizer
+ * target) resolves through the same `rls_denied` / not-found branches,
+ * never a partial state.
+ */
+export async function deleteDateCandidateAction(
+  candidateId: string
+): Promise<DeleteDateCandidateResult> {
+  const parsed = UUID_SCHEMA.safeParse(candidateId);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  try {
+    const { data: candidate, error: candidateError } = await supabase
+      .from("date_poll_candidates")
+      .select("trip_id")
+      .eq("id", candidateId)
+      .maybeSingle();
+    if (candidateError) {
+      return { ok: false, errorKey: mapDbError(candidateError) };
+    }
+    if (!candidate) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    const { trip_id: tripId } = candidate as { trip_id: string };
+
+    // App-level organizer gate — same wire-shape as "row hidden by RLS"
+    // so a non-organizer member can't distinguish this from a
+    // non-existent candidate (mirrors loadManageContext in
+    // lib/actions/members.ts).
+    const viewer = await getViewerMember(supabase, tripId, userId);
+    if (!viewer || !isOrganizerRole(viewer.role)) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+
+    // Vote guard: simplest semantics per the DOGE review — refuse the
+    // delete rather than cascading a silent vote-clear.
+    const { count: voteCount, error: voteCountError } = await supabase
+      .from("date_poll_votes")
+      .select("candidate_id", { count: "exact", head: true })
+      .eq("candidate_id", candidateId);
+    if (voteCountError) {
+      return { ok: false, errorKey: mapDbError(voteCountError) };
+    }
+    if ((voteCount ?? 0) > 0) {
+      return { ok: false, errorKey: "date_candidate_has_votes" };
+    }
+
+    const { error: deleteError, count: deletedCount } = await supabase
+      .from("date_poll_candidates")
+      .delete({ count: "exact" })
+      .eq("id", candidateId);
+    if (deleteError) {
+      return { ok: false, errorKey: mapDbError(deleteError) };
+    }
+    if (!deletedCount) {
+      // RLS filtered the write out — the app check and the policy
+      // disagree, which means the caller isn't actually allowed to do
+      // this (e.g. role changed between the read and the write).
+      return { ok: false, errorKey: "rls_denied" };
+    }
+
+    revalidatePath("/trips", "layout");
+    return { ok: true };
+  } catch (err) {
+    console.error("[date-poll] deleteDateCandidate unexpected:", err);
+    return { ok: false, errorKey: "date_candidate_delete_failed" };
   }
 }

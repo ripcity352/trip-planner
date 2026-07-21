@@ -70,6 +70,13 @@ export type ErrorKey =
   | "travel_leg_save_failed"
   // #474 — same deterministic/transient split as itinerary_save_rejected.
   | "travel_leg_save_rejected"
+  // #478 — server backstop for the client's required-time refine: a leg
+  // with neither an arrive nor a leave time is a blank card, not travel.
+  // Deterministic (retrying can't succeed), so it gets its own key
+  // instead of collapsing into the generic validation_failed.
+  | "travel_leg_time_required"
+  // #479 — arrive-before-leave cross-field rejection. Same rationale.
+  | "travel_leg_times_reversed"
   | "travel_leg_delete_failed"
   | "lodging_assign_failed"
   | "invite_mint_failed"
@@ -176,7 +183,13 @@ export type ErrorKey =
   // Celebrant assignment — transient `_failed` retry voice. The
   // founder-only gate maps to rls_denied (non-founders never see the
   // control, rule 11 — there is no "you can't" string to source).
-  | "celebrant_save_failed";
+  | "celebrant_save_failed"
+  // #481 — date-poll window delete. `_failed` is transient-retry voice,
+  // matching the `<feature>_<verb>_failed` pattern. `has_votes` is a
+  // DETERMINISTIC rejection (simplest semantics per the DOGE review —
+  // no vote-clearing built) so its copy is retry-free.
+  | "date_candidate_delete_failed"
+  | "date_candidate_has_votes";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -224,6 +237,13 @@ export const ERRORS: Record<ErrorKey, string> = {
   // #474 — deterministic rejection, same split as itinerary_save_rejected.
   travel_leg_save_rejected:
     "That leg didn't take — something's off on our end. Not your signal.",
+  // #478/#479 — deterministic, so no "try again" framing. Strings mirror
+  // the client's inline copy (M3_UI_STRINGS.arrivals_leg_form_*) — the
+  // server is the backstop for the same two rules.
+  travel_leg_time_required:
+    "Drop in an arrive or leave time so we know when to expect you.",
+  travel_leg_times_reversed:
+    "That has you arriving before you leave — double-check the times.",
   travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",
   lodging_assign_failed:
     "Rooms didn't budge. Tap again — it'll catch.",
@@ -326,4 +346,11 @@ export const ERRORS: Record<ErrorKey, string> = {
   // Celebrant assignment — transient failure, retryable.
   celebrant_save_failed:
     "The guest of honor didn't stick. Try once more in a sec.",
+  // #481 — date-poll window delete. Retry-framed for a genuine
+  // transient failure; the has-votes guard is deterministic (retrying
+  // can't un-cast a vote), so no "try again" bait.
+  date_candidate_delete_failed:
+    "Couldn't remove that window. Try once more in a sec.",
+  date_candidate_has_votes:
+    "Votes are already in on that one — can't pull it now.",
 };

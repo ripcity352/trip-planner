@@ -40,6 +40,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "travel_leg_save_failed",
   // #474 — same deterministic/transient split
   "travel_leg_save_rejected",
+  // #478/#479 — deterministic server backstops for the leg-time client refines
+  "travel_leg_time_required",
+  "travel_leg_times_reversed",
   "travel_leg_delete_failed",
   "lodging_assign_failed",
   "invite_mint_failed",
@@ -100,6 +103,10 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   // celebrant assignment — transient-retry voice (founder gate maps to
   // rls_denied; no dedicated "you can't" string, rule 11)
   "celebrant_save_failed",
+  // #481 — date-poll window delete (has-votes guard is deterministic,
+  // retry-free — simplest semantics per the DOGE review)
+  "date_candidate_delete_failed",
+  "date_candidate_has_votes",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user
