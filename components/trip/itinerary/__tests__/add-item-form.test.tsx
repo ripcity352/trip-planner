@@ -21,6 +21,9 @@ const mockAdd = vi.mocked(addItineraryItem);
 describe("AddItemForm", () => {
   const defaultProps = {
     tripId: "trip-uuid-1",
+    // Fix B: tripTimezone is now required so the new optional start/end
+    // time fields render in the correct timezone (mirrors EditItemForm).
+    tripTimezone: "America/New_York",
     onSuccess: vi.fn(),
     onCancel: vi.fn(),
   };
@@ -70,7 +73,21 @@ describe("AddItemForm", () => {
 
   it("renders starts_at and day inputs", () => {
     render(<AddItemForm {...defaultProps} />);
-    expect(screen.getByLabelText(/starts/i)).toBeInTheDocument();
+    // "Starts" labels both the day-only field and the optional start-time
+    // field (Fix B) — disambiguate by input type.
+    expect(
+      screen.getByLabelText(/starts/i, { selector: "input[type='date']" })
+    ).toBeInTheDocument();
+  });
+
+  it("renders optional start/end time fields (Fix B)", () => {
+    render(<AddItemForm {...defaultProps} />);
+    expect(
+      screen.getByLabelText(/starts/i, {
+        selector: "input[type='datetime-local']",
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/ends/i)).toBeInTheDocument();
   });
 
   it("renders visibility select", () => {
@@ -80,12 +97,8 @@ describe("AddItemForm", () => {
 
   it("renders Add it and Cancel buttons", () => {
     render(<AddItemForm {...defaultProps} />);
-    expect(
-      screen.getByRole("button", { name: /add it/i })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /cancel/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add it/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
   });
 
   it("calls onCancel when Cancel is clicked", () => {
@@ -104,7 +117,9 @@ describe("AddItemForm", () => {
       target: { value: "Pool party" },
     });
 
-    const dayInput = screen.getByLabelText(/starts/i);
+    const dayInput = screen.getByLabelText(/starts/i, {
+      selector: "input[type='date']",
+    });
     fireEvent.change(dayInput, { target: { value: "2026-08-01" } });
 
     fireEvent.click(screen.getByRole("button", { name: /add it/i }));
@@ -124,9 +139,12 @@ describe("AddItemForm", () => {
     fireEvent.change(screen.getByLabelText(/what is it\?/i), {
       target: { value: "Boat cruise" },
     });
-    fireEvent.change(screen.getByLabelText(/starts/i), {
-      target: { value: "2026-08-02" },
-    });
+    fireEvent.change(
+      screen.getByLabelText(/starts/i, { selector: "input[type='date']" }),
+      {
+        target: { value: "2026-08-02" },
+      }
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /add it/i }));
 
@@ -145,9 +163,12 @@ describe("AddItemForm", () => {
     fireEvent.change(screen.getByLabelText(/what is it\?/i), {
       target: { value: "Something" },
     });
-    fireEvent.change(screen.getByLabelText(/starts/i), {
-      target: { value: "2026-08-01" },
-    });
+    fireEvent.change(
+      screen.getByLabelText(/starts/i, { selector: "input[type='date']" }),
+      {
+        target: { value: "2026-08-01" },
+      }
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /add it/i }));
 

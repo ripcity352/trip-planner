@@ -255,6 +255,99 @@ describe("addItineraryItem", () => {
 });
 
 // ---------------------------------------------------------------------------
+// addItineraryItem — Fix B: startTime/endTime write conversion
+// ---------------------------------------------------------------------------
+
+describe("addItineraryItem — datetime fields (Fix B)", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    tableResolvers.set("trips", () => ({
+      data: { id: VALID_TRIP_ID, timezone: "America/New_York" },
+      error: null,
+    }));
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("converts startTime/endTime to trip-tz HH:mm:ss before insert", async () => {
+    primeAuth(VALID_USER_ID);
+    const createdItem = {
+      ...mockItem,
+      start_time: "23:00:00",
+      end_time: "01:00:00",
+    };
+    tableResolvers.set("itinerary_items", () => ({
+      data: createdItem,
+      error: null,
+    }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await addItineraryItem(
+      {
+        tripId: VALID_TRIP_ID,
+        title: "Dinner",
+        kind: "meal",
+        day: "2026-06-15",
+        // 2026-06-01T03:00:00Z = 2026-05-31 23:00 EDT (UTC-4)
+        startTime: "2026-06-01T03:00:00.000Z",
+        // 2026-06-01T05:00:00Z = 2026-06-01 01:00 EDT (UTC-4)
+        endTime: "2026-06-01T05:00:00.000Z",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: createdItem });
+    const payload = insertCalls[0]?.payload as Record<string, unknown>;
+    expect(payload.start_time).toBe("23:00:00");
+    expect(payload.end_time).toBe("01:00:00");
+  });
+
+  it("does not fetch the trip when neither startTime nor endTime is provided", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({
+      data: mockItem,
+      error: null,
+    }));
+    // No "trips" resolver set for this test — if the action fetched the
+    // trip unnecessarily, getTripById would return null and this would
+    // not be observed here, but insert should still receive null times.
+    tableResolvers.set("trips", () => {
+      throw new Error("should not query trips when no time fields given");
+    });
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await addItineraryItem(
+      { tripId: VALID_TRIP_ID, title: "Dinner", kind: "meal", day: "2026-06-15" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: mockItem });
+    const payload = insertCalls[0]?.payload as Record<string, unknown>;
+    expect(payload.start_time).toBeNull();
+    expect(payload.end_time).toBeNull();
+  });
+
+  it("returns rls_denied when the trip can't be resolved for a timezone lookup", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trips", () => ({ data: null, error: null }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await addItineraryItem(
+      {
+        tripId: VALID_TRIP_ID,
+        title: "Dinner",
+        kind: "meal",
+        day: "2026-06-15",
+        startTime: "2026-06-01T03:00:00.000Z",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // updateItineraryItem — W2a address place_id fields
 // ---------------------------------------------------------------------------
 
@@ -369,13 +462,19 @@ describe("updateItineraryItem — datetime fields (W2b)", () => {
     deleteCalls.length = 0;
     rateLimitedActionMock.mockClear();
     vi.spyOn(console, "error").mockImplementation(() => {});
+    // Fix B: startTime/endTime writes now require a trip-timezone lookup
+    // (item → trip_id → trips.timezone) before the update.
+    tableResolvers.set("trips", () => ({
+      data: { id: VALID_TRIP_ID, timezone: "America/New_York" },
+      error: null,
+    }));
   });
 
   afterEach(() => vi.resetModules());
 
-  it("returns the updated item when startTime is a valid ISO-8601 string", async () => {
+  it("returns the updated item when startTime is a valid ISO-8601 string, converted to trip-tz HH:mm:ss on write", async () => {
     primeAuth(VALID_USER_ID);
-    const updatedItem = { ...mockItem, start_time: "2026-06-01T03:00:00.000Z" };
+    const updatedItem = { ...mockItem, start_time: "23:00:00" };
     tableResolvers.set("itinerary_items", () => ({
       data: updatedItem,
       error: null,
@@ -384,19 +483,27 @@ describe("updateItineraryItem — datetime fields (W2b)", () => {
     const result = await updateItineraryItem(
       {
         itemId: VALID_ITEM_ID,
+        // 2026-06-01T03:00:00Z = 2026-05-31 23:00 EDT (UTC-4)
         startTime: "2026-06-01T03:00:00.000Z",
       },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: true, item: updatedItem });
+    const payload = updateCalls[updateCalls.length - 1]?.payload as Record<
+      string,
+      unknown
+    >;
+    // Fix B: the DB column is `time without time zone` — must be HH:mm:ss,
+    // never the full ISO instant (that was the P0 bug: every save 500'd).
+    expect(payload.start_time).toBe("23:00:00");
   });
 
-  it("returns the updated item when endTime is a valid ISO-8601 string", async () => {
+  it("returns the updated item when endTime is a valid ISO-8601 string, converted to trip-tz HH:mm:ss on write", async () => {
     primeAuth(VALID_USER_ID);
     const updatedItem = {
       ...mockItem,
-      start_time: "2026-06-01T03:00:00.000Z",
-      end_time: "2026-06-01T05:00:00.000Z",
+      start_time: "23:00:00",
+      end_time: "01:00:00",
     };
     tableResolvers.set("itinerary_items", () => ({
       data: updatedItem,
@@ -407,14 +514,21 @@ describe("updateItineraryItem — datetime fields (W2b)", () => {
       {
         itemId: VALID_ITEM_ID,
         startTime: "2026-06-01T03:00:00.000Z",
+        // 2026-06-01T05:00:00Z = 2026-06-01 01:00 EDT (UTC-4)
         endTime: "2026-06-01T05:00:00.000Z",
       },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: true, item: updatedItem });
+    const payload = updateCalls[updateCalls.length - 1]?.payload as Record<
+      string,
+      unknown
+    >;
+    expect(payload.start_time).toBe("23:00:00");
+    expect(payload.end_time).toBe("01:00:00");
   });
 
-  it("accepts null startTime and endTime (clearing time fields)", async () => {
+  it("accepts null startTime and endTime (clearing time fields) without a trip lookup", async () => {
     primeAuth(VALID_USER_ID);
     const updatedItem = { ...mockItem, start_time: null, end_time: null };
     tableResolvers.set("itinerary_items", () => ({
@@ -431,6 +545,27 @@ describe("updateItineraryItem — datetime fields (W2b)", () => {
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: true, item: updatedItem });
+    const payload = updateCalls[updateCalls.length - 1]?.payload as Record<
+      string,
+      unknown
+    >;
+    expect(payload.start_time).toBeNull();
+    expect(payload.end_time).toBeNull();
+  });
+
+  it("returns rls_denied when the item's trip can't be resolved for a timezone lookup", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({
+      data: mockItem,
+      error: null,
+    }));
+    tableResolvers.set("trips", () => ({ data: null, error: null }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      { itemId: VALID_ITEM_ID, startTime: "2026-06-01T03:00:00.000Z" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
   });
 
   it("returns validation_failed for malformed startTime (datetime_invalid path)", async () => {

@@ -14,6 +14,14 @@ import { parseISO, isValid, parse } from "date-fns";
 // The format that <input type="datetime-local"> expects as its value attribute.
 const DATETIME_LOCAL_FORMAT = "yyyy-MM-dd'T'HH:mm";
 
+// Postgres `time without time zone` literal format used by
+// itinerary_items.start_time / end_time.
+const DB_TIME_FORMAT = "HH:mm:ss";
+
+// day (YYYY-MM-DD) + DB time (HH:mm:ss) combined for parsing back into a
+// wall-clock Date via date-fns `parse`.
+const DAY_AND_DB_TIME_FORMAT = "yyyy-MM-dd'T'HH:mm:ss";
+
 /**
  * Convert an ISO-8601 UTC string to the YYYY-MM-DDTHH:mm string required by
  * `<input type="datetime-local">`, rendered in the trip's timezone.
@@ -112,6 +120,63 @@ export function fromLocalInputValue(
   try {
     // fromZonedTime treats parsed as wall-clock time in tripTimezone and
     // returns the equivalent UTC Date.
+    const utcDate = fromZonedTime(parsed, tripTimezone);
+    return utcDate.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fix B (P0 — itinerary time save): `itinerary_items.start_time` /
+ * `end_time` are Postgres `time without time zone` columns. The client
+ * sends a full UTC ISO-8601 instant (via `fromLocalInputValue`); the
+ * server must reduce it to the trip-local wall-clock `HH:mm:ss` before
+ * writing, or the insert/update fails at the DB layer (invalid input
+ * syntax for type time).
+ *
+ * Returns `null` for null, undefined, or unparseable input so the server
+ * action can pass it straight through as a column NULL.
+ */
+export function isoToDbTime(
+  iso: string | null | undefined,
+  tripTimezone: string
+): string | null {
+  if (!iso) return null;
+
+  const date = parseISO(iso);
+  if (!isValid(date)) return null;
+
+  try {
+    return formatInTimeZone(date, tripTimezone, DB_TIME_FORMAT);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fix B hydration inverse: combine an item's `day` (YYYY-MM-DD) with the
+ * stored `HH:mm:ss` wall-clock time — interpreted in the trip's
+ * timezone — back into a full UTC ISO-8601 instant.
+ *
+ * Needed because the edit form's zod schema validates startTime/endTime
+ * with `.datetime()`, which rejects a bare `HH:mm:ss` DB value. Without
+ * this, the default form value fails validation and blocks all edits of
+ * an item that already has a time set.
+ *
+ * Returns `null` for missing/invalid `day` or `dbTime`.
+ */
+export function dbTimeToIso(
+  day: string | null | undefined,
+  dbTime: string | null | undefined,
+  tripTimezone: string
+): string | null {
+  if (!day || !dbTime) return null;
+
+  const parsed = parse(`${day}T${dbTime}`, DAY_AND_DB_TIME_FORMAT, new Date(0));
+  if (!isValid(parsed)) return null;
+
+  try {
     const utcDate = fromZonedTime(parsed, tripTimezone);
     return utcDate.toISOString();
   } catch {
