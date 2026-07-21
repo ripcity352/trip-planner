@@ -719,3 +719,200 @@ describe("lockInCandidateAction", () => {
     expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
   });
 });
+
+describe("deleteDateCandidateAction (#481)", () => {
+  // #481: candidate windows could never be edited or deleted. The RLS
+  // policies ("candidates: organizers can delete") already existed —
+  // this is action + UI only. Semantics per the DOGE review: delete is
+  // only allowed while the window has no votes yet.
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    upsertCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  const CANDIDATE_ROW = { trip_id: VALID_TRIP_ID };
+  const ORGANIZER_VIEWER = {
+    id: VALID_MEMBER_ID,
+    role: "organizer",
+    is_celebrant: false,
+    display_name: null,
+    phone_e164: null,
+    idempotency_key: null,
+  };
+  const ATTENDEE_VIEWER = {
+    ...ORGANIZER_VIEWER,
+    role: "attendee",
+  };
+
+  it("validation_failed on a non-uuid candidateId", async () => {
+    primeAuth(VALID_USER_ID);
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction("not-a-uuid");
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("auth_failed when there is no user", async () => {
+    primeAuth(null);
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("rls_denied when the candidate lookup returns nothing", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: null,
+      error: null,
+    }));
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("rls_denied when the caller is a member but not an organizer", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: CANDIDATE_ROW,
+      error: null,
+    }));
+    tableResolvers.set("trip_members", () => ({
+      data: ATTENDEE_VIEWER,
+      error: null,
+    }));
+    const voteResolver = vi.fn(() => ({ data: null, error: null, count: 0 }));
+    tableResolvers.set(
+      "date_poll_votes",
+      voteResolver as unknown as () => { data: unknown; error: unknown }
+    );
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    // Never even reached the vote-count check — the organizer gate
+    // short-circuits first.
+    expect(voteResolver).not.toHaveBeenCalled();
+  });
+
+  it("rls_denied when the caller isn't a member of the trip at all", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: CANDIDATE_ROW,
+      error: null,
+    }));
+    tableResolvers.set("trip_members", () => ({
+      data: null,
+      error: null,
+    }));
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("date_candidate_has_votes when the window already has votes", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: CANDIDATE_ROW,
+      error: null,
+    }));
+    tableResolvers.set("trip_members", () => ({
+      data: ORGANIZER_VIEWER,
+      error: null,
+    }));
+    tableResolvers.set("date_poll_votes", () => ({
+      data: null,
+      error: null,
+      count: 2,
+    } as unknown as { data: unknown; error: unknown }));
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "date_candidate_has_votes",
+    });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path: organizer deletes a vote-free window and revalidates", async () => {
+    primeAuth(VALID_USER_ID);
+    let candidateCalls = 0;
+    tableResolvers.set("date_poll_candidates", () => {
+      candidateCalls += 1;
+      // First call: the pre-flight select (trip_id lookup). Second
+      // call: the DELETE itself, which reports how many rows matched.
+      if (candidateCalls === 1) {
+        return { data: CANDIDATE_ROW, error: null };
+      }
+      return { data: null, error: null, count: 1 } as unknown as {
+        data: unknown;
+        error: unknown;
+      };
+    });
+    tableResolvers.set("trip_members", () => ({
+      data: ORGANIZER_VIEWER,
+      error: null,
+    }));
+    tableResolvers.set("date_poll_votes", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    } as unknown as { data: unknown; error: unknown }));
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: true });
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("rls_denied when the delete matches no row (RLS filtered it out)", async () => {
+    primeAuth(VALID_USER_ID);
+    let candidateCalls = 0;
+    tableResolvers.set("date_poll_candidates", () => {
+      candidateCalls += 1;
+      if (candidateCalls === 1) {
+        return { data: CANDIDATE_ROW, error: null };
+      }
+      return { data: null, error: null, count: 0 } as unknown as {
+        data: unknown;
+        error: unknown;
+      };
+    });
+    tableResolvers.set("trip_members", () => ({
+      data: ORGANIZER_VIEWER,
+      error: null,
+    }));
+    tableResolvers.set("date_poll_votes", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    } as unknown as { data: unknown; error: unknown }));
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+});
