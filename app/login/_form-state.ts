@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { ERRORS } from "@/lib/copy/errors";
+import { passwordField } from "@/lib/auth/password-field";
 
 // ---------------------------------------------------------------------------
 // Mode
@@ -38,7 +39,8 @@ export const emailOnlySchema = z.object({
 
 export const passwordSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6, { message: ERRORS.validation_failed }),
+  // #471 — shared fragment splits empty ("enter it") vs too-short ("6+").
+  password: passwordField,
 });
 
 export const codeSchema = z.object({
