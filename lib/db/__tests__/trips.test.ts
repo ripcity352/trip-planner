@@ -379,6 +379,67 @@ describe("updateTrip", () => {
 
     expect(result).toBeNull();
   });
+
+  // #476 — dates are writable through updateTrip, but only as a
+  // correction to a trip that ALREADY has both dates set. The
+  // `.not(..., "is", null)` predicates are the query-level guard that
+  // keeps an undated trip on the /dates poll flow exclusively.
+  describe("dates (#476)", () => {
+    it("writes starts_at/ends_at and guards the write to rows that already have both dates", async () => {
+      const { calls, client } = makeBuilder(UPDATED_TRIP);
+
+      await updateTrip(client as unknown as SupabaseClient, "trip-1", {
+        name: "Vegas v2",
+        location: "Las Vegas, NV",
+        starts_at: "2027-06-10",
+        ends_at: "2027-06-14",
+      });
+
+      const update = calls.find((c) => c.method === "update");
+      expect(update?.args[0]).toEqual({
+        name: "Vegas v2",
+        location: "Las Vegas, NV",
+        starts_at: "2027-06-10",
+        ends_at: "2027-06-14",
+      });
+
+      const notCalls = calls.filter((c) => c.method === "not");
+      expect(notCalls).toEqual(
+        expect.arrayContaining([
+          { method: "not", args: ["starts_at", "is", null] },
+          { method: "not", args: ["ends_at", "is", null] },
+        ])
+      );
+    });
+
+    it("leaves dates out of the update payload and skips the not-null guard when dates aren't provided", async () => {
+      const { calls, client } = makeBuilder(UPDATED_TRIP);
+
+      await updateTrip(client as unknown as SupabaseClient, "trip-1", {
+        name: "Vegas v2",
+        location: null,
+      });
+
+      const update = calls.find((c) => c.method === "update");
+      expect(update?.args[0]).toEqual({ name: "Vegas v2", location: null });
+      expect(calls.some((c) => c.method === "not")).toBe(false);
+    });
+
+    it("returns null when the not-null guard rejects the write (trip was undated)", async () => {
+      // Simulates the guard predicate filtering out the row: Supabase
+      // returns no matching row, same shape as an RLS-swallowed write.
+      const { client } = makeBuilder(null);
+
+      const result = await updateTrip(client as unknown as SupabaseClient, "trip-1", {
+        name: "Vegas v2",
+        location: null,
+        starts_at: "2027-06-10",
+        ends_at: "2027-06-14",
+      });
+
+      expect(result).toBeNull();
+    });
+  });
 });
 
 // #368 / #262 — self-service /me profile write (own row only via RLS).

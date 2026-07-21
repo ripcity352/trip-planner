@@ -16,8 +16,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const createTripMock = vi.fn();
+const updateTripMock = vi.fn();
 vi.mock("@/lib/db/trips", () => ({
   createTrip: (...args: unknown[]) => createTripMock(...args),
+  updateTrip: (...args: unknown[]) => updateTripMock(...args),
 }));
 
 const getUserMock = vi.fn();
@@ -52,6 +54,13 @@ const redirectMock = vi.fn((url: string) => {
 });
 vi.mock("next/navigation", () => ({
   redirect: redirectMock,
+}));
+
+// `updateTripAction` calls `revalidatePath`, which needs a request-scope
+// static-generation store outside a real Next request. No-op it here —
+// the tests care about the action's return shape, not cache invalidation.
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
 }));
 
 describe("createTripAction", () => {
@@ -205,5 +214,140 @@ describe("createTripAction", () => {
 
     expect(result).toEqual({ ok: false, errorKey: "trip_create_failed" });
     expect(redirectMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateTripAction — #476 adds an optional dates correction (both-or-
+// neither) on top of the existing name/location edit.
+// ---------------------------------------------------------------------------
+describe("updateTripAction", () => {
+  const KEY = "11111111-2222-4333-8444-555555555555";
+
+  afterEach(() => {
+    updateTripMock.mockReset();
+    getUserMock.mockReset();
+    rateLimitedActionMock.mockClear();
+  });
+
+  function primeAuth(userId: string | null) {
+    getUserMock.mockResolvedValue(
+      userId
+        ? { data: { user: { id: userId } }, error: null }
+        : { data: { user: null }, error: null }
+    );
+  }
+
+  it("updates name + location only when no dates are supplied", async () => {
+    primeAuth("u-1");
+    updateTripMock.mockResolvedValue({ id: "trip-1", slug: "vegas" });
+
+    const { updateTripAction } = await import("@/lib/actions/trips");
+
+    const result = await updateTripAction(
+      { tripId: "22222222-3333-4444-8888-999999999999", name: "Vegas v2", location: "Las Vegas" },
+      KEY
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(updateTripMock).toHaveBeenCalledTimes(1);
+    const [, , input] = updateTripMock.mock.calls[0];
+    expect(input).toEqual({
+      name: "Vegas v2",
+      location: "Las Vegas",
+      starts_at: undefined,
+      ends_at: undefined,
+    });
+  });
+
+  it("forwards starts_at/ends_at when both are supplied (#476)", async () => {
+    primeAuth("u-1");
+    updateTripMock.mockResolvedValue({ id: "trip-1", slug: "vegas" });
+
+    const { updateTripAction } = await import("@/lib/actions/trips");
+
+    const result = await updateTripAction(
+      {
+        tripId: "22222222-3333-4444-8888-999999999999",
+        name: "Vegas v2",
+        location: "Las Vegas",
+        starts_at: "2027-06-10",
+        ends_at: "2027-06-14",
+      },
+      KEY
+    );
+
+    expect(result).toEqual({ ok: true });
+    const [, , input] = updateTripMock.mock.calls[0];
+    expect(input).toMatchObject({
+      starts_at: "2027-06-10",
+      ends_at: "2027-06-14",
+    });
+  });
+
+  it("returns trip_dates_reversed when ends_at is before starts_at (#476, mirrors #405-D)", async () => {
+    primeAuth("u-1");
+
+    const { updateTripAction } = await import("@/lib/actions/trips");
+
+    const result = await updateTripAction(
+      {
+        tripId: "22222222-3333-4444-8888-999999999999",
+        name: "Vegas v2",
+        starts_at: "2027-06-14",
+        ends_at: "2027-06-10",
+      },
+      KEY
+    );
+
+    expect(result).toEqual({ ok: false, errorKey: "trip_dates_reversed" });
+    expect(updateTripMock).not.toHaveBeenCalled();
+  });
+
+  it("returns rls_denied when updateTrip returns null (undated trip guard rejects the write, or non-organizer)", async () => {
+    primeAuth("u-1");
+    updateTripMock.mockResolvedValue(null);
+
+    const { updateTripAction } = await import("@/lib/actions/trips");
+
+    const result = await updateTripAction(
+      {
+        tripId: "22222222-3333-4444-8888-999999999999",
+        name: "Vegas v2",
+        starts_at: "2027-06-10",
+        ends_at: "2027-06-14",
+      },
+      KEY
+    );
+
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns validation_failed for a malformed idempotency key", async () => {
+    primeAuth("u-1");
+
+    const { updateTripAction } = await import("@/lib/actions/trips");
+
+    const result = await updateTripAction(
+      { tripId: "22222222-3333-4444-8888-999999999999", name: "Vegas v2" },
+      "not-a-uuid"
+    );
+
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(updateTripMock).not.toHaveBeenCalled();
+  });
+
+  it("returns auth_failed when there is no signed-in user", async () => {
+    primeAuth(null);
+
+    const { updateTripAction } = await import("@/lib/actions/trips");
+
+    const result = await updateTripAction(
+      { tripId: "22222222-3333-4444-8888-999999999999", name: "Vegas v2" },
+      KEY
+    );
+
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+    expect(updateTripMock).not.toHaveBeenCalled();
   });
 });
