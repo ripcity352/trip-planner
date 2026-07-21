@@ -77,4 +77,20 @@ describe("ExpenseCard", () => {
     );
     expect(screen.getByText("Hidden from Mike Groom")).toBeInTheDocument();
   });
+
+  // #465 — an unbroken long payer name (up to DISPLAY_NAME_MAX_LENGTH,
+  // 80 chars) must not force horizontal scroll at 375px.
+  it("truncates a long payer line instead of overflowing the card", () => {
+    const longName = "B".repeat(80);
+    render(
+      <ExpenseCard
+        expense={EXPENSE}
+        splits={SPLITS}
+        payerName={longName}
+        viewerMemberId="m-me"
+      />
+    );
+    const payerLine = screen.getByText(new RegExp(longName));
+    expect(payerLine).toHaveClass("truncate");
+  });
 });

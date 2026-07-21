@@ -73,8 +73,8 @@ export function OrganizerFlagView({
       {Object.entries(grouped).map(([memberId, memberFlags]) => {
         const displayName = resolveMemberName(memberMap, memberId);
         return (
-          <div key={memberId} className="flex flex-col gap-1.5">
-            <p className="text-xs font-semibold">{displayName}</p>
+          <div key={memberId} className="flex min-w-0 flex-col gap-1.5">
+            <p className="min-w-0 truncate text-xs font-semibold">{displayName}</p>
             <div className="flex flex-wrap gap-1.5">
               {memberFlags.map((f) => (
                 <div key={f.id} className="flex flex-col">

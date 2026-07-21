@@ -68,7 +68,7 @@ export function ExpenseCard({
           <h3 className="truncate text-sm font-semibold">
             {expense.description}
           </h3>
-          <p className="text-muted-foreground mt-0.5 text-xs">
+          <p className="text-muted-foreground mt-0.5 truncate text-xs">
             {M5_UI_STRINGS.expenses_paid_by_template.replace(
               "{name}",
               payerName

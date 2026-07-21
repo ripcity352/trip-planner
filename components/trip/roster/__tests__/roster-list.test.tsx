@@ -111,6 +111,22 @@ describe("RosterList", () => {
     expect(screen.getByTestId("copy-btn")).toBeInTheDocument();
   });
 
+  // #465 — an unbroken long display name (up to DISPLAY_NAME_MAX_LENGTH,
+  // 80 chars) must not force horizontal scroll at 375px. The name span
+  // needs both truncate and min-w-0 — min-w-0 alone does nothing without
+  // overflow-hidden/ellipsis, and truncate alone does nothing on a flex
+  // child whose default min-width:auto blocks it from shrinking.
+  it("truncates a long display name instead of overflowing the row", () => {
+    const longName = "A".repeat(80);
+    const longNameMembers: RosterMember[] = [
+      { id: "m1", displayName: longName, phone: null, role: "attendee", isCelebrant: false },
+    ];
+    render(<RosterList members={longNameMembers} tripName="Test Trip" />);
+    const nameEl = screen.getByText(longName);
+    expect(nameEl).toHaveClass("truncate");
+    expect(nameEl).toHaveClass("min-w-0");
+  });
+
   it("renders the roster heading from M3_UI_STRINGS", () => {
     render(<RosterList members={sampleMembers} tripName="Test Trip" />);
     // M3_UI_STRINGS.roster_heading = "Who's coming"
