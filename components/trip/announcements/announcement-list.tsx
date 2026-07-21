@@ -5,7 +5,14 @@
  *
  * Subscribes to `announcements:{tripId}` on mount via
  * `subscribeToAnnouncements` and removes the channel on unmount.
- * Renders pinned announcements first, then chronological (newest first).
+ *
+ * #470 compact-top relayout: pinned announcements no longer render as
+ * full cards at the top of the feed — they collapse into
+ * `<PinnedAnnouncementBanner>` (one line, tap to expand) so the newest
+ * *regular* post is reachable without scrolling past a pinned stack.
+ * The regular feed below is chronological, newest first. The optional
+ * date-poll link row (also #470) renders between the banner and the
+ * feed — same slot the pinned card used to occupy.
  *
  * W1c (#239): accepts `memberUserMap` (user_id → display_name) so that both
  * the initial server-rendered list and the realtime INSERT payloads surface
@@ -24,7 +31,9 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useState,
+  type ReactNode,
 } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/browser";
@@ -32,6 +41,7 @@ import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import { AnnouncementCard } from "./announcement-card";
 import { ReactionRow } from "./reaction-row";
+import { PinnedAnnouncementBanner } from "./pinned-announcement-banner";
 import { EMPTY_STATES } from "@/lib/copy/empty-states";
 import type {
   Announcement,
@@ -55,6 +65,18 @@ interface AnnouncementListProps {
   reactionsByAnnouncement?: Record<string, AnnouncementReactionSummary>;
   /** #405-B — celebrant display name for the hide-from-celebrant badge. */
   celebrantName?: string | null;
+  /**
+   * #470 (amended) — the decision-poll disclosure row
+   * (`PollsDisclosure`, #390 surface), slotted directly under the
+   * pinned banner. `null`/undefined renders nothing.
+   */
+  pollsSlot?: ReactNode;
+  /**
+   * #470 — server-computed date-poll "still open" link row, slotted
+   * between the polls row and the regular feed. `null` when there's
+   * nothing to show (no live date poll).
+   */
+  datePollLinkRow?: ReactNode;
 }
 
 export interface AnnouncementListHandle {
@@ -80,6 +102,8 @@ export const AnnouncementList = forwardRef<
     memberUserMap,
     reactionsByAnnouncement = {},
     celebrantName,
+    pollsSlot = null,
+    datePollLinkRow = null,
   },
   ref
 ) {
@@ -140,39 +164,70 @@ export const AnnouncementList = forwardRef<
     };
   }, [tripId, memberUserMap]);
 
-  if (announcements.length === 0) {
+  // #470: split once per render — pinned float into the banner, the rest
+  // stay in the chronological (already newest-first, per sortAnnouncements)
+  // feed below.
+  const { pinned, regular } = useMemo(() => {
+    const pinnedItems = announcements.filter((a) => a.pinned);
+    const regularItems = announcements.filter((a) => !a.pinned);
+    return { pinned: pinnedItems, regular: regularItems };
+  }, [announcements]);
+
+  const reactionsSlotFor = (announcementId: string) => {
+    const reactions = reactionsByAnnouncement[announcementId];
     return (
-      <p className="text-muted-foreground text-sm">
-        {EMPTY_STATES.announcements}
-      </p>
+      <ReactionRow
+        announcementId={announcementId}
+        initialCounts={reactions?.counts ?? {}}
+        initialMine={reactions?.mine ?? []}
+      />
+    );
+  };
+
+  if (announcements.length === 0) {
+    // The polls row + date-poll link still render on an empty feed —
+    // an unanswered poll is exactly why someone opens an empty page.
+    return (
+      <div className="flex flex-col gap-3">
+        {pollsSlot}
+        {datePollLinkRow}
+        <p className="text-muted-foreground text-sm">
+          {EMPTY_STATES.announcements}
+        </p>
+      </div>
     );
   }
 
   return (
-    <ol
-      className="flex flex-col gap-3"
-      aria-live="polite"
-      aria-relevant="additions"
-    >
-      {announcements.map((a) => {
-        const reactions = reactionsByAnnouncement[a.id];
-        return (
-          <li key={a.id}>
-            <AnnouncementCard
-              announcement={a}
-              authorDisplayName={a.authorDisplayName}
-              celebrantName={celebrantName}
-              reactionsSlot={
-                <ReactionRow
-                  announcementId={a.id}
-                  initialCounts={reactions?.counts ?? {}}
-                  initialMine={reactions?.mine ?? []}
-                />
-              }
-            />
-          </li>
-        );
-      })}
-    </ol>
+    <div className="flex flex-col gap-3">
+      <PinnedAnnouncementBanner
+        pinned={pinned}
+        celebrantName={celebrantName}
+        reactionsSlotFor={reactionsSlotFor}
+      />
+
+      {pollsSlot}
+
+      {datePollLinkRow}
+
+      {regular.length > 0 ? (
+        <ol
+          className="flex flex-col gap-3"
+          aria-live="polite"
+          aria-relevant="additions"
+        >
+          {regular.map((a) => (
+            <li key={a.id}>
+              <AnnouncementCard
+                announcement={a}
+                authorDisplayName={a.authorDisplayName}
+                celebrantName={celebrantName}
+                reactionsSlot={reactionsSlotFor(a.id)}
+              />
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
   );
 });

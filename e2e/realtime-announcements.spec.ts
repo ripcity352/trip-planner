@@ -83,6 +83,9 @@ test.describe("realtime announcements — cross-client delivery (#349)", () => {
     });
     const pageA: Page = await contextA.newPage();
     await pageA.goto(`/trips/${M4_TEST_TRIP_SLUG}/announcements`);
+    // #470: the composer defaults to a collapsed "Post an update" trigger —
+    // tap it to expand the real form before interacting with the textarea.
+    await pageA.getByRole("button", { name: "Post an update" }).click();
     const composer = pageA.getByPlaceholder("What's the update?");
     await expect(composer).toBeVisible({ timeout: 10_000 });
     await composer.fill(body);

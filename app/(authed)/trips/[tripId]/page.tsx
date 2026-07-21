@@ -245,13 +245,17 @@ export default async function TripDashboardPage({ params }: PageProps) {
             {trip.name}
           </h1>
           {/* Organizer micro-affordance (rule 11) — non-organizers never
-              see the trigger. Name + location only; dates stay with the
-              /dates poll flow. RLS is the real gate on the write. */}
+              see the trigger. Name + location always; dates too (#476)
+              but ONLY once the trip already has dates — an undated trip
+              still routes exclusively through the /dates poll flow.
+              RLS is the real gate on the write. */}
           {isOrganizer ? (
             <EditTripSheet
               tripId={trip.id}
               initialName={trip.name}
               initialLocation={trip.location}
+              initialStartsAt={trip.starts_at}
+              initialEndsAt={trip.ends_at}
               triggerClassName="shrink-0"
             />
           ) : null}
@@ -271,19 +275,38 @@ export default async function TripDashboardPage({ params }: PageProps) {
             <CardTitle>{M2_UI_STRINGS.dashboard_section_rsvp_heading}</CardTitle>
             <CardDescription>{countLine}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-3">
+            {/* #483 — a small kicker scopes the chips to "you": without
+                it they sat directly under the group-level "Who's in"
+                heading and read as a filter on the whole crew rather
+                than the viewer's own control. */}
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {M2_UI_STRINGS.dashboard_rsvp_your_rsvp_label}
+            </p>
             <RsvpToggle
               tripId={trip.id}
               initialStatus={myRsvp?.status ?? "pending"}
             />
+            {/* #483 — "Who's coming" (the roster link card) rendered the
+                exact same headcount as this card and was removed as a
+                duplicate. This was the dashboard's only roster link, so
+                it's folded in here rather than left unreachable. */}
+            <Link
+              href={`/trips/${trip.slug}/roster`}
+              className="text-primary text-sm underline-offset-4 hover:underline"
+            >
+              {M2_UI_STRINGS.dashboard_rsvp_roster_link}
+            </Link>
           </CardContent>
         </Card>
 
         {/* Sub-route link cards — Itinerary (Wave 2), Announcements (3a),
-            Arrivals (4a), Roster (4b), Invites (4c — organizer-only).
-            Each lives under /trips/[slug]/<route>; the page-level RLS/role
-            gate enforces actual visibility, the dashboard surfaces them
-            so they're discoverable.
+            Arrivals (4a), Invites (4c — organizer-only). Roster (4b)'s
+            card was removed in #483 as a duplicate of the "Who's in"
+            headcount above; its link now lives in that card's footer.
+            Each remaining card lives under /trips/[slug]/<route>; the
+            page-level RLS/role gate enforces actual visibility, the
+            dashboard surfaces them so they're discoverable.
             Glanceability sweep: each card carries ONE muted context line
             (CardDescription) — read-only facts, truncated to a single
             line at 375px. No badges, no unread dots. */}
@@ -336,16 +359,6 @@ export default async function TripDashboardPage({ params }: PageProps) {
               <CardDescription className="truncate">
                 {arrivalsLine}
               </CardDescription>
-            </CardHeader>
-          </Card>
-        </Link>
-
-        <Link href={`/trips/${trip.slug}/roster`} className="block">
-          <Card className="hover:bg-muted/40 transition-colors">
-            <CardHeader>
-              <CardTitle>{M3_UI_STRINGS.roster_heading}</CardTitle>
-              {/* Reuses the already-computed RSVP count line — no second query. */}
-              <CardDescription className="truncate">{countLine}</CardDescription>
             </CardHeader>
           </Card>
         </Link>
