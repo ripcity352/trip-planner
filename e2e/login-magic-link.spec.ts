@@ -1,35 +1,46 @@
 /**
- * Playwright smoke for `/login` magic-link request.
+ * Playwright smoke for `/login` email-code (OTP) request.
  *
- * We don't actually receive a magic link — that depends on Supabase
- * reaching out + an inbox. Instead, we intercept the Supabase OTP
- * endpoint at the network boundary, return a synthetic 200, and assert
- * the form renders the success copy (`ERRORS.auth_link_sent`).
+ * Magic-link URLs were demoted to a verification primitive in M5 PR3 — the
+ * login form defaults to password/OTP mode, and "sending the link" now
+ * means requesting a 6-digit code via the "Email me a code instead" link.
+ * Filename kept as `login-magic-link.spec.ts` (issue #456 references it),
+ * but the flow under test is the OTP request, not a magic-link button.
  *
- * The intercept lets the spec pass with or without Supabase env vars
- * (CI has them, local dev may not). If the env is unconfigured the
- * server action will return an error key; we cover the happy path here.
+ * requestEmailCode is a Server Action — its call to Supabase's OTP
+ * endpoint happens on the Next.js server, not in the browser page
+ * context, so a `page.route()` intercept never sees it (verified: the
+ * request goes through to the real local Supabase instance regardless
+ * of any browser-side route handler). We use the deterministic seeded
+ * test user (`TEST_USER_EMAIL`, provisioned by the `setup` project this
+ * spec depends on — see playwright.config.ts) so the request succeeds
+ * against a real account instead of hitting the `auth_no_account` path.
+ *
+ * The `chromium` + `mobile-safari` projects run in parallel workers and
+ * would otherwise both fire a real OTP request for the same seeded email
+ * within the same instant — that trips the AUTH_OTP_VERIFY rate limiter
+ * (10/15min per email, lib/rate-limit/index.ts) as a burst, not a genuine
+ * abuse pattern, producing a flaky "Easy, tiger..." failure. Restrict the
+ * OTP-request assertion to a single project so it exercises the real
+ * rate-limited action exactly once per run.
  */
 
 import { test, expect } from "@playwright/test";
 
-const SUCCESS_COPY = "Link's on its way. Check your email — it's quick.";
+import { TEST_USER_EMAIL } from "./_setup/seed-test-user";
 
-test.describe("login magic-link", () => {
+const SUCCESS_COPY = `Code's heading to ${TEST_USER_EMAIL}. Pop it in below.`;
+
+test.describe("login — email code request", () => {
   test.use({
     viewport: { width: 375, height: 812 }, // iPhone-class width
   });
 
-  test("submitting a valid email shows the success copy", async ({ page }) => {
-    // Intercept the Supabase OTP request that the server action makes on
-    // our behalf. Any URL containing `auth/v1/otp` is the OTP endpoint.
-    await page.route("**/auth/v1/otp**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: null, error: null }),
-      });
-    });
+  test("requesting a code shows the code-sent copy", async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "single-project guard — avoids a cross-project OTP rate-limit race (see file header)"
+    );
 
     await page.goto("/login");
 
@@ -37,10 +48,14 @@ test.describe("login magic-link", () => {
       page.getByRole("heading", { name: /sign in/i })
     ).toBeVisible();
 
-    await page.getByLabel(/email/i).fill("dave@example.com");
-    await page.getByRole("button", { name: /send the link/i }).click();
+    // Email → Continue advances to password mode.
+    await page.getByLabel(/email/i).fill(TEST_USER_EMAIL);
+    await page.getByRole("button", { name: /continue/i }).click();
 
-    // Success copy lands; form disappears.
+    // Password mode surfaces the "Email me a code instead" fallback.
+    await page.getByRole("button", { name: /email me a code instead/i }).click();
+
+    // Code-sent copy lands; form advances to code-verify mode.
     await expect(page.getByText(SUCCESS_COPY)).toBeVisible();
   });
 
