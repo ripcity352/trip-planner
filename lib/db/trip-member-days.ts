@@ -59,6 +59,15 @@ export async function getMemberDays(
  * already limits rows to trips the caller belongs to; the explicit
  * filter keeps the query single-trip.
  *
+ * #475: excludes members who declined at the TRIP level
+ * (`trip_members.rsvp_status <> 'declined'`). Day rows are never
+ * cleared when a member declines, so a stale 'going' row would
+ * otherwise inflate the count forever. This deliberately does NOT
+ * require `rsvp_status = 'going'` — `lib/actions/trip-member-days.ts`
+ * lets a trip-level 'maybe' member opt individual days 'going' via
+ * their own chip (rule 8: per-item granular opt-in). A require-going
+ * join would silently undercount those members.
+ *
  * Client-side aggregation on purpose (same rationale as
  * `getRsvpCountsForTrip`): the row count is tiny (members × days) and
  * a SQL aggregate would need its own SECURITY DEFINER surface.
@@ -69,9 +78,10 @@ export async function getPerDayGoingCounts(
 ): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from("trip_member_days")
-    .select("date, status, trip_members!inner(trip_id)")
+    .select("date, status, trip_members!inner(trip_id, rsvp_status)")
     .eq("trip_members.trip_id", tripId)
-    .eq("status", "going");
+    .eq("status", "going")
+    .neq("trip_members.rsvp_status", "declined");
 
   if (error) {
     throw new Error(`getPerDayGoingCounts failed: ${error.message}`);
