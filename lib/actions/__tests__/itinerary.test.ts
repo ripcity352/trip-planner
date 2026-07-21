@@ -239,12 +239,46 @@ describe("addItineraryItem", () => {
     expect(result).toEqual({ ok: true, item: mockItem });
   });
 
-  it("returns itinerary_save_failed on generic DB error", async () => {
+  // #474: a coded Postgres/PostgREST error (constraint/type/validation
+  // rejection) is deterministic — retrying can never succeed — so it must
+  // route to itinerary_save_rejected, not the retry-framed
+  // itinerary_save_failed. Before this fix both collapsed to the same key.
+  it("returns itinerary_save_rejected on a coded Postgres/PostgREST error", async () => {
     primeAuth(VALID_USER_ID);
     tableResolvers.set("itinerary_items", () => ({
       data: null,
-      error: { code: "XXXXX", message: "unexpected" },
+      error: { code: "23514", message: "check constraint violated" },
     }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await addItineraryItem(
+      { tripId: VALID_TRIP_ID, title: "Dinner", kind: "meal", day: "2026-06-15" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "itinerary_save_rejected" });
+  });
+
+  // #474: an error object with no `code` (e.g. a genuine transport-layer
+  // failure surfaced as a PostgrestError shape) stays on the transient,
+  // retry-framed itinerary_save_failed copy.
+  it("returns itinerary_save_failed when the error carries no code", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({
+      data: null,
+      error: { code: "", message: "network hiccup" },
+    }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await addItineraryItem(
+      { tripId: VALID_TRIP_ID, title: "Dinner", kind: "meal", day: "2026-06-15" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "itinerary_save_failed" });
+  });
+
+  // #474: a thrown (non-Postgrest) exception — the genuine network/flake
+  // case — must still fall through to the transient copy.
+  it("returns itinerary_save_failed when the query throws a plain exception", async () => {
+    primeAuth(VALID_USER_ID);
+    rateLimitedActionMock.mockRejectedValueOnce(new TypeError("fetch failed"));
     const { addItineraryItem } = await import("@/lib/actions/itinerary");
     const result = await addItineraryItem(
       { tripId: VALID_TRIP_ID, title: "Dinner", kind: "meal", day: "2026-06-15" },
@@ -452,6 +486,48 @@ describe("updateItineraryItem — address place fields", () => {
 // ---------------------------------------------------------------------------
 // updateItineraryItem — W2b: startTime / endTime datetime fields
 // ---------------------------------------------------------------------------
+
+describe("updateItineraryItem — #474 deterministic vs transient errors", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("returns itinerary_save_rejected on a coded Postgres/PostgREST error", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({
+      data: null,
+      error: { code: "23514", message: "check constraint violated" },
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      { itemId: VALID_ITEM_ID, title: "Dinner" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "itinerary_save_rejected" });
+  });
+
+  it("returns itinerary_save_failed when the error carries no code", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({
+      data: null,
+      error: { code: "", message: "network hiccup" },
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      { itemId: VALID_ITEM_ID, title: "Dinner" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "itinerary_save_failed" });
+  });
+});
 
 describe("updateItineraryItem — datetime fields (W2b)", () => {
   beforeEach(() => {

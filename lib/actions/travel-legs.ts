@@ -190,7 +190,11 @@ export async function upsertTravelLeg(
             if (error.code === "42501" || error.code === "PGRST116") {
               throw new TravelLegError("rls_denied");
             }
-            throw new TravelLegError("save_failed");
+            // #474: a coded Postgres/PostgREST error is a deterministic
+            // rejection, not a flaky connection — see itinerary.ts.
+            throw new TravelLegError(
+              error.code ? "save_rejected" : "save_failed"
+            );
           }
           return data as TravelLeg;
         }
@@ -231,7 +235,10 @@ export async function upsertTravelLeg(
           if (error.code === "42501") {
             throw new TravelLegError("rls_denied");
           }
-          throw new TravelLegError("save_failed");
+          // #474: see the insert-branch comment above.
+          throw new TravelLegError(
+            error.code ? "save_rejected" : "save_failed"
+          );
         }
         return data as TravelLeg;
       }
@@ -243,11 +250,7 @@ export async function upsertTravelLeg(
       return { ok: false, errorKey: "rate_limit" };
     }
     if (err instanceof TravelLegError) {
-      return {
-        ok: false,
-        errorKey:
-          err.reason === "rls_denied" ? "rls_denied" : "travel_leg_save_failed",
-      };
+      return { ok: false, errorKey: travelLegErrorKey(err.reason) };
     }
     console.error("[travel-legs] upsertTravelLeg unexpected:", err);
     return { ok: false, errorKey: "travel_leg_save_failed" };
@@ -293,12 +296,26 @@ export async function deleteTravelLeg(
   }
 }
 
-class TravelLegError extends Error {
-  readonly reason: "save_failed" | "rls_denied";
+type TravelLegErrorReason = "save_failed" | "save_rejected" | "rls_denied";
 
-  constructor(reason: "save_failed" | "rls_denied") {
+class TravelLegError extends Error {
+  readonly reason: TravelLegErrorReason;
+
+  constructor(reason: TravelLegErrorReason) {
     super(`travel_leg_error:${reason}`);
     this.name = "TravelLegError";
     this.reason = reason;
+  }
+}
+
+// #474: see itinerary.ts's itineraryErrorKey for the rationale.
+function travelLegErrorKey(reason: TravelLegErrorReason): ErrorKey {
+  switch (reason) {
+    case "rls_denied":
+      return "rls_denied";
+    case "save_rejected":
+      return "travel_leg_save_rejected";
+    case "save_failed":
+      return "travel_leg_save_failed";
   }
 }

@@ -51,15 +51,25 @@ export type ErrorKey =
   // `<feature>_<verb>_failed` pattern. Voice-tested — blame-free, warm,
   // specific. See `notes/m3-execution-plan.md` Override F.
   | "itinerary_save_failed"
+  // #474 — deterministic server-side rejection (Postgres constraint/type/
+  // validation error, identified by a PostgREST error `code`), as opposed
+  // to `itinerary_save_failed`'s genuine transient/network failure. The
+  // old collapse told a user whose save could never succeed to keep
+  // retrying — this key gets the non-retry-framed copy instead.
+  | "itinerary_save_rejected"
   | "itinerary_delete_failed"
   | "item_rsvp_save_failed"
   | "item_flag_save_failed"
   | "announcement_post_failed"
+  // #474 — same deterministic/transient split as itinerary_save_rejected.
+  | "announcement_post_rejected"
   | "trip_notes_save_failed"
   // Trip name/location edit from the dashboard header. Same
   // `<feature>_<verb>_failed` pattern; retry-framed (transient).
   | "trip_update_failed"
   | "travel_leg_save_failed"
+  // #474 — same deterministic/transient split as itinerary_save_rejected.
+  | "travel_leg_save_rejected"
   | "travel_leg_delete_failed"
   | "lodging_assign_failed"
   | "invite_mint_failed"
@@ -193,6 +203,10 @@ export const ERRORS: Record<ErrorKey, string> = {
   // M3 error strings — same voice rules.
   itinerary_save_failed:
     "Didn't save. Give it another tap — your connection's flaky.",
+  // #474 — deterministic rejection. No retry framing: tapping again can't
+  // fix a server-side rejection the way it can fix a flaky bar.
+  itinerary_save_rejected:
+    "That didn't take — something's off on our end. Not your signal.",
   itinerary_delete_failed: "Couldn't delete that. Try once more in a sec.",
   item_rsvp_save_failed:
     "Couldn't update your spot on that one. Tap again — it'll catch.",
@@ -200,10 +214,16 @@ export const ERRORS: Record<ErrorKey, string> = {
     "Heads-up didn't save. Try once more — the organizers won't see it until it does.",
   announcement_post_failed:
     "Update didn't go out. Tap send again — the group hasn't seen it yet.",
+  // #474 — deterministic rejection, same split as itinerary_save_rejected.
+  announcement_post_rejected:
+    "That didn't go out — something's off on our end. Not your signal.",
   trip_notes_save_failed: "Notes didn't save. Try once more in a sec.",
   trip_update_failed: "That didn't save. Give it another go in a sec.",
   travel_leg_save_failed:
     "Leg didn't save. Tap again — your connection's flaky.",
+  // #474 — deterministic rejection, same split as itinerary_save_rejected.
+  travel_leg_save_rejected:
+    "That leg didn't take — something's off on our end. Not your signal.",
   travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",
   lodging_assign_failed:
     "Rooms didn't budge. Tap again — it'll catch.",

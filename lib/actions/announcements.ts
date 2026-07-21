@@ -117,7 +117,11 @@ export async function postAnnouncement(
           if (error.code === "42501") {
             throw new AnnouncementActionError("rls_denied");
           }
-          throw new AnnouncementActionError("post_failed");
+          // #474: a coded Postgres/PostgREST error is a deterministic
+          // rejection, not a flaky connection — see itinerary.ts.
+          throw new AnnouncementActionError(
+            error.code ? "post_rejected" : "post_failed"
+          );
         }
         return data as Announcement;
       }
@@ -134,25 +138,33 @@ export async function postAnnouncement(
       return { ok: false, errorKey: "rate_limit" };
     }
     if (err instanceof AnnouncementActionError) {
-      return {
-        ok: false,
-        errorKey:
-          err.reason === "rls_denied"
-            ? "rls_denied"
-            : "announcement_post_failed",
-      };
+      return { ok: false, errorKey: announcementErrorKey(err.reason) };
     }
     console.error("[announcements] postAnnouncement unexpected:", err);
     return { ok: false, errorKey: "announcement_post_failed" };
   }
 }
 
-class AnnouncementActionError extends Error {
-  readonly reason: "post_failed" | "rls_denied";
+type AnnouncementErrorReason = "post_failed" | "post_rejected" | "rls_denied";
 
-  constructor(reason: "post_failed" | "rls_denied") {
+class AnnouncementActionError extends Error {
+  readonly reason: AnnouncementErrorReason;
+
+  constructor(reason: AnnouncementErrorReason) {
     super(`announcement_action_error:${reason}`);
     this.name = "AnnouncementActionError";
     this.reason = reason;
+  }
+}
+
+// #474: see itinerary.ts's itineraryErrorKey for the rationale.
+function announcementErrorKey(reason: AnnouncementErrorReason): ErrorKey {
+  switch (reason) {
+    case "rls_denied":
+      return "rls_denied";
+    case "post_rejected":
+      return "announcement_post_rejected";
+    case "post_failed":
+      return "announcement_post_failed";
   }
 }

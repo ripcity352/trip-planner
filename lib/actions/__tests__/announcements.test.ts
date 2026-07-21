@@ -206,11 +206,32 @@ describe("postAnnouncement", () => {
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
   });
 
-  it("returns announcement_post_failed on generic DB error", async () => {
+  // #474: a coded Postgres/PostgREST error is a deterministic rejection —
+  // retrying can never succeed — so it routes to announcement_post_rejected,
+  // not the retry-framed announcement_post_failed.
+  it("returns announcement_post_rejected on a coded Postgres/PostgREST error", async () => {
     primeAuth(VALID_USER_ID);
     tableResolvers.set("announcements", () => ({
       data: null,
-      error: { code: "XXXXX", message: "unexpected" },
+      error: { code: "23514", message: "check constraint violated" },
+    }));
+    const { postAnnouncement } = await import("@/lib/actions/announcements");
+    const result = await postAnnouncement(
+      { tripId: VALID_TRIP_ID, body: "Pack light." },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "announcement_post_rejected",
+    });
+  });
+
+  // #474: an error with no `code` stays on the transient, retry-framed copy.
+  it("returns announcement_post_failed when the error carries no code", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "", message: "network hiccup" },
     }));
     const { postAnnouncement } = await import("@/lib/actions/announcements");
     const result = await postAnnouncement(
