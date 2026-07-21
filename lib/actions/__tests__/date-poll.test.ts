@@ -853,7 +853,41 @@ describe("deleteDateCandidateAction (#481)", () => {
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
-  it("happy path: organizer deletes a vote-free window and revalidates", async () => {
+  it("date_candidate_has_mark when the window is unvoted but celebrant-marked (#495)", async () => {
+    // #495: the vote guard alone let an organizer delete a window the
+    // celebrant already marked — the mark cascade-deletes silently. This
+    // is the RED case: zero votes, one mark, must still block.
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("date_poll_candidates", () => ({
+      data: CANDIDATE_ROW,
+      error: null,
+    }));
+    tableResolvers.set("trip_members", () => ({
+      data: ORGANIZER_VIEWER,
+      error: null,
+    }));
+    tableResolvers.set("date_poll_votes", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    } as unknown as { data: unknown; error: unknown }));
+    const markResolver = vi.fn(() => ({ data: null, error: null, count: 1 }));
+    tableResolvers.set(
+      "date_poll_celebrant_marks",
+      markResolver as unknown as () => { data: unknown; error: unknown }
+    );
+    const { deleteDateCandidateAction } = await import(
+      "@/lib/actions/date-poll"
+    );
+    const result = await deleteDateCandidateAction(VALID_CANDIDATE_ID);
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "date_candidate_has_mark",
+    });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path: organizer deletes an unvoted, unmarked window and revalidates", async () => {
     primeAuth(VALID_USER_ID);
     let candidateCalls = 0;
     tableResolvers.set("date_poll_candidates", () => {
@@ -873,6 +907,11 @@ describe("deleteDateCandidateAction (#481)", () => {
       error: null,
     }));
     tableResolvers.set("date_poll_votes", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    } as unknown as { data: unknown; error: unknown }));
+    tableResolvers.set("date_poll_celebrant_marks", () => ({
       data: null,
       error: null,
       count: 0,

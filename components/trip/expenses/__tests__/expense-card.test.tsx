@@ -23,6 +23,15 @@ const SPLITS: ExpenseSplit[] = [
   { expense_id: "e-1", trip_member_id: "m-other", amount_cents: 30000, currency: "USD" },
 ];
 
+const MEMBER_MAP = new Map<string, { display_name: string | null }>([
+  ["m-me", { display_name: "Carl" }],
+  ["m-other", { display_name: "Dave Bestman" }],
+  ["m-pete", { display_name: "Pete" }],
+  ["m-sam", { display_name: "Sam" }],
+  ["m-joe", { display_name: "Joe" }],
+  ["m-zoe", { display_name: "Zoe" }],
+]);
+
 describe("ExpenseCard", () => {
   it("renders description, payer line, amount, and the viewer's share", () => {
     render(
@@ -92,5 +101,96 @@ describe("ExpenseCard", () => {
     );
     const payerLine = screen.getByText(new RegExp(longName));
     expect(payerLine).toHaveClass("truncate");
+  });
+
+  // #467 — split membership must be legible to every viewer, not just
+  // the payer/organizer's edit sheet.
+  describe("who's-in line (#467)", () => {
+    it("lists split members with the viewer first as 'you' when included", () => {
+      render(
+        <ExpenseCard
+          expense={EXPENSE}
+          splits={SPLITS}
+          payerName="Dave Bestman"
+          viewerMemberId="m-me"
+          memberMap={MEMBER_MAP}
+        />
+      );
+      expect(
+        screen.getByText("Split 2 ways — you, Dave Bestman")
+      ).toBeInTheDocument();
+    });
+
+    it("shows a quiet not-in-this-one state when the viewer is excluded", () => {
+      render(
+        <ExpenseCard
+          expense={EXPENSE}
+          splits={SPLITS}
+          payerName="Dave Bestman"
+          viewerMemberId="m-uninvolved"
+          memberMap={MEMBER_MAP}
+        />
+      );
+      expect(screen.getByText("You're not in this one")).toBeInTheDocument();
+      expect(screen.queryByText(/Split 2 ways/)).not.toBeInTheDocument();
+    });
+
+    it("elides long split lists past 4 names with a '+N more' suffix", () => {
+      const manySplits: ExpenseSplit[] = [
+        { expense_id: "e-1", trip_member_id: "m-me", amount_cents: 5000, currency: "USD" },
+        { expense_id: "e-1", trip_member_id: "m-other", amount_cents: 5000, currency: "USD" },
+        { expense_id: "e-1", trip_member_id: "m-pete", amount_cents: 5000, currency: "USD" },
+        { expense_id: "e-1", trip_member_id: "m-sam", amount_cents: 5000, currency: "USD" },
+        { expense_id: "e-1", trip_member_id: "m-joe", amount_cents: 5000, currency: "USD" },
+        { expense_id: "e-1", trip_member_id: "m-zoe", amount_cents: 5000, currency: "USD" },
+      ];
+      render(
+        <ExpenseCard
+          expense={EXPENSE}
+          splits={manySplits}
+          payerName="Dave Bestman"
+          viewerMemberId="m-me"
+          memberMap={MEMBER_MAP}
+        />
+      );
+      expect(
+        screen.getByText(
+          "Split 6 ways — you, Dave Bestman, Pete, Sam +2 more"
+        )
+      ).toBeInTheDocument();
+    });
+
+    it("omits the who's-in line entirely for a single-member split", () => {
+      const soloSplit: ExpenseSplit[] = [
+        { expense_id: "e-1", trip_member_id: "m-me", amount_cents: 45000, currency: "USD" },
+      ];
+      render(
+        <ExpenseCard
+          expense={EXPENSE}
+          splits={soloSplit}
+          payerName="Dave Bestman"
+          viewerMemberId="m-me"
+          memberMap={MEMBER_MAP}
+        />
+      );
+      expect(screen.queryByText(/Split/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("You're not in this one")
+      ).not.toBeInTheDocument();
+    });
+
+    it("does not render the who's-in line when memberMap isn't threaded", () => {
+      render(
+        <ExpenseCard
+          expense={EXPENSE}
+          splits={SPLITS}
+          payerName="Dave Bestman"
+          viewerMemberId="m-me"
+        />
+      );
+      // No memberMap: names resolve to the roster fallback, but the
+      // line should still render truthfully rather than silently drop.
+      expect(screen.getByText(/^Split 2 ways —/)).toBeInTheDocument();
+    });
   });
 });

@@ -202,7 +202,14 @@ export type ErrorKey =
   // DETERMINISTIC rejection (simplest semantics per the DOGE review —
   // no vote-clearing built) so its copy is retry-free.
   | "date_candidate_delete_failed"
-  | "date_candidate_has_votes";
+  | "date_candidate_has_votes"
+  // #495 — the vote guard alone let an organizer delete a window the
+  // celebrant already marked (works / works-with-effort / no-go); the
+  // mark cascade-deleted silently, now visibly badged per #482.
+  // DETERMINISTIC rejection, same simplest-consistent-rule treatment as
+  // `date_candidate_has_votes` — block on any mark, distinct key so the
+  // copy can name what actually happened.
+  | "date_candidate_has_mark";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -374,4 +381,6 @@ export const ERRORS: Record<ErrorKey, string> = {
     "Couldn't remove that window. Try once more in a sec.",
   date_candidate_has_votes:
     "Votes are already in on that one — can't pull it now.",
+  date_candidate_has_mark:
+    "The celebrant already weighed in on that one — can't pull it now.",
 };
