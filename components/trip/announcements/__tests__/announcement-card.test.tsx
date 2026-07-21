@@ -111,4 +111,87 @@ describe("AnnouncementCard", () => {
     );
     expect(screen.getByText("Hidden from the celebrant")).toBeInTheDocument();
   });
+
+  describe("multi-line rendering (#464)", () => {
+    it("preserves stored newlines via whitespace-pre-wrap on the body element", () => {
+      const { container } = render(
+        <AnnouncementCard
+          announcement={makeAnnouncement({ body: "Day 1: pool\nDay 2: golf" })}
+        />
+      );
+      const body = container.querySelector('[data-testid="announcement-body"]');
+      expect(body).not.toBeNull();
+      expect(body).toHaveClass("whitespace-pre-wrap");
+      // The raw newline must survive into the DOM text content
+      expect(body?.textContent).toBe("Day 1: pool\nDay 2: golf");
+    });
+  });
+
+  describe("URL linkification (#469)", () => {
+    it("renders an https URL as an anchor with target=_blank and safe rel", () => {
+      render(
+        <AnnouncementCard
+          announcement={makeAnnouncement({
+            body: "Airbnb here: https://airbnb.com/rooms/123",
+          })}
+        />
+      );
+      const link = screen.getByRole("link", {
+        name: "https://airbnb.com/rooms/123",
+      });
+      expect(link).toHaveAttribute("href", "https://airbnb.com/rooms/123");
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    });
+
+    it("upgrades a www.-prefixed URL to an https href", () => {
+      render(
+        <AnnouncementCard
+          announcement={makeAnnouncement({ body: "Map: www.example.com/pin" })}
+        />
+      );
+      const link = screen.getByRole("link", { name: "www.example.com/pin" });
+      expect(link).toHaveAttribute("href", "https://www.example.com/pin");
+    });
+
+    it("does NOT linkify a javascript: scheme", () => {
+      render(
+        <AnnouncementCard
+          announcement={makeAnnouncement({ body: "javascript:alert(1)" })}
+        />
+      );
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(screen.getByText(/javascript:alert\(1\)/)).toBeInTheDocument();
+    });
+
+    it("keeps surrounding text intact around a link", () => {
+      const { container } = render(
+        <AnnouncementCard
+          announcement={makeAnnouncement({
+            body: "Before https://example.com after",
+          })}
+        />
+      );
+      const body = container.querySelector('[data-testid="announcement-body"]');
+      expect(body?.textContent).toBe("Before https://example.com after");
+      expect(
+        screen.getByRole("link", { name: "https://example.com" })
+      ).toBeInTheDocument();
+    });
+
+    it("composes with newline preservation — links across multiple lines", () => {
+      const { container } = render(
+        <AnnouncementCard
+          announcement={makeAnnouncement({
+            body: "Day 1: https://a.com\nDay 2: https://b.com",
+          })}
+        />
+      );
+      const body = container.querySelector('[data-testid="announcement-body"]');
+      expect(body?.textContent).toBe(
+        "Day 1: https://a.com\nDay 2: https://b.com"
+      );
+      expect(screen.getAllByRole("link")).toHaveLength(2);
+    });
+  });
 });
