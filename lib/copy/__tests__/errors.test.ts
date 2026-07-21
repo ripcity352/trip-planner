@@ -56,6 +56,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "expense_update_failed",
   "expense_delete_failed",
   "expense_visibility_self_hidden",
+  // #468 — zero-member split named at the source (deterministic)
+  "expense_split_empty",
   // #389 — announcement reactions (the ack loop)
   "reaction_save_failed",
   // M5 auth keys (PR2)

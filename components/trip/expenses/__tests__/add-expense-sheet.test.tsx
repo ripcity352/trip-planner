@@ -192,6 +192,42 @@ describe("AddExpenseSheet", () => {
     expect(addExpenseActionMock).not.toHaveBeenCalled();
   });
 
+  // #468 — an empty split is named at the chooser, not discovered at
+  // submit: the button locks and the specific line renders inline.
+  describe("zero-split guard (#468)", () => {
+    it("disables submit and names the problem when every chip is off", async () => {
+      const { ERRORS } = await import("@/lib/copy/errors");
+      openSheet();
+      // Deselect all three preselected 'going' members.
+      fireEvent.click(screen.getByRole("button", { name: "Dave" }));
+      fireEvent.click(screen.getByRole("button", { name: "Mike" }));
+      fireEvent.click(screen.getByRole("button", { name: "Pete" }));
+
+      expect(
+        screen.getByText(ERRORS.expense_split_empty)
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Log it" })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: "Log it" }));
+      expect(addExpenseActionMock).not.toHaveBeenCalled();
+    });
+
+    it("re-enables submit once a chip comes back on", async () => {
+      const { ERRORS } = await import("@/lib/copy/errors");
+      openSheet();
+      fireEvent.click(screen.getByRole("button", { name: "Dave" }));
+      fireEvent.click(screen.getByRole("button", { name: "Mike" }));
+      fireEvent.click(screen.getByRole("button", { name: "Pete" }));
+      fireEvent.click(screen.getByRole("button", { name: "Pete" }));
+
+      expect(
+        screen.queryByText(ERRORS.expense_split_empty)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Log it" })
+      ).not.toBeDisabled();
+    });
+  });
+
   describe("attendance-aware split defaults (#391)", () => {
     it("pre-selects going + maybe; declined + pending start unselected", () => {
       openSheet(ORGANIZER, MIXED_MEMBERS);

@@ -94,6 +94,12 @@ export type ErrorKey =
   | "expense_update_failed"
   | "expense_delete_failed"
   | "expense_visibility_self_hidden"
+  // #468 — zero split members selected. DETERMINISTIC rejection (like
+  // expense_visibility_self_hidden): retrying can't conjure a split, so
+  // the copy names the fix, never "try again". Surfaced client-side at
+  // the chip chooser AND by the action's zod-issue narrowing — the old
+  // collapse to validation_failed left the user guessing what was wrong.
+  | "expense_split_empty"
   // #389 — announcement reactions (the ack loop). Same voice rules.
   | "reaction_save_failed"
   // #388 — day-scoped attendance. Own-day chip save failure; transient,
@@ -241,6 +247,9 @@ export const ERRORS: Record<ErrorKey, string> = {
   expense_delete_failed: "Couldn't take that one off the tab. Try once more.",
   expense_visibility_self_hidden:
     "That'd hide it from you too. Pick one you'd still see.",
+  // #468 — zero-member split. Deterministic; names the fix ("pick one"),
+  // register-matched to its visibility sibling above.
+  expense_split_empty: "Pick at least one person to split this with.",
   // #389 — announcement reactions. Blame-free, retry-framed (a toggle on
   // flaky cell signal is always safe to tap again).
   reaction_save_failed: "Didn't stick. Give it another tap.",
