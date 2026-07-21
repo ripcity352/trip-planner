@@ -15,9 +15,17 @@
  *
  * Focus ring: focus-visible:ring-2 focus-visible:ring-ring per persimmon
  * focus-ring token convention.
+ *
+ * Instant tap feedback (#466): `usePathname()` alone only re-colors the
+ * tab once the new route has fully committed, which reads as "nothing
+ * happened" on a slow connection. `<TabContent>` calls `useLinkStatus()` —
+ * the pending state Next.js tracks for its own `<Link>` — so the tapped
+ * tab goes primary-colored the instant navigation starts, not when it
+ * finishes. Paired with `active:opacity-70` for the immediate touch-down
+ * flash and the route's own `loading.tsx` for the content skeleton.
  */
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home,
@@ -83,6 +91,42 @@ function isTabActive(pathname: string, tab: TabDef): boolean {
   return pathname.split("?")[0].startsWith(tab.href);
 }
 
+/**
+ * Rendered as a `<Link>` child so `useLinkStatus()` resolves against the
+ * nearest ancestor `<Link>`'s in-flight navigation state. `active` is the
+ * committed-route match; `pending` is "this tab was just tapped and the
+ * navigation hasn't landed yet" — either one lights the tab up, so the
+ * icon + label recolor the instant the tap registers, not once the new
+ * route finishes rendering.
+ */
+function TabContent({
+  icon: Icon,
+  label,
+  active,
+}: {
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+}) {
+  const { pending } = useLinkStatus();
+  const highlighted = active || pending;
+
+  return (
+    <>
+      <Icon
+        className={cn(
+          "h-5 w-5",
+          highlighted ? "text-primary" : "text-muted-foreground"
+        )}
+        aria-hidden="true"
+      />
+      <span className={highlighted ? "text-primary" : undefined}>
+        {label}
+      </span>
+    </>
+  );
+}
+
 export function BottomTabBar({ tripId }: BottomTabBarProps) {
   const pathname = usePathname();
   const tabs = buildTabs(tripId);
@@ -95,7 +139,6 @@ export function BottomTabBar({ tripId }: BottomTabBarProps) {
       <ul className="flex items-stretch justify-around" role="list">
         {tabs.map((tab) => {
           const active = isTabActive(pathname, tab);
-          const Icon = tab.icon;
 
           return (
             <li key={tab.label} className="flex flex-1">
@@ -106,16 +149,15 @@ export function BottomTabBar({ tripId }: BottomTabBarProps) {
                   "flex flex-1 flex-col items-center justify-center gap-0.5 px-2 py-2",
                   "min-h-[44px] text-xs font-medium",
                   "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none",
+                  // Immediate touch-down flash — fires before any JS
+                  // navigation state exists, so the tap always registers.
+                  "active:opacity-70",
                   active
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Icon
-                  className={cn("h-5 w-5", active ? "text-primary" : "text-muted-foreground")}
-                  aria-hidden="true"
-                />
-                <span>{tab.label}</span>
+                <TabContent icon={tab.icon} label={tab.label} active={active} />
               </Link>
             </li>
           );
