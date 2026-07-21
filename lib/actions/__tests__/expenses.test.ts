@@ -165,7 +165,6 @@ describe("addExpenseAction", () => {
     ["zero amount", { ...BASE_INPUT, amountCents: 0 }],
     ["over cap", { ...BASE_INPUT, amountCents: 10_000_001 }],
     ["empty description", { ...BASE_INPUT, description: "   " }],
-    ["no split members", { ...BASE_INPUT, splitMemberIds: [] }],
     [
       "timestamp instead of date-only",
       { ...BASE_INPUT, occurredOn: "2026-07-08T00:00:00Z" },
@@ -174,6 +173,40 @@ describe("addExpenseAction", () => {
     const { addExpenseAction } = await import("@/lib/actions/expenses");
     const result = await addExpenseAction(
       input as typeof BASE_INPUT,
+      KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  // #468 — a zero-member split is a specific, nameable mistake, not a
+  // generic "something isn't right". The action must surface the
+  // dedicated key so the user learns WHAT to fix.
+  it("returns expense_split_empty for zero split members", async () => {
+    const { addExpenseAction } = await import("@/lib/actions/expenses");
+    const result = await addExpenseAction(
+      { ...BASE_INPUT, splitMemberIds: [] },
+      KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "expense_split_empty" });
+    expect(createExpenseWithSplitsMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a single-member split", async () => {
+    const { addExpenseAction } = await import("@/lib/actions/expenses");
+    const result = await addExpenseAction(
+      { ...BASE_INPUT, splitMemberIds: [MEMBER_A] },
+      KEY
+    );
+    expect(result.ok).toBe(true);
+    expect(createExpenseWithSplitsMock).toHaveBeenCalledTimes(1);
+  });
+
+  // #468 guard: a malformed id INSIDE the array is still the generic
+  // validation failure — only the empty array earns the specific key.
+  it("returns validation_failed for a malformed split member id", async () => {
+    const { addExpenseAction } = await import("@/lib/actions/expenses");
+    const result = await addExpenseAction(
+      { ...BASE_INPUT, splitMemberIds: ["not-a-uuid"] },
       KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -315,6 +348,17 @@ describe("updateExpenseAction", () => {
       KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(updateExpenseWithSplitsMock).not.toHaveBeenCalled();
+  });
+
+  // #468 — same specific key on the edit path.
+  it("returns expense_split_empty for zero split members", async () => {
+    const { updateExpenseAction } = await import("@/lib/actions/expenses");
+    const result = await updateExpenseAction(
+      { ...UPDATE_INPUT, splitMemberIds: [] },
+      KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "expense_split_empty" });
     expect(updateExpenseWithSplitsMock).not.toHaveBeenCalled();
   });
 

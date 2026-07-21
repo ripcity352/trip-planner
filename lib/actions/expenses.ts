@@ -123,6 +123,23 @@ async function guardActorReadableVisibility(
   return readable ? null : "expense_visibility_self_hidden";
 }
 
+/**
+ * #468 — surface the zero-member split as its own key instead of the
+ * generic validation_failed (the trips.ts #405-D precedent: narrow the
+ * zod issues, never re-implement the rule). `.min(1)` on
+ * `splitMemberIds` emits `too_small` at exactly that path; a malformed
+ * id INSIDE the array reports a deeper path, so it stays generic.
+ */
+function mapExpenseParseError(error: z.ZodError): ErrorKey {
+  const splitEmpty = error.issues.some(
+    (issue) =>
+      issue.code === "too_small" &&
+      issue.path.length === 1 &&
+      issue.path[0] === "splitMemberIds"
+  );
+  return splitEmpty ? "expense_split_empty" : "validation_failed";
+}
+
 /** Shared catch-block mapping — by `error.code`, never message text (#384). */
 function mapExpenseError(err: unknown, fallback: ErrorKey): ErrorKey {
   if (err instanceof RateLimitError) {
@@ -142,7 +159,7 @@ export async function addExpenseAction(
 ): Promise<AddExpenseResult> {
   const parsed = addExpenseSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, errorKey: "validation_failed" };
+    return { ok: false, errorKey: mapExpenseParseError(parsed.error) };
   }
 
   const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
@@ -204,7 +221,7 @@ export async function updateExpenseAction(
 ): Promise<UpdateExpenseResult> {
   const parsed = updateExpenseSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, errorKey: "validation_failed" };
+    return { ok: false, errorKey: mapExpenseParseError(parsed.error) };
   }
 
   const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
