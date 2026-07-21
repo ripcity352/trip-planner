@@ -565,6 +565,15 @@ export type DeleteDateCandidateResult =
  * votes returns the deterministic `date_candidate_has_votes` rejection
  * rather than silently clearing anyone's vote.
  *
+ * #495: the vote guard alone let an organizer delete a window the
+ * celebrant had already marked (works / works-with-effort / no-go) —
+ * the mark row cascade-deletes silently with the candidate, and the
+ * mark is now visibly badged per #482. Same simplest-consistent-rule
+ * treatment as the vote guard: block on ANY mark rather than trying to
+ * distinguish "positive" from "negative" marks, and return the distinct
+ * `date_candidate_has_mark` key so the copy can name what happened
+ * (the celebrant weighed in) instead of reusing the vote copy.
+ *
  * No idempotency key: like `removeMemberAction`, delete is naturally
  * idempotent — a target that's already gone (or was never an organizer
  * target) resolves through the same `rls_denied` / not-found branches,
@@ -618,6 +627,20 @@ export async function deleteDateCandidateAction(
     }
     if ((voteCount ?? 0) > 0) {
       return { ok: false, errorKey: "date_candidate_has_votes" };
+    }
+
+    // Mark guard (#495): a window with no votes yet can still carry a
+    // celebrant mark. Block the delete the same way — no
+    // silently-cascaded mark row — regardless of which mark value it is.
+    const { count: markCount, error: markCountError } = await supabase
+      .from("date_poll_celebrant_marks")
+      .select("candidate_id", { count: "exact", head: true })
+      .eq("candidate_id", candidateId);
+    if (markCountError) {
+      return { ok: false, errorKey: mapDbError(markCountError) };
+    }
+    if ((markCount ?? 0) > 0) {
+      return { ok: false, errorKey: "date_candidate_has_mark" };
     }
 
     const { error: deleteError, count: deletedCount } = await supabase

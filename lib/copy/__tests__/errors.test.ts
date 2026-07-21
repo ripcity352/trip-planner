@@ -112,6 +112,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   // retry-free — simplest semantics per the DOGE review)
   "date_candidate_delete_failed",
   "date_candidate_has_votes",
+  // #495 — mark guard (deterministic, retry-free — mirrors has_votes)
+  "date_candidate_has_mark",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user
