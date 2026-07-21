@@ -26,9 +26,12 @@ const baseItem: ItineraryItem = {
   title: "Dinner at the Wynn",
   kind: "meal",
   day: "2026-08-01",
-  // W2b: startTime/endTime are now UTC ISO-8601 strings (datetime-local widget).
-  start_time: "2026-08-01T19:00:00.000Z",
-  end_time: "2026-08-01T21:00:00.000Z",
+  // Fix B: start_time/end_time as returned from the DB are bare
+  // `HH:mm:ss` (Postgres `time without time zone`) — NOT full ISO
+  // instants. The form must hydrate these via dbTimeToIso before
+  // handing them to the datetime-local widget.
+  start_time: "19:00:00",
+  end_time: "21:00:00",
   location: null,
   address: "3131 Las Vegas Blvd S, Las Vegas, NV 89109",
   notes: null,
@@ -96,6 +99,45 @@ describe("EditItemForm", () => {
     await waitFor(() => {
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ itemId: "item-abc" }),
+        expect.any(String)
+      );
+    });
+  });
+
+  // Fix B round-trip proof: a DB `HH:mm:ss` value hydrates into the
+  // datetime-local widget as the correct trip-local wall clock, and an
+  // unchanged save resubmits the exact same UTC instant the DB time
+  // represents — the edit form no longer blocks itself on its own default
+  // value (the zod `.datetime()` validation that used to reject a bare
+  // `19:00:00`).
+  it("round-trip: hydrates start/end time from DB HH:mm:ss and resubmits the same instant unchanged", async () => {
+    render(<EditItemForm {...defaultProps} />);
+
+    // item.day = 2026-08-01, start_time = 19:00:00, tripTimezone =
+    // America/New_York (EDT, UTC-4) → local input value 2026-08-01T19:00.
+    const startInput = document.getElementById(
+      "edit-datetime"
+    ) as HTMLInputElement;
+    const endInput = document.getElementById(
+      "edit-endtime"
+    ) as HTMLInputElement;
+    expect(startInput.value).toBe("2026-08-01T19:00");
+    expect(endInput.value).toBe("2026-08-01T21:00");
+
+    // Save without touching the time fields — the form must not have been
+    // blocked by its own default value (the original P0: default value
+    // failed the zod `.datetime()` schema, disabling every edit).
+    fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+    await waitFor(() => {
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: "item-abc",
+          // 2026-08-01 19:00 EDT (UTC-4) = 2026-08-01T23:00:00.000Z
+          startTime: "2026-08-01T23:00:00.000Z",
+          // 2026-08-01 21:00 EDT (UTC-4) = 2026-08-02T01:00:00.000Z
+          endTime: "2026-08-02T01:00:00.000Z",
+        }),
         expect.any(String)
       );
     });

@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TravelLeg } from "./types";
 
 const TRAVEL_LEG_COLUMNS =
-  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at";
+  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at, airline_iata, flight_number";
 
 /**
  * Return all travel legs for a trip, ordered by arrive_at ASC (arrivals

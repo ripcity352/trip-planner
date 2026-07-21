@@ -25,6 +25,9 @@ import {
 } from "@/lib/rate-limit";
 import type { ErrorKey } from "@/lib/copy/errors";
 import type { ItineraryItem } from "@/lib/db/types";
+import { getTripById } from "@/lib/db/trips";
+import { getItineraryItem } from "@/lib/db/itinerary";
+import { isoToDbTime } from "@/lib/utils/format-trip-tz";
 
 // ---------------------------------------------------------------------------
 // Shared schemas
@@ -160,6 +163,20 @@ export async function addItineraryItem(
     visibility,
   } = parsed.data;
 
+  // Fix B (P0): `start_time` / `end_time` are Postgres `time without time
+  // zone` columns — the validated value here is a full UTC ISO-8601
+  // instant, which Postgres rejects at the DB layer. Reduce it to the
+  // trip-local wall-clock `HH:mm:ss` before writing. Only fetch the trip
+  // (extra round-trip) when a time was actually provided.
+  let tripTimezone: string | null = null;
+  if (startTime != null || endTime != null) {
+    const trip = await getTripById(supabase, tripId);
+    if (!trip) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    tripTimezone = trip.timezone;
+  }
+
   try {
     const item = await rateLimitedAction(
       RATE_LIMIT_SCOPES.CREATE_ITINERARY_ITEM,
@@ -172,8 +189,8 @@ export async function addItineraryItem(
             title,
             kind,
             day,
-            start_time: startTime ?? null,
-            end_time: endTime ?? null,
+            start_time: tripTimezone ? isoToDbTime(startTime, tripTimezone) : null,
+            end_time: tripTimezone ? isoToDbTime(endTime, tripTimezone) : null,
             location: location ?? null,
             address: address ?? null,
             address_place_id: addressPlaceId ?? null,
@@ -286,6 +303,22 @@ export async function updateItineraryItem(
 
   const { itemId, ...fields } = parsed.data;
 
+  // Fix B (P0): same trip-tz reduction as addItineraryItem. Only fetch the
+  // item's trip + the trip's timezone (two extra round-trips) when a time
+  // field was actually provided in this update.
+  let tripTimezone: string | null = null;
+  if (fields.startTime !== undefined || fields.endTime !== undefined) {
+    const existingItem = await getItineraryItem(supabase, itemId);
+    if (!existingItem) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    const trip = await getTripById(supabase, existingItem.trip_id);
+    if (!trip) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    tripTimezone = trip.timezone;
+  }
+
   // Build partial update payload — only include fields that were provided
   const updatePayload: Record<string, unknown> = {
     idempotency_key: idempotencyKey,
@@ -293,8 +326,14 @@ export async function updateItineraryItem(
   if (fields.title !== undefined) updatePayload.title = fields.title;
   if (fields.kind !== undefined) updatePayload.kind = fields.kind;
   if (fields.day !== undefined) updatePayload.day = fields.day;
-  if (fields.startTime !== undefined) updatePayload.start_time = fields.startTime;
-  if (fields.endTime !== undefined) updatePayload.end_time = fields.endTime;
+  if (fields.startTime !== undefined) {
+    updatePayload.start_time =
+      fields.startTime == null ? null : isoToDbTime(fields.startTime, tripTimezone!);
+  }
+  if (fields.endTime !== undefined) {
+    updatePayload.end_time =
+      fields.endTime == null ? null : isoToDbTime(fields.endTime, tripTimezone!);
+  }
   if (fields.location !== undefined) updatePayload.location = fields.location;
   if (fields.address !== undefined) updatePayload.address = fields.address;
   if (fields.addressPlaceId !== undefined) updatePayload.address_place_id = fields.addressPlaceId;

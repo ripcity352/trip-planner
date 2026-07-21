@@ -24,6 +24,8 @@ import {
   fromLocalInputValue,
   formatTripDateTime,
   timezoneCityLabel,
+  isoToDbTime,
+  dbTimeToIso,
 } from "../format-trip-tz";
 
 // -------------------------------------------------------------------------
@@ -304,5 +306,109 @@ describe("formatTripDateTime", () => {
     expect(result).toBe(iso);
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
+  });
+});
+
+// -------------------------------------------------------------------------
+// isoToDbTime — server-side write conversion (Fix B).
+//
+// `itinerary_items.start_time` / `end_time` are Postgres `time without
+// time zone` columns. The client sends a full UTC ISO-8601 instant; the
+// server must reduce it to the trip-local wall-clock "HH:mm:ss" before
+// writing, or every save fails at the DB layer.
+// -------------------------------------------------------------------------
+
+describe("isoToDbTime", () => {
+  it("converts a UTC ISO instant to HH:mm:ss in the trip's timezone (EDT)", () => {
+    // 2026-08-14T14:30:00Z = 10:30:00 EDT (UTC-4)
+    expect(isoToDbTime("2026-08-14T14:30:00Z", "America/New_York")).toBe(
+      "10:30:00"
+    );
+  });
+
+  it("converts a UTC ISO instant to HH:mm:ss in the trip's timezone (PDT)", () => {
+    // 2026-08-14T14:30:00Z = 07:30:00 PDT (UTC-7)
+    expect(isoToDbTime("2026-08-14T14:30:00Z", "America/Los_Angeles")).toBe(
+      "07:30:00"
+    );
+  });
+
+  it("converts a UTC ISO instant to HH:mm:ss in UTC", () => {
+    expect(isoToDbTime("2026-07-04T12:30:00Z", "UTC")).toBe("12:30:00");
+  });
+
+  it("DST offset case: pre-spring-forward EST vs post EDT produce different wall clocks for the same UTC hour", () => {
+    // 07:00 UTC on 2026-03-01 (pre-spring, EST, UTC-5) = 02:00 EST
+    expect(isoToDbTime("2026-03-01T07:00:00Z", "America/New_York")).toBe(
+      "02:00:00"
+    );
+    // 07:00 UTC on 2026-03-08 (post-spring, EDT, UTC-4) = 03:00 EDT
+    expect(isoToDbTime("2026-03-08T07:00:00Z", "America/New_York")).toBe(
+      "03:00:00"
+    );
+  });
+
+  it("returns null for null input", () => {
+    expect(isoToDbTime(null, "America/New_York")).toBeNull();
+  });
+
+  it("returns null for undefined input", () => {
+    expect(isoToDbTime(undefined, "America/New_York")).toBeNull();
+  });
+
+  it("returns null for invalid ISO input", () => {
+    expect(isoToDbTime("not-a-date", "America/New_York")).toBeNull();
+  });
+});
+
+// -------------------------------------------------------------------------
+// dbTimeToIso — hydration inverse (Fix B).
+//
+// The edit form's zod `.datetime()` schema requires a full ISO-8601
+// string. Reconstitute one from the item's `day` (YYYY-MM-DD) + the
+// stored `HH:mm:ss` wall-clock time, interpreted in the trip's timezone.
+// -------------------------------------------------------------------------
+
+describe("dbTimeToIso", () => {
+  it("combines day + HH:mm:ss trip-local time into a UTC ISO instant (EDT)", () => {
+    // 2026-08-14 10:30:00 EDT (UTC-4) = 2026-08-14T14:30:00.000Z
+    expect(dbTimeToIso("2026-08-14", "10:30:00", "America/New_York")).toBe(
+      "2026-08-14T14:30:00.000Z"
+    );
+  });
+
+  it("combines day + HH:mm:ss trip-local time into a UTC ISO instant (PDT)", () => {
+    // 2026-08-14 07:30:00 PDT (UTC-7) = 2026-08-14T14:30:00.000Z
+    expect(
+      dbTimeToIso("2026-08-14", "07:30:00", "America/Los_Angeles")
+    ).toBe("2026-08-14T14:30:00.000Z");
+  });
+
+  it("returns null when day is missing", () => {
+    expect(dbTimeToIso(null, "10:30:00", "America/New_York")).toBeNull();
+  });
+
+  it("returns null when dbTime is missing", () => {
+    expect(dbTimeToIso("2026-08-14", null, "America/New_York")).toBeNull();
+  });
+
+  it("returns null for an invalid day/time combination", () => {
+    expect(dbTimeToIso("not-a-day", "10:30:00", "America/New_York")).toBeNull();
+  });
+
+  it("round-trips with isoToDbTime for a fixed day", () => {
+    const day = "2026-08-14";
+    const originalIso = "2026-08-14T14:30:00.000Z";
+    const dbTime = isoToDbTime(originalIso, "America/New_York");
+    const recovered = dbTimeToIso(day, dbTime, "America/New_York");
+    expect(recovered).toBe(originalIso);
+  });
+
+  it("DST round-trip: spring-forward boundary", () => {
+    const day = "2026-03-08";
+    const originalIso = "2026-03-08T07:00:00.000Z";
+    const dbTime = isoToDbTime(originalIso, "America/New_York");
+    const recovered = dbTimeToIso(day, dbTime, "America/New_York");
+    expect(recovered).toBe(originalIso);
   });
 });
