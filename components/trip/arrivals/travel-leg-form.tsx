@@ -381,10 +381,16 @@ export function TravelLegForm({
         <input
           id="leg-confirmation"
           type="text"
+          aria-describedby="leg-confirmation-hint"
           {...register("confirmationCode")}
           disabled={isBusy}
           className={inputClass}
         />
+        {/* #505: the code is owner-only (travel_legs_manifest view nulls it
+            for the rest of the trip) — tell the person typing it. */}
+        <p id="leg-confirmation-hint" className="text-muted-foreground text-xs">
+          {M3_UI_STRINGS.arrivals_leg_form_confirmation_hint}
+        </p>
       </div>
 
       {/* Notes */}

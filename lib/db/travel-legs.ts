@@ -4,25 +4,38 @@
  * Travel legs represent per-member transport info (flights, drives, etc.).
  * The arrivals manifest is the primary read surface: all trip members can
  * see all legs, ordered by arrive_at ASC.
+ *
+ * #505: the manifest read goes through the `travel_legs_manifest`
+ * security-invoker view, NOT the base table. confirmation_code (PNR) is
+ * field-level-private — the view nulls it for everyone but the leg's
+ * owner (a PNR + last name can manage a booking). Row visibility is
+ * unchanged; only that one column is redacted. Writes (server actions)
+ * stay on `travel_legs`.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TravelLeg } from "./types";
 
+// Column list of the travel_legs_manifest view (a superset of every key
+// upsertTravelLeg writes — pinned by the hydration-drift test). Add new
+// travel_legs columns to the VIEW migration too, or they'll hydrate blank.
 const TRAVEL_LEG_COLUMNS =
   "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at, airline_iata, flight_number, direction, airport, origin_label";
 
 /**
  * Return all travel legs for a trip, ordered by arrive_at ASC (arrivals
  * manifest sort). Null arrive_at values sort last.
- * RLS: any trip member can read all legs.
+ * Reads `travel_legs_manifest` (security-invoker view): any trip member
+ * can read all legs, but confirmation_code comes back null unless the
+ * leg belongs to the caller (#505 — owners still get their own code, so
+ * the edit-form prefill keeps working).
  */
 export async function getTravelLegsByTrip(
   supabase: SupabaseClient,
   tripId: string
 ): Promise<TravelLeg[]> {
   const { data, error } = await supabase
-    .from("travel_legs")
+    .from("travel_legs_manifest")
     .select(TRAVEL_LEG_COLUMNS)
     .eq("trip_id", tripId)
     .order("arrive_at", { ascending: true, nullsFirst: false });

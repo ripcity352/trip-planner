@@ -352,6 +352,8 @@ export const M3_UI_STRINGS = {
   arrivals_leg_form_arrive_label: "Arrive",
   arrivals_leg_form_carrier_label: "Carrier",
   arrivals_leg_form_confirmation_label: "Confirmation #",
+  // #505 — PNR is owner-only; say so honestly at the point of entry.
+  arrivals_leg_form_confirmation_hint: "Just for you — the crew won't see this.",
   arrivals_leg_form_notes_label: "Notes",
   arrivals_leg_form_submit: "Save it",
   arrivals_leg_form_delete: "Delete travel",
