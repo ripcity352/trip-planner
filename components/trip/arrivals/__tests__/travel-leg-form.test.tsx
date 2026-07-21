@@ -7,6 +7,7 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { TravelLegForm } from "../travel-leg-form";
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { TravelLeg } from "@/lib/db/types";
 
 // Mock server actions
@@ -123,6 +124,10 @@ describe("TravelLegForm — add mode", () => {
       />
     );
 
+    // #478: a time is now required — fill Arrive before submitting.
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:30" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     await waitFor(() => {
@@ -146,6 +151,10 @@ describe("TravelLegForm — add mode", () => {
       />
     );
 
+    // #478: a time is now required — fill Arrive before submitting.
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:30" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     await waitFor(() => {
@@ -168,6 +177,10 @@ describe("TravelLegForm — add mode", () => {
       />
     );
 
+    // #478: a time is now required — fill Arrive before submitting.
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:30" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     await waitFor(() => {
@@ -656,5 +669,143 @@ describe("TravelLegForm — trip-TZ datetime contract (#382)", () => {
         "Times are Los Angeles time — no matter where you're flying from."
       )
     ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #478/#479: client time validation — mirrors the server refines for
+// inline UX. Empty forms and arrive-before-leave never reach the action.
+// ---------------------------------------------------------------------------
+
+describe("TravelLegForm — time validation (#478/#479)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    // restoreAllMocks doesn't clear call history on module-mock fns, and
+    // this block asserts exact call counts — reset explicitly.
+    mockUpsert.mockReset();
+  });
+
+  const renderAddForm = () =>
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+  it("blocks a completely empty submit with the time-required message (#478)", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddForm();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    expect(
+      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_time_required)
+    ).toBeInTheDocument();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("blocks arrive-before-leave with the reversed-times message (#479)", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddForm();
+
+    fireEvent.change(screen.getByLabelText("Leave"), {
+      target: { value: "2026-08-14T18:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    expect(
+      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_times_reversed)
+    ).toBeInTheDocument();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("submits with only an arrive time (rough drive ETA)", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddForm();
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T20:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("submits with only a leave time", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddForm();
+
+    fireEvent.change(screen.getByLabelText("Leave"), {
+      target: { value: "2026-08-14T08:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("submits with equal leave and arrive times", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddForm();
+
+    fireEvent.change(screen.getByLabelText("Leave"), {
+      target: { value: "2026-08-14T12:00" },
+    });
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T12:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("submits a red-eye overnight (arrives the next day)", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddForm();
+
+    fireEvent.change(screen.getByLabelText("Leave"), {
+      target: { value: "2026-08-14T22:30" },
+    });
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-15T06:10" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("clears the message once a valid time fixes the form", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddForm();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+    expect(
+      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_time_required)
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T20:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledOnce();
+    });
+    expect(
+      screen.queryByText(M3_UI_STRINGS.arrivals_leg_form_time_required)
+    ).not.toBeInTheDocument();
   });
 });

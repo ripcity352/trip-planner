@@ -30,6 +30,13 @@ import type { TravelLeg } from "@/lib/db/types";
 
 const TRAVEL_LEG_KIND = ["flight", "train", "drive", "other"] as const;
 
+// #478/#479 sentinel issue messages. The client mirrors these rules with
+// user-facing copy; here the message is a machine marker that
+// upsertSchemaErrorKey maps to a dedicated ErrorKey (the UI renders the
+// user-facing string from ERRORS).
+const TIME_REQUIRED_ISSUE = "travel_leg_time_required";
+const TIMES_REVERSED_ISSUE = "travel_leg_times_reversed";
+
 const upsertLegSchema = z
   .object({
     tripId: z.string().uuid(),
@@ -73,9 +80,65 @@ const upsertLegSchema = z
         message: "flightNumber is only valid when kind is 'flight'",
       });
     }
+  })
+  // #478/#479: time rules — the load-bearing server gate; the client
+  // form mirrors both for inline UX.
+  .superRefine((data, ctx) => {
+    const departAt = data.departAt ?? "";
+    const arriveAt = data.arriveAt ?? "";
+
+    // #478: a leg with neither time is a blank, content-free card on the
+    // trip-wide manifest. One time in either direction is the minimal
+    // gate — drive legs often only know a rough arrival.
+    if (!departAt && !arriveAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["arriveAt"],
+        message: TIME_REQUIRED_ISSUE,
+      });
+      return;
+    }
+
+    // #479: when both are present, arrive must be >= depart. Values are
+    // UTC ISO instants, so numeric comparison is TZ-safe; equal timestamps
+    // and red-eye overnights pass. Unparseable strings are left alone —
+    // out of scope here (Postgres rejects them as a coded error).
+    if (departAt && arriveAt) {
+      const departMs = Date.parse(departAt);
+      const arriveMs = Date.parse(arriveAt);
+      if (
+        !Number.isNaN(departMs) &&
+        !Number.isNaN(arriveMs) &&
+        arriveMs < departMs
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["arriveAt"],
+          message: TIMES_REVERSED_ISSUE,
+        });
+      }
+    }
   });
 
 const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
+
+/**
+ * #478/#479: map a failed upsert parse to an error key. The dedicated
+ * time keys only fire when the time rules are the ONLY problem — a mixed
+ * failure (e.g. bad kind AND no times) stays on the generic key, since a
+ * field-specific message would hide the other problem.
+ */
+function upsertSchemaErrorKey(error: z.ZodError): ErrorKey {
+  const messages = error.issues.map((issue) => issue.message);
+  const allTimeIssues = messages.every(
+    (message) =>
+      message === TIME_REQUIRED_ISSUE || message === TIMES_REVERSED_ISSUE
+  );
+  if (!allTimeIssues) return "validation_failed";
+  return messages.includes(TIME_REQUIRED_ISSUE)
+    ? "travel_leg_time_required"
+    : "travel_leg_times_reversed";
+}
 
 export interface UpsertTravelLegInput {
   tripId: string;
@@ -119,7 +182,7 @@ export async function upsertTravelLeg(
 
   const parsed = upsertLegSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, errorKey: "validation_failed" };
+    return { ok: false, errorKey: upsertSchemaErrorKey(parsed.error) };
   }
 
   const supabase = await createClient();
