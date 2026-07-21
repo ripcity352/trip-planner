@@ -13,7 +13,10 @@
  * Delete semantics (simplest per the DOGE review — no vote-clearing
  * built): the action refuses once the window has any votes and returns
  * `date_candidate_has_votes`, surfaced here as an inline error rather
- * than the UI trying to predict vote state itself.
+ * than the UI trying to predict vote state itself. #495 added the same
+ * treatment for a celebrant mark (`date_candidate_has_mark`) — both
+ * keys route through the same generic `ERRORS[errorKey]` lookup below,
+ * no per-key branching needed.
  */
 
 import * as React from "react";
