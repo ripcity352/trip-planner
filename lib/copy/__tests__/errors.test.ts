@@ -62,6 +62,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "reaction_save_failed",
   // M5 auth keys (PR2)
   "auth_wrong_password",
+  // #471 — empty vs too-short password split (was one generic message)
+  "auth_password_required",
+  "auth_password_too_short",
   "auth_code_invalid",
   "auth_code_expired",
   "auth_email_taken_oauth",
