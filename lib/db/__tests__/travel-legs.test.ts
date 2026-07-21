@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getTravelLegsByTrip } from "../travel-legs";
+import { getTravelLegsByTrip, getArrivalTimesByTrip } from "../travel-legs";
 import type { TravelLeg } from "../types";
 
 function makeClient(
@@ -51,6 +51,10 @@ const mockLeg: TravelLeg = {
   notes: null,
   idempotency_key: null,
   created_at: "2026-05-20T00:00:00.000Z",
+  // #477 two-section travel model
+  direction: "inbound",
+  airport: "LAX",
+  origin_label: "JFK",
 };
 
 describe("getTravelLegsByTrip", () => {
@@ -127,6 +131,10 @@ describe("TRAVEL_LEG_COLUMNS coverage", () => {
     "created_at",
     "airline_iata",
     "flight_number",
+    // #477 two-section travel model
+    "direction",
+    "airport",
+    "origin_label",
   ] as const;
 
   function makeColumnCapturingClient(capture: { columns: string }) {
@@ -165,5 +173,45 @@ describe("TRAVEL_LEG_COLUMNS coverage", () => {
     for (const key of ACTION_WRITTEN_KEYS) {
       expect(selected.has(key)).toBe(true);
     }
+  });
+});
+
+describe("getArrivalTimesByTrip — inbound only (#477)", () => {
+  // A logged flight home used to count toward "X landed / everyone's in"
+  // while people were flying home. The glance read must scope to
+  // direction = 'inbound' at the DB.
+  function makeEqCapturingClient(capture: { eqCalls: [string, unknown][] }) {
+    const buildProxy = (): Record<string, unknown> => {
+      const handler: ProxyHandler<Record<string, unknown>> = {
+        get(_target, prop: string) {
+          if (prop === "eq") {
+            return (column: string, value: unknown) => {
+              capture.eqCalls = [...capture.eqCalls, [column, value]];
+              return proxy;
+            };
+          }
+          if (prop === "then") {
+            return (onfulfilled: (v: unknown) => unknown) =>
+              Promise.resolve({ data: [], error: null }).then(onfulfilled);
+          }
+          return () => proxy;
+        },
+      };
+      const proxy: Record<string, unknown> = new Proxy({}, handler);
+      return proxy;
+    };
+
+    return {
+      from: vi.fn(() => buildProxy()),
+    } as unknown as SupabaseClient;
+  }
+
+  it("filters legs to direction = 'inbound'", async () => {
+    const capture: { eqCalls: [string, unknown][] } = { eqCalls: [] };
+    const client = makeEqCapturingClient(capture);
+
+    await getArrivalTimesByTrip(client, TRIP_ID);
+
+    expect(capture.eqCalls).toContainEqual(["direction", "inbound"]);
   });
 });
