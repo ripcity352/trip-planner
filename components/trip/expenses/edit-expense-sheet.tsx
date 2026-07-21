@@ -115,7 +115,8 @@ export function EditExpenseSheet({
   const onSubmit = async (values: ExpenseFormValues) => {
     setServerErrorKey(null);
     if (splitIds.size === 0) {
-      setServerErrorKey("validation_failed");
+      // #468 — name the actual problem, not the generic zod line.
+      setServerErrorKey("expense_split_empty");
       return;
     }
     const idempotencyKey = crypto.randomUUID();

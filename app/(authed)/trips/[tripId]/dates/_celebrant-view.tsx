@@ -33,6 +33,7 @@ import type {
 
 import { formatDateRange } from "./_format";
 import { LockInButton } from "./_lock-in-button";
+import { DeleteCandidateButton } from "./_delete-candidate-button";
 
 interface CelebrantViewProps {
   candidates: ReadonlyArray<DatePollCandidateView>;
@@ -129,6 +130,10 @@ function CandidateCelebrantCard({
   );
 
   const isVetoed = row.mark === "no-go";
+  const dateRangeLabel = formatDateRange(
+    row.candidate.starts_on,
+    row.candidate.ends_on
+  );
 
   // De-emphasis for the vetoed state is expressed per-element via
   // `--ink-secondary` (the muted-foreground token) — never via container
@@ -145,9 +150,7 @@ function CandidateCelebrantCard({
         >
           {row.candidate.label}
         </CardTitle>
-        <p className="text-muted-foreground text-sm">
-          {formatDateRange(row.candidate.starts_on, row.candidate.ends_on)}
-        </p>
+        <p className="text-muted-foreground text-sm">{dateRangeLabel}</p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div
@@ -203,7 +206,20 @@ function CandidateCelebrantCard({
             {ERRORS[errorKey]}
           </p>
         ) : null}
-        {canLock ? <LockInButton candidateId={row.candidate.id} /> : null}
+        {canLock ? (
+          <LockInButton
+            candidateId={row.candidate.id}
+            dateRangeLabel={dateRangeLabel}
+          />
+        ) : null}
+        {/* #481: delete shares the lock-in's organizer gate — both are
+            "candidates: organizers can ..." RLS policies. */}
+        {canLock ? (
+          <DeleteCandidateButton
+            candidateId={row.candidate.id}
+            candidateLabel={row.candidate.label}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );

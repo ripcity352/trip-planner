@@ -40,7 +40,7 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "travel_leg_save_failed",
   // #474 — same deterministic/transient split
   "travel_leg_save_rejected",
-  // #478/#479 — deterministic time-validation rejections
+  // #478/#479 — deterministic server backstops for the leg-time client refines
   "travel_leg_time_required",
   "travel_leg_times_reversed",
   "travel_leg_delete_failed",
@@ -59,10 +59,15 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "expense_update_failed",
   "expense_delete_failed",
   "expense_visibility_self_hidden",
+  // #468 — zero-member split named at the source (deterministic)
+  "expense_split_empty",
   // #389 — announcement reactions (the ack loop)
   "reaction_save_failed",
   // M5 auth keys (PR2)
   "auth_wrong_password",
+  // #471 — empty vs too-short password split (was one generic message)
+  "auth_password_required",
+  "auth_password_too_short",
   "auth_code_invalid",
   "auth_code_expired",
   "auth_email_taken_oauth",
@@ -103,6 +108,10 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   // celebrant assignment — transient-retry voice (founder gate maps to
   // rls_denied; no dedicated "you can't" string, rule 11)
   "celebrant_save_failed",
+  // #481 — date-poll window delete (has-votes guard is deterministic,
+  // retry-free — simplest semantics per the DOGE review)
+  "date_candidate_delete_failed",
+  "date_candidate_has_votes",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

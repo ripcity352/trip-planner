@@ -149,10 +149,15 @@ export function AddExpenseSheet({
     });
   };
 
+  // #468 — an empty split is named at the chooser, not discovered at
+  // submit: the inline line + locked button below key off this.
+  const splitEmpty = splitIds.size === 0;
+
   const onSubmit = async (values: ExpenseFormValues) => {
     setServerErrorKey(null);
-    if (splitIds.size === 0) {
-      setServerErrorKey("validation_failed");
+    if (splitEmpty) {
+      // Backstop only — the submit button is disabled while empty.
+      setServerErrorKey("expense_split_empty");
       return;
     }
     // Generate idempotency key at submit time — drunk-user double-tap
@@ -329,6 +334,13 @@ export function AddExpenseSheet({
             );
           })}
         </div>
+        {/* #468 — the zero-split rule speaks at the chooser, same string
+            the server would return. #209 ink+hairline via ERROR_LINE_CLASS. */}
+        {splitEmpty ? (
+          <p className={cn(ERROR_LINE_CLASS, "text-sm")}>
+            {ERRORS.expense_split_empty}
+          </p>
+        ) : null}
       </fieldset>
 
       {/* A single readable option means "everyone" (the form default) —
@@ -362,7 +374,13 @@ export function AddExpenseSheet({
       ) : null}
 
       <div className="flex gap-2">
-        <Button type="submit" disabled={isSubmitting} aria-busy={isSubmitting}>
+        {/* #468 — locked while the split is empty; the inline line above
+            names why, so this never reads as a mystery-dead button. */}
+        <Button
+          type="submit"
+          disabled={isSubmitting || splitEmpty}
+          aria-busy={isSubmitting}
+        >
           {M5_UI_STRINGS.expensesForm_submit}
         </Button>
         <Button

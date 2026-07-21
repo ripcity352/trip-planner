@@ -30,6 +30,7 @@ import type { DatePollCandidateView } from "@/lib/db/types";
 
 import { formatDateRange } from "./_format";
 import { LockInButton } from "./_lock-in-button";
+import { DeleteCandidateButton } from "./_delete-candidate-button";
 
 interface MemberViewProps {
   candidates: ReadonlyArray<DatePollCandidateView>;
@@ -145,17 +146,27 @@ function CandidateMemberCard({
     [displayVote, row.candidate.id, onMutated]
   );
 
+  // #482: the celebrant's positive "Works" verdict rendered no badge —
+  // indistinguishable from a window nobody had weighed in on yet.
+  const isWorks = row.mark === "works";
   const isEffortFlag = row.mark === "works-with-effort";
   const isUnmarked = row.mark === null;
+  const dateRangeLabel = formatDateRange(
+    row.candidate.starts_on,
+    row.candidate.ends_on
+  );
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">{row.candidate.label}</CardTitle>
-        <p className="text-muted-foreground text-sm">
-          {formatDateRange(row.candidate.starts_on, row.candidate.ends_on)}
-        </p>
+        <p className="text-muted-foreground text-sm">{dateRangeLabel}</p>
         <div className="mt-2 flex flex-wrap gap-2">
+          {isWorks ? (
+            <Badge variant="secondary">
+              {M2_UI_STRINGS.datePoll_celebrant_works_badge}
+            </Badge>
+          ) : null}
           {isEffortFlag ? (
             <Badge variant="secondary">
               {M2_UI_STRINGS.datePoll_celebrant_effort_badge}
@@ -200,7 +211,20 @@ function CandidateMemberCard({
             {ERRORS[errorKey]}
           </p>
         ) : null}
-        {canLock ? <LockInButton candidateId={row.candidate.id} /> : null}
+        {canLock ? (
+          <LockInButton
+            candidateId={row.candidate.id}
+            dateRangeLabel={dateRangeLabel}
+          />
+        ) : null}
+        {/* #481: delete shares the lock-in's organizer gate — both are
+            "candidates: organizers can ..." RLS policies. */}
+        {canLock ? (
+          <DeleteCandidateButton
+            candidateId={row.candidate.id}
+            candidateLabel={row.candidate.label}
+          />
+        ) : null}
       </CardContent>
     </Card>
   );

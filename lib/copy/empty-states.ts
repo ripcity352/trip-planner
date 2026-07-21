@@ -167,6 +167,10 @@ export const M2_UI_STRINGS = {
     "4 windows is the cap — drop one before adding.",
   datePoll_celebrant_unmarked_badge: "Celebrant hasn't weighed in",
   datePoll_celebrant_effort_badge: "Could work for the celebrant",
+  // #482: the positive verdict rendered no badge at all — a
+  // celebrant-approved window looked identical to one nobody had
+  // weighed in on. Mirrors the "could work" register.
+  datePoll_celebrant_works_badge: "Works for the celebrant",
   // Two empty-states (#369): the "drop one" invitation only ships to
   // someone who can actually drop one (organizer/celebrant — the ones
   // who see the add-window form). A plain member with no add affordance
@@ -182,6 +186,21 @@ export const M2_UI_STRINGS = {
   datePoll_decided_subhead: "Block it off. This is when it's happening.",
   // Organizer-only lock-in affordance on each candidate window (#369).
   datePoll_lock_in_cta: "Lock it in",
+  // #454: #210 two-step confirm — locking dates is the single most
+  // consequential organizer action on this surface (writes
+  // trips.starts_at/ends_at for the whole crew) and had LESS friction
+  // than removing one roster member. First tap arms; the confirm names
+  // the dates + the consequence, same idiom as roster remove/celebrant
+  // unseat (see roster_manage_remove_confirm_template).
+  datePoll_lock_in_confirm_template: "Lock {dates} for everyone? Voting closes.",
+  datePoll_lock_in_never_mind: "Never mind",
+  // #481: organizer-only delete affordance — quiet, not a big red
+  // button. Simplest semantics per the DOGE review: only allowed while
+  // the window has no votes yet (see errors.ts date_candidate_has_votes
+  // for the blocked case). Same #210 two-step idiom as the lock-in CTA.
+  datePoll_delete_cta: "Remove",
+  datePoll_delete_confirm_template: "Remove {label}? It's gone for good.",
+  datePoll_delete_never_mind: "Never mind",
   datePoll_add_form_label_label: "Window name",
   datePoll_add_form_start_label: "From",
   datePoll_add_form_end_label: "To",
