@@ -678,3 +678,13 @@ export const DASHBOARD_GLANCE_STRINGS = {
 } as const;
 
 export type DashboardGlanceStringKey = keyof typeof DASHBOARD_GLANCE_STRINGS;
+
+/**
+ * A11y-only strings — never rendered as visible copy, so they're exempt
+ * from the voice-test but still centralized per "don't inline copy
+ * literals" (issue #466: route-level loading.tsx skeletons need a
+ * screen-reader-only status label).
+ */
+export const A11Y_UI_STRINGS = {
+  loading: "Loading",
+} as const;
