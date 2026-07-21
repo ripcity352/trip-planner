@@ -11,13 +11,14 @@
  * dashboard and itinerary pages. The result is passed to AnnouncementsFeed,
  * which hides the composer entirely for non-organizers.
  *
- * #470 compact-top relayout: the in-feed poll module (organizer composer
- * + tap-to-vote cards, previously `PollsSection`/#390) moved OUT of this
- * page — it was the single largest contributor to the newest post
- * sitting ~2 screens down. In its place, a one-line "Dates are still up
- * for a vote →" link renders only while the trip's dates are undecided
- * (`isDatePollDecided`), pointing at `/dates`, which already owns the
- * celebrant-weighted date poll and is where the dashboard links too.
+ * #470 compact-top relayout (amended): the #390 decision-poll surface
+ * (`PollsSection`) stays on this page — it has no other home — but now
+ * sits behind a one-line `PollsDisclosure` row directly under the
+ * pinned banner instead of rendering its full card stack at the top of
+ * the feed. Below it, a one-line "Dates are still up for a vote →"
+ * link (`DatePollLinkRow`) renders while the trip's dates are
+ * undecided (`isDatePollDecided`), pointing at `/dates` — the
+ * celebrant-weighted date poll's home, where the dashboard links too.
  */
 
 import { notFound } from "next/navigation";
@@ -29,8 +30,10 @@ import {
   summarizeReactions,
 } from "@/lib/db/announcement-reactions";
 import { isDatePollDecided } from "@/lib/db/date-poll";
+import { getPollsViewModel } from "@/lib/db/polls";
 import { AnnouncementsFeed } from "@/components/trip/announcements/announcements-feed";
 import { DatePollLinkRow } from "@/components/trip/announcements/date-poll-link-row";
+import { PollsDisclosure } from "@/components/trip/polls/polls-disclosure";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 
 type PageProps = {
@@ -75,6 +78,15 @@ export default async function AnnouncementsPage({ params }: PageProps) {
     members.find((m) => m.user_id === user.id)?.id ?? null;
   const reactionsByAnnouncement = summarizeReactions(reactions, myMemberId);
 
+  // #390: the viewer's own member row (for vote attribution + own-choice
+  // highlight). Undefined for a non-member viewer — read-only polls.
+  const viewerTripMemberId = members.find((m) => m.user_id === user.id)?.id;
+  const pollViews = await getPollsViewModel(
+    supabase,
+    trip.id,
+    viewerTripMemberId
+  );
+
   // Build user_id → display_name map for author attribution.
   // Keyed by user_id (not trip_member.id) because created_by references auth.users.
   const memberUserMap = new Map<string, string | null>(
@@ -115,6 +127,14 @@ export default async function AnnouncementsPage({ params }: PageProps) {
         reactionsByAnnouncement={reactionsByAnnouncement}
         celebrantName={celebrantName}
         viewerDisplayName={viewerDisplayName}
+        pollsSlot={
+          <PollsDisclosure
+            tripId={trip.id}
+            isOrganizer={isOrganizer}
+            viewerTripMemberId={viewerTripMemberId}
+            initialViews={pollViews}
+          />
+        }
         datePollLinkRow={
           <DatePollLinkRow
             tripSlug={trip.slug}

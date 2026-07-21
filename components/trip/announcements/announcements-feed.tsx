@@ -13,9 +13,11 @@
  *
  * #470 compact-top relayout: the full composer defaults to a one-line
  * trigger (`AnnouncementComposerTrigger`) instead of rendering inline —
- * see that component for the disclosure behavior. `datePollLinkRow` is
- * server-computed JSX (or null) passed through to `AnnouncementList`,
- * which slots it between the pinned banner and the regular feed.
+ * see that component for the disclosure behavior. `pollsSlot` (the
+ * #390 decision-poll surface behind a `PollsDisclosure` row) and
+ * `datePollLinkRow` are JSX (or null) passed through to
+ * `AnnouncementList`, which slots them between the pinned banner and
+ * the regular feed, in that order.
  */
 
 import { useRef, type ReactNode } from "react";
@@ -48,6 +50,12 @@ interface AnnouncementsFeedProps {
    */
   viewerDisplayName?: string | null;
   /**
+   * #470 (amended) — the decision-poll disclosure row
+   * (`PollsDisclosure`, the #390 surface), slotted directly under the
+   * pinned banner.
+   */
+  pollsSlot?: ReactNode;
+  /**
    * #470 — the "Dates are still up for a vote →" link row, computed
    * server-side from `isDatePollDecided(trip)`. `null` when the dates
    * are already locked, so nothing renders.
@@ -63,6 +71,7 @@ export function AnnouncementsFeed({
   reactionsByAnnouncement,
   celebrantName,
   viewerDisplayName,
+  pollsSlot = null,
   datePollLinkRow = null,
 }: AnnouncementsFeedProps) {
   const listRef = useRef<AnnouncementListHandle>(null);
@@ -92,6 +101,7 @@ export function AnnouncementsFeed({
         memberUserMap={memberUserMap}
         reactionsByAnnouncement={reactionsByAnnouncement}
         celebrantName={celebrantName}
+        pollsSlot={pollsSlot}
         datePollLinkRow={datePollLinkRow}
       />
     </>

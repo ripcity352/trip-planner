@@ -66,8 +66,14 @@ interface AnnouncementListProps {
   /** #405-B — celebrant display name for the hide-from-celebrant badge. */
   celebrantName?: string | null;
   /**
+   * #470 (amended) — the decision-poll disclosure row
+   * (`PollsDisclosure`, #390 surface), slotted directly under the
+   * pinned banner. `null`/undefined renders nothing.
+   */
+  pollsSlot?: ReactNode;
+  /**
    * #470 — server-computed date-poll "still open" link row, slotted
-   * between the pinned banner and the regular feed. `null` when there's
+   * between the polls row and the regular feed. `null` when there's
    * nothing to show (no live date poll).
    */
   datePollLinkRow?: ReactNode;
@@ -96,6 +102,7 @@ export const AnnouncementList = forwardRef<
     memberUserMap,
     reactionsByAnnouncement = {},
     celebrantName,
+    pollsSlot = null,
     datePollLinkRow = null,
   },
   ref
@@ -178,10 +185,16 @@ export const AnnouncementList = forwardRef<
   };
 
   if (announcements.length === 0) {
+    // The polls row + date-poll link still render on an empty feed —
+    // an unanswered poll is exactly why someone opens an empty page.
     return (
-      <p className="text-muted-foreground text-sm">
-        {EMPTY_STATES.announcements}
-      </p>
+      <div className="flex flex-col gap-3">
+        {pollsSlot}
+        {datePollLinkRow}
+        <p className="text-muted-foreground text-sm">
+          {EMPTY_STATES.announcements}
+        </p>
+      </div>
     );
   }
 
@@ -192,6 +205,8 @@ export const AnnouncementList = forwardRef<
         celebrantName={celebrantName}
         reactionsSlotFor={reactionsSlotFor}
       />
+
+      {pollsSlot}
 
       {datePollLinkRow}
 
