@@ -332,6 +332,13 @@ export const M3_UI_STRINGS = {
   announcements_badge_organizers_only: "Organizers only",
   announcements_badge_hide_celebrant: "Hidden from the celebrant",
   announcements_badge_custom: "Custom audience",
+  // #470 compact-top relayout (2026-07-21) — collapsed composer trigger,
+  // pinned-post banner, and the poll-link row that replaces the
+  // in-feed decision-poll embed.
+  announcements_pinned_banner_expand_aria: "Show the pinned post",
+  announcements_pinned_banner_collapse_aria: "Hide the pinned post",
+  announcements_pinned_banner_count_template: "{count} pinned posts",
+  announcements_datePoll_link: "Dates are still up for a vote →",
   // Travel legs / arrivals manifest (#37, Wave 4a)
   arrivals_pageTitle: "Arrivals",
   arrivals_heading: "Who's landing when",

@@ -5,7 +5,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { AnnouncementList } from "../announcement-list";
 import type { Announcement } from "@/lib/db/types";
 
@@ -89,17 +89,46 @@ describe("AnnouncementList", () => {
     expect(screen.getByText("Second update.")).toBeInTheDocument();
   });
 
-  it("renders pinned announcements before non-pinned", () => {
+  it("#470: collapses a pinned announcement into the one-line banner, not a full card in the feed", () => {
     const items = [
       makeAnnouncement({ id: "ann-1", body: "Regular update.", pinned: false }),
       makeAnnouncement({ id: "ann-2", body: "Pinned update.", pinned: true }),
     ];
     render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
 
-    const cards = screen.getAllByText(/update\./);
-    // Pinned should come first in the DOM
-    expect(cards[0].textContent).toContain("Pinned update.");
-    expect(cards[1].textContent).toContain("Regular update.");
+    // The pinned banner shows the headline collapsed...
+    expect(screen.getByTestId("pinned-banner-headline")).toHaveTextContent(
+      "Pinned update."
+    );
+    // ...and the regular feed only carries the non-pinned item.
+    expect(screen.getByText("Regular update.")).toBeInTheDocument();
+    expect(screen.queryByTestId("announcement-body")).toHaveTextContent(
+      "Regular update."
+    );
+  });
+
+  it("#470: tapping the pinned banner expands the full pinned card in place", () => {
+    const items = [
+      makeAnnouncement({ id: "ann-2", body: "Pinned update.", pinned: true }),
+    ];
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+
+    const trigger = screen.getByRole("button", { expanded: false });
+    expect(trigger).toBeInTheDocument();
+
+    fireEvent.click(trigger);
+
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+    // The full card body renders once expanded (same text, now in the
+    // expanded panel rather than only the truncated headline).
+    const bodies = screen.getAllByText("Pinned update.");
+    expect(bodies.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("#470: renders no pinned banner when there are no pinned announcements", () => {
+    const items = [makeAnnouncement({ body: "Regular update.", pinned: false })];
+    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+    expect(screen.queryByTestId("pinned-banner-headline")).not.toBeInTheDocument();
   });
 
   it("calls subscribeToAnnouncements on mount with the correct tripId", async () => {
@@ -180,7 +209,7 @@ describe("AnnouncementList", () => {
     expect(screen.queryByText(/all quiet/i)).not.toBeInTheDocument();
   });
 
-  it("places a pinned realtime arrival above an existing non-pinned item", async () => {
+  it("#470: a pinned realtime arrival lands in the banner, not the regular feed", async () => {
     const existing = makeAnnouncement({
       id: "ann-existing",
       body: "Regular update.",
@@ -194,7 +223,7 @@ describe("AnnouncementList", () => {
 
     const pinnedIncoming = makeAnnouncement({
       id: "ann-pinned",
-      body: "Pinned later but should float to top.",
+      body: "Pinned later but should float to the banner.",
       pinned: true,
       created_at: "2026-05-20T10:00:00Z",
     });
@@ -202,12 +231,10 @@ describe("AnnouncementList", () => {
       capturedOnInsert?.(pinnedIncoming);
     });
 
-    const bodies = screen.getAllByText(/\.$/).map((el) => el.textContent ?? "");
-    const pinnedIdx = bodies.findIndex(
-      (t) => t === "Pinned later but should float to top."
+    expect(screen.getByTestId("pinned-banner-headline")).toHaveTextContent(
+      "Pinned later but should float to the banner."
     );
-    const regularIdx = bodies.findIndex((t) => t === "Regular update.");
-    expect(pinnedIdx).toBeLessThan(regularIdx);
+    expect(screen.getByText("Regular update.")).toBeInTheDocument();
   });
 
   it("renders the feed with aria-live='polite' for screen-reader updates", () => {

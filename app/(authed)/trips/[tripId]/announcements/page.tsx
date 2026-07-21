@@ -11,9 +11,14 @@
  * dashboard and itinerary pages. The result is passed to AnnouncementsFeed,
  * which hides the composer entirely for non-organizers.
  *
- * #390: decision polls live on this page too — PollsSection (organizer
- * composer + tap-to-vote cards, PulsePoll-backed) renders above the
- * announcements feed. RLS scopes what each viewer sees.
+ * #470 compact-top relayout (amended): the #390 decision-poll surface
+ * (`PollsSection`) stays on this page — it has no other home — but now
+ * sits behind a one-line `PollsDisclosure` row directly under the
+ * pinned banner instead of rendering its full card stack at the top of
+ * the feed. Below it, a one-line "Dates are still up for a vote →"
+ * link (`DatePollLinkRow`) renders while the trip's dates are
+ * undecided (`isDatePollDecided`), pointing at `/dates` — the
+ * celebrant-weighted date poll's home, where the dashboard links too.
  */
 
 import { notFound } from "next/navigation";
@@ -24,9 +29,11 @@ import {
   getReactionsForTrip,
   summarizeReactions,
 } from "@/lib/db/announcement-reactions";
+import { isDatePollDecided } from "@/lib/db/date-poll";
 import { getPollsViewModel } from "@/lib/db/polls";
 import { AnnouncementsFeed } from "@/components/trip/announcements/announcements-feed";
-import { PollsSection } from "@/components/trip/polls/polls-section";
+import { DatePollLinkRow } from "@/components/trip/announcements/date-poll-link-row";
+import { PollsDisclosure } from "@/components/trip/polls/polls-disclosure";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 
 type PageProps = {
@@ -112,15 +119,6 @@ export default async function AnnouncementsPage({ params }: PageProps) {
         <p className="text-muted-foreground mt-1 text-sm">{trip.name}</p>
       </header>
 
-      <div className="mb-6">
-        <PollsSection
-          tripId={trip.id}
-          isOrganizer={isOrganizer}
-          viewerTripMemberId={viewerTripMemberId}
-          initialViews={pollViews}
-        />
-      </div>
-
       <AnnouncementsFeed
         tripId={trip.id}
         isOrganizer={isOrganizer}
@@ -129,6 +127,20 @@ export default async function AnnouncementsPage({ params }: PageProps) {
         reactionsByAnnouncement={reactionsByAnnouncement}
         celebrantName={celebrantName}
         viewerDisplayName={viewerDisplayName}
+        pollsSlot={
+          <PollsDisclosure
+            tripId={trip.id}
+            isOrganizer={isOrganizer}
+            viewerTripMemberId={viewerTripMemberId}
+            initialViews={pollViews}
+          />
+        }
+        datePollLinkRow={
+          <DatePollLinkRow
+            tripSlug={trip.slug}
+            isDecided={isDatePollDecided(trip)}
+          />
+        }
       />
     </section>
   );
