@@ -149,6 +149,7 @@ export default async function ExpensesPage({ params }: PageProps) {
                   }
                   viewerMemberId={viewer.id}
                   celebrantName={celebrantName}
+                  memberMap={memberMap}
                 />
                 {canEdit ? (
                   <EditExpenseSheet

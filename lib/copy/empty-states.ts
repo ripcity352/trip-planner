@@ -501,6 +501,14 @@ export const M5_UI_STRINGS = {
   // voice test; delete confirm is two-step (tap again), so it asks the
   // question out loud instead of raising a modal.
   expenses_edit_cta: "Edit",
+  // #467 — split membership was only visible to the payer/organizer via
+  // the edit sheet. "Who's in" line renders for every viewer; "you"
+  // sorts first when the viewer is included, matter-of-fact "not in
+  // this one" when they aren't (rule 8 tone — no accusation, no nudge).
+  expenses_split_ways_template: "Split {count} ways — {names}",
+  expenses_split_you_label: "you",
+  expenses_split_more_template: "+{count} more",
+  expenses_split_not_in_this_one: "You're not in this one",
   expensesForm_submit_edit: "Save it",
   // Edit-sheet date semantics differ from add ("today if blank" would
   // be a lie — a cleared date keeps the stored one), so it gets its own
