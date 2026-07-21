@@ -344,20 +344,30 @@ export const M3_UI_STRINGS = {
   arrivals_cancel_cta: "Cancel",
   arrivals_edit_cta: "Edit",
   arrivals_add_cta: "Add your travel",
-  // #382: caption under the travel-leg time fields. {city} comes from
-  // trips.timezone via timezoneCityLabel — the form parses input as
-  // trip-local wall clock, so tell the user which clock they're typing on.
-  arrivals_leg_form_tz_caption_template:
-    "Times are {city} time — no matter where you're flying from.",
-  // #478: an all-empty leg used to save a blank card the whole trip could
-  // see. At least one time (arrive OR leave) is the minimal gate — the
-  // page exists to answer "who's landing when."
-  arrivals_leg_form_time_required:
-    "Drop in an arrive or leave time so we know when to expect you.",
-  // #479: arrive-before-leave was accepted silently. Only fires when BOTH
-  // times are present; equal times and red-eye overnights pass.
-  arrivals_leg_form_times_reversed:
-    "That has you arriving before you leave — double-check the times.",
+  // #477 two-section travel model. A leg is inbound ("Getting there" —
+  // you land AT the trip city) or outbound ("Heading home" — you take
+  // off FROM the trip city). Each direction records only the trip-city-
+  // side instant, so trip-timezone display is inherently correct — the
+  // #382 "Times are {city} time" caption died with the old model.
+  arrivals_add_inbound_cta: "Getting there",
+  arrivals_add_outbound_cta: "Heading home",
+  arrivals_section_outbound_heading: "Heading home",
+  arrivals_leg_form_airport_label: "Airport",
+  arrivals_leg_form_origin_label: "Coming from",
+  // #477 (supersedes #478's either-time gate): each direction requires
+  // its trip-city-side instant.
+  arrivals_leg_form_arrive_required:
+    "When do you land? Drop the arrival in so we know when to expect you.",
+  arrivals_leg_form_depart_required:
+    "When do you take off? Drop the departure in so nobody plans around you.",
+  // Inbound legs without a landing time (legacy rows) group under this.
+  arrivals_inbound_time_tbd: "Landing time TBD",
+  // Ride-share nudge — one quiet computed line, no matching engine (#118
+  // stays open). {count} distinct people, {airport} free text.
+  arrivals_ride_share_template:
+    "{count} of you land at {airport} within an hour — split a ride?",
+  // Card origin label, inbound only. {origin} is free text ("JFK", "Ohio").
+  arrivals_card_from_template: "from {origin}",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   roster_heading: "Who's coming",

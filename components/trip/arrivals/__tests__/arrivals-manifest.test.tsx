@@ -67,6 +67,9 @@ const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   notes: null,
   idempotency_key: null,
   created_at: "2026-05-20T00:00:00Z",
+  direction: "inbound",
+  airport: null,
+  origin_label: null,
   ...overrides,
 });
 

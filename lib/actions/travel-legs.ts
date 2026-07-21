@@ -16,6 +16,11 @@
  *
  * M4 W2c: adds `airlineIata` (^[A-Z0-9]{2}$) and `flightNumber`
  * (^[A-Z0-9]{1,8}$) to the upsert schema. Both are optional.
+ *
+ * #477 two-section model: every leg is `inbound` (getting there — the
+ * trip-city ARRIVAL instant is required) or `outbound` (heading home —
+ * the trip-city DEPARTURE instant is required). `airport` is free text
+ * on either direction; `originLabel` ("Coming from") is inbound-only.
  */
 
 import { z } from "zod";
@@ -29,6 +34,7 @@ import type { ErrorKey } from "@/lib/copy/errors";
 import type { TravelLeg } from "@/lib/db/types";
 
 const TRAVEL_LEG_KIND = ["flight", "train", "drive", "other"] as const;
+const TRAVEL_LEG_DIRECTION = ["inbound", "outbound"] as const;
 
 // #478/#479 sentinel issue messages. The client mirrors these rules with
 // user-facing copy; here the message is a machine marker that
@@ -41,8 +47,14 @@ const upsertLegSchema = z
   .object({
     tripId: z.string().uuid(),
     kind: z.enum(TRAVEL_LEG_KIND),
+    // #477: required — a leg is either getting there or heading home.
+    direction: z.enum(TRAVEL_LEG_DIRECTION),
     departAt: z.string().nullable().optional(),
     arriveAt: z.string().nullable().optional(),
+    // #477: free-text airport, e.g. "LAX". No validation, no place-ids.
+    airport: z.string().trim().max(100).nullable().optional(),
+    // #477: "Coming from" — inbound-only (see superRefine below).
+    originLabel: z.string().trim().max(120).nullable().optional(),
     carrier: z.string().trim().max(100).nullable().optional(),
     confirmationCode: z.string().trim().max(100).nullable().optional(),
     notes: z.string().trim().max(1000).nullable().optional(),
@@ -81,16 +93,28 @@ const upsertLegSchema = z
       });
     }
   })
-  // #478/#479: time rules — the load-bearing server gate; the client
-  // form mirrors both for inline UX.
+  // #477: originLabel ("Coming from") is inbound-only — mirrors the
+  // flight-only pattern above for airlineIata/flightNumber.
+  .superRefine((data, ctx) => {
+    if (data.direction === "inbound") return;
+    if (data.originLabel != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["originLabel"],
+        message: "originLabel is only valid when direction is 'inbound'",
+      });
+    }
+  })
+  // #477/#478/#479: time rules — the load-bearing server gate; the client
+  // form mirrors the required-time rule for inline UX.
   .superRefine((data, ctx) => {
     const departAt = data.departAt ?? "";
     const arriveAt = data.arriveAt ?? "";
 
-    // #478: a leg with neither time is a blank, content-free card on the
-    // trip-wide manifest. One time in either direction is the minimal
-    // gate — drive legs often only know a rough arrival.
-    if (!departAt && !arriveAt) {
+    // #477 (supersedes the #478 "at least one time" gate): each direction
+    // records its trip-city-side instant — inbound legs need the arrival,
+    // outbound legs need the departure. Same sentinel/key as #478.
+    if (data.direction === "inbound" && !arriveAt) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["arriveAt"],
@@ -98,8 +122,18 @@ const upsertLegSchema = z
       });
       return;
     }
+    if (data.direction === "outbound" && !departAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["departAt"],
+        message: TIME_REQUIRED_ISSUE,
+      });
+      return;
+    }
 
-    // #479: when both are present, arrive must be >= depart. Values are
+    // #479 (vestigial post-#477 — the form only ever submits one time per
+    // direction, but this guards hand-crafted payloads; do not delete):
+    // when both are present, arrive must be >= depart. Values are
     // UTC ISO instants, so numeric comparison is TZ-safe; equal timestamps
     // and red-eye overnights pass. Unparseable strings are left alone —
     // out of scope here (Postgres rejects them as a coded error).
@@ -143,8 +177,14 @@ function upsertSchemaErrorKey(error: z.ZodError): ErrorKey {
 export interface UpsertTravelLegInput {
   tripId: string;
   kind: (typeof TRAVEL_LEG_KIND)[number];
+  /** #477: inbound = getting there (arriveAt required); outbound = heading home (departAt required). */
+  direction: (typeof TRAVEL_LEG_DIRECTION)[number];
   departAt?: string | null;
   arriveAt?: string | null;
+  /** #477: free-text airport, e.g. "LAX". */
+  airport?: string | null;
+  /** #477: "Coming from" — inbound-only. */
+  originLabel?: string | null;
   carrier?: string | null;
   confirmationCode?: string | null;
   notes?: string | null;
@@ -165,7 +205,7 @@ export type DeleteTravelLegResult =
   | { ok: false; errorKey: ErrorKey };
 
 const TRAVEL_LEG_COLUMNS =
-  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at, airline_iata, flight_number";
+  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at, airline_iata, flight_number, direction, airport, origin_label";
 
 /**
  * Insert a new travel leg or update an existing one (when legId is provided).
@@ -195,8 +235,11 @@ export async function upsertTravelLeg(
   const {
     tripId,
     kind,
+    direction,
     departAt,
     arriveAt,
+    airport,
+    originLabel,
     carrier,
     confirmationCode,
     notes,
@@ -235,8 +278,11 @@ export async function upsertTravelLeg(
             .from("travel_legs")
             .update({
               kind,
+              direction,
               depart_at: departAt ?? null,
               arrive_at: arriveAt ?? null,
+              airport: airport ?? null,
+              origin_label: originLabel ?? null,
               carrier: carrier ?? null,
               confirmation_code: confirmationCode ?? null,
               notes: notes ?? null,
@@ -269,8 +315,11 @@ export async function upsertTravelLeg(
             trip_id: tripId,
             trip_member_id: tripMemberId,
             kind,
+            direction,
             depart_at: departAt ?? null,
             arrive_at: arriveAt ?? null,
+            airport: airport ?? null,
+            origin_label: originLabel ?? null,
             carrier: carrier ?? null,
             confirmation_code: confirmationCode ?? null,
             notes: notes ?? null,

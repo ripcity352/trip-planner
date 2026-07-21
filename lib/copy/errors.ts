@@ -257,11 +257,12 @@ export const ERRORS: Record<ErrorKey, string> = {
   // #474 — deterministic rejection, same split as itinerary_save_rejected.
   travel_leg_save_rejected:
     "That leg didn't take — something's off on our end. Not your signal.",
-  // #478/#479 — deterministic, so no "try again" framing. Strings mirror
-  // the client's inline copy (M3_UI_STRINGS.arrivals_leg_form_*) — the
-  // server is the backstop for the same two rules.
+  // #477/#478/#479 — deterministic, so no "try again" framing. The server
+  // is the backstop for the client's inline rules: inbound legs need a
+  // landing time, outbound legs need a takeoff time (#477), and a
+  // hand-crafted both-times payload still can't arrive before it leaves.
   travel_leg_time_required:
-    "Drop in an arrive or leave time so we know when to expect you.",
+    "Missing the time — when you land, or when you take off if you're heading home.",
   travel_leg_times_reversed:
     "That has you arriving before you leave — double-check the times.",
   travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",

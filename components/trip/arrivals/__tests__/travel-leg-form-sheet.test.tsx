@@ -14,10 +14,12 @@ vi.mock("../travel-leg-form", () => ({
   TravelLegForm: ({
     onCancel,
     leg,
+    direction,
     tripTimezone,
   }: {
     tripId: string;
     leg?: TravelLeg;
+    direction?: "inbound" | "outbound";
     tripTimezone: string;
     onSuccess: () => void;
     onCancel: () => void;
@@ -25,6 +27,7 @@ vi.mock("../travel-leg-form", () => ({
     <div
       data-testid="travel-leg-form"
       data-has-leg={!!leg}
+      data-direction={direction}
       data-trip-timezone={tripTimezone}
     >
       <button onClick={onCancel}>Cancel</button>
@@ -33,10 +36,14 @@ vi.mock("../travel-leg-form", () => ({
 }));
 
 describe("TravelLegFormSheet — add mode (no leg prop)", () => {
-  it("renders the 'Add a leg' CTA button initially", () => {
+  // #477: the add flow starts from two section CTAs.
+  it("renders the 'Getting there' and 'Heading home' CTAs initially", () => {
     render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
     expect(
-      screen.getByRole("button", { name: /add your travel/i })
+      screen.getByRole("button", { name: "Getting there" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Heading home" })
     ).toBeInTheDocument();
   });
 
@@ -45,15 +52,26 @@ describe("TravelLegFormSheet — add mode (no leg prop)", () => {
     expect(screen.queryByTestId("travel-leg-form")).not.toBeInTheDocument();
   });
 
-  it("shows the form when CTA is clicked", () => {
+  it("opens the form with direction=inbound from the 'Getting there' CTA", () => {
     render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
-    fireEvent.click(screen.getByRole("button", { name: /add your travel/i }));
-    expect(screen.getByTestId("travel-leg-form")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Getting there" }));
+    const form = screen.getByTestId("travel-leg-form");
+    expect(form).toBeInTheDocument();
+    expect(form).toHaveAttribute("data-direction", "inbound");
+  });
+
+  it("opens the form with direction=outbound from the 'Heading home' CTA", () => {
+    render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
+    fireEvent.click(screen.getByRole("button", { name: "Heading home" }));
+    expect(screen.getByTestId("travel-leg-form")).toHaveAttribute(
+      "data-direction",
+      "outbound"
+    );
   });
 
   it("hides the form when cancel is clicked inside the form", () => {
     render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
-    fireEvent.click(screen.getByRole("button", { name: /add your travel/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Getting there" }));
     expect(screen.getByTestId("travel-leg-form")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
@@ -74,6 +92,9 @@ describe("TravelLegFormSheet — edit mode (leg prop present)", () => {
     notes: null,
     idempotency_key: null,
     created_at: "2026-05-20T00:00:00Z",
+    direction: "inbound",
+    airport: null,
+    origin_label: null,
   };
 
   it("renders the edit CTA button", () => {

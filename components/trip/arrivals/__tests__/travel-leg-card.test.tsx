@@ -34,6 +34,9 @@ const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   notes: "Window seat please",
   idempotency_key: null,
   created_at: "2026-05-20T00:00:00Z",
+  direction: "inbound",
+  airport: null,
+  origin_label: null,
   ...overrides,
 });
 
@@ -333,5 +336,64 @@ describe("TravelLegCard — flight number rendering (#396)", () => {
     const ownerEl = screen.getByText(longName);
     expect(ownerEl).toHaveClass("truncate");
     expect(ownerEl).toHaveClass("min-w-0");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #477: airport + "Coming from" rendering
+// ---------------------------------------------------------------------------
+
+describe("TravelLegCard — airport and origin (#477)", () => {
+  it("renders the airport when present", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({ airport: "LAX" })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.getByText("LAX")).toBeInTheDocument();
+  });
+
+  it('renders "from {origin}" for an inbound leg with an origin_label', () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({ direction: "inbound", origin_label: "JFK" })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.getByText("from JFK")).toBeInTheDocument();
+  });
+
+  it("does not render an origin line on an outbound leg even with stale origin_label data", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({
+          direction: "outbound",
+          origin_label: "JFK",
+          depart_at: "2026-08-16T08:00:00Z",
+          arrive_at: null,
+        })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.queryByText("from JFK")).not.toBeInTheDocument();
+  });
+
+  it("does not render an airport span when airport is null", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({ airport: null })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.queryByText("LAX")).not.toBeInTheDocument();
   });
 });

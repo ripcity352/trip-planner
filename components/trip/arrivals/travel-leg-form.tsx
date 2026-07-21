@@ -1,11 +1,19 @@
 "use client";
 
 /**
- * TravelLegForm — add or edit a travel leg.
+ * TravelLegForm — add or edit a travel leg (#477 two-section model).
  *
- * Add mode: `leg` prop omitted. Submits an insert via `upsertTravelLeg`.
- * Edit mode: `leg` prop present. Pre-populates fields; includes a delete
- * button that calls `deleteTravelLeg`.
+ * A leg is inbound ("Getting there" — you land AT the trip city) or
+ * outbound ("Heading home" — you take off FROM the trip city). Each
+ * direction records ONLY the trip-city-side instant: inbound collects the
+ * arrival, outbound collects the departure. That matches the airline
+ * convention (origin-local depart / destination-local arrive), so the
+ * old #382 "Times are {city} time" caption is gone — the one time you
+ * type IS a trip-city time.
+ *
+ * Add mode: `leg` prop omitted; `direction` comes from the CTA the user
+ * tapped in TravelLegFormSheet. Edit mode: `leg` prop present; the
+ * section is derived from `leg.direction`.
  *
  * Uses react-hook-form + zod. Server action does its own validation
  * (defense-in-depth). No new dependencies.
@@ -22,19 +30,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
-// #382: trip-TZ input pair (not lib/utils/datetime) — datetime-local values
-// are wall-clock time in the TRIP's timezone, matching the itinerary
-// datetime-field contract and the trip-TZ render on TravelLegCard.
+// #382/#477: trip-TZ input pair — datetime-local values are wall-clock
+// time in the TRIP's timezone, matching the trip-TZ render on
+// TravelLegCard. Under the two-section model that is also the airline
+// convention's clock for the one instant each direction records.
 import {
   toLocalInputValue,
   fromLocalInputValue,
-  timezoneCityLabel,
 } from "@/lib/utils/format-trip-tz";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { callAction } from "@/lib/ui/call-action";
 import { upsertTravelLeg, deleteTravelLeg } from "@/lib/actions/travel-legs";
-import type { TravelLeg } from "@/lib/db/types";
+import type { TravelLeg, TravelLegDirection } from "@/lib/db/types";
 import { AirlinePicker } from "./airline-picker";
 
 const LEG_KINDS = ["flight", "train", "drive", "other"] as const;
@@ -43,6 +51,8 @@ const formSchema = z.object({
   kind: z.enum(LEG_KINDS),
   departAt: z.string().optional(),
   arriveAt: z.string().optional(),
+  airport: z.string().trim().max(100).optional(),
+  originLabel: z.string().trim().max(120).optional(),
   carrier: z.string().trim().max(100).optional(),
   confirmationCode: z.string().trim().max(100).optional(),
   notes: z.string().trim().max(1000).optional(),
@@ -57,39 +67,31 @@ const formSchema = z.object({
     .optional(),
 });
 
-// #478/#479: time validation, mirrored on the server schema (the real
-// gate — this copy is for inline UX). Both issues attach to `arriveAt`
-// so one line under the Arrive field carries the message.
-const formSchemaWithTimeRules = formSchema.superRefine((values, ctx) => {
-  const departAt = values.departAt ?? "";
-  const arriveAt = values.arriveAt ?? "";
-
-  // #478: an all-empty form used to save a blank card. One time (either
-  // direction) is the minimal gate — drive legs often only know a rough
-  // arrival.
-  if (!departAt && !arriveAt) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["arriveAt"],
-      message: M3_UI_STRINGS.arrivals_leg_form_time_required,
-    });
-    return;
-  }
-
-  // #479: when both are present, arrive must be >= depart. Both values are
-  // trip-TZ wall clock in fixed-width datetime-local format
-  // ("YYYY-MM-DDTHH:mm"), so lexicographic comparison is chronological.
-  // Equal timestamps and red-eye overnights (arrive next day) pass.
-  if (departAt && arriveAt && arriveAt < departAt) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["arriveAt"],
-      message: M3_UI_STRINGS.arrivals_leg_form_times_reversed,
-    });
-  }
-});
-
 type FormValues = z.infer<typeof formSchema>;
+
+// #477: direction-specific required time, mirrored on the server schema
+// (the real gate — this copy is for inline UX). Inbound legs need the
+// landing time; outbound legs need the takeoff time. Only one time field
+// renders per direction, so the old #479 reversed-times client refine has
+// nothing to compare (the server keeps its vestigial guard).
+function makeFormSchema(direction: TravelLegDirection) {
+  return formSchema.superRefine((values, ctx) => {
+    if (direction === "inbound" && !(values.arriveAt ?? "")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["arriveAt"],
+        message: M3_UI_STRINGS.arrivals_leg_form_arrive_required,
+      });
+    }
+    if (direction === "outbound" && !(values.departAt ?? "")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["departAt"],
+        message: M3_UI_STRINGS.arrivals_leg_form_depart_required,
+      });
+    }
+  });
+}
 
 const KIND_LABELS: Record<(typeof LEG_KINDS)[number], string> = {
   flight: M3_UI_STRINGS.arrivals_leg_form_kind_flight,
@@ -103,8 +105,13 @@ export interface TravelLegFormProps {
   /** Present in edit mode; omit for add mode. */
   leg?: TravelLeg;
   /**
+   * Which section the form is for (add mode). Ignored in edit mode —
+   * the section is derived from `leg.direction`.
+   */
+  direction?: TravelLegDirection;
+  /**
    * IANA timezone from `trips.timezone` (e.g. `"America/Los_Angeles"`).
-   * Leave/Arrive inputs are parsed and rendered as wall clock in this
+   * The time input is parsed and rendered as wall clock in this
    * timezone — never the device's (#382).
    */
   tripTimezone: string;
@@ -115,11 +122,19 @@ export interface TravelLegFormProps {
 export function TravelLegForm({
   tripId,
   leg,
+  direction: directionProp,
   tripTimezone,
   onSuccess,
   onCancel,
 }: TravelLegFormProps) {
   const isEditMode = !!leg;
+  // #477: edit mode derives the section from the leg; add mode takes the
+  // CTA's direction (defaulting inbound — "Getting there" is the primary).
+  const direction: TravelLegDirection = leg
+    ? leg.direction
+    : (directionProp ?? "inbound");
+  const isInbound = direction === "inbound";
+
   const [serverErrorKey, setServerErrorKey] = React.useState<ErrorKey | null>(
     null
   );
@@ -132,11 +147,13 @@ export function TravelLegForm({
     watch,
     formState: { isSubmitting, errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(formSchemaWithTimeRules),
+    resolver: zodResolver(makeFormSchema(direction)),
     defaultValues: {
       kind: leg?.kind ?? "flight",
       departAt: toLocalInputValue(leg?.depart_at, tripTimezone),
       arriveAt: toLocalInputValue(leg?.arrive_at, tripTimezone),
+      airport: leg?.airport ?? "",
+      originLabel: leg?.origin_label ?? "",
       carrier: leg?.carrier ?? "",
       confirmationCode: leg?.confirmation_code ?? "",
       notes: leg?.notes ?? "",
@@ -155,10 +172,6 @@ export function TravelLegForm({
     // kind to drive/train/other, RHF still holds the stale values — clear
     // them here so the server superRefine guard is never reached in normal
     // use. Belt + suspenders with the server-side check.
-    //
-    // If the server's validation_failed surfaces here in production it
-    // signals a client bug (e.g. RHF mutated externally, or a future caller
-    // forgets the ternary), not a user error.
     const isFlight = values.kind === "flight";
 
     // #431: rejected awaits resolve to the network envelope via callAction.
@@ -167,8 +180,19 @@ export function TravelLegForm({
         {
           tripId,
           kind: values.kind,
-          departAt: fromLocalInputValue(values.departAt ?? "", tripTimezone),
-          arriveAt: fromLocalInputValue(values.arriveAt ?? "", tripTimezone),
+          direction,
+          // #477: each direction records ONLY its trip-city-side instant.
+          // The other column is written null — including on edits of
+          // legacy rows that carried both times.
+          departAt: isInbound
+            ? null
+            : fromLocalInputValue(values.departAt ?? "", tripTimezone),
+          arriveAt: isInbound
+            ? fromLocalInputValue(values.arriveAt ?? "", tripTimezone)
+            : null,
+          airport: values.airport || null,
+          // #477: originLabel is inbound-only — mirror of the #248 pattern.
+          originLabel: isInbound ? values.originLabel || null : null,
           carrier: values.carrier || null,
           confirmationCode: values.confirmationCode || null,
           notes: values.notes || null,
@@ -220,8 +244,49 @@ export function TravelLegForm({
   const labelClass = "block text-sm font-medium text-foreground mb-1";
   const isBusy = isSubmitting || isDeleting;
 
+  const timeFieldName = isInbound ? "arriveAt" : "departAt";
+  const timeError = isInbound ? errors.arriveAt : errors.departAt;
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      {/* Trip-city-side time — the one required field per direction */}
+      <div>
+        <label htmlFor="leg-time" className={labelClass}>
+          {isInbound
+            ? M3_UI_STRINGS.arrivals_leg_form_arrive_label
+            : M3_UI_STRINGS.arrivals_leg_form_depart_label}
+        </label>
+        <input
+          id="leg-time"
+          type="datetime-local"
+          {...register(timeFieldName)}
+          disabled={isBusy}
+          className={inputClass}
+        />
+        {/* #477: the required-time refine attaches to the direction's
+            field — one calm inline line per the #209 error-surface
+            contract. */}
+        {timeError?.message ? (
+          <p role="alert" className={cn(ERROR_LINE_CLASS, "mt-1 text-sm")}>
+            {timeError.message}
+          </p>
+        ) : null}
+      </div>
+
+      {/* Airport — free text, either direction */}
+      <div>
+        <label htmlFor="leg-airport" className={labelClass}>
+          {M3_UI_STRINGS.arrivals_leg_form_airport_label}
+        </label>
+        <input
+          id="leg-airport"
+          type="text"
+          {...register("airport")}
+          disabled={isBusy}
+          className={inputClass}
+        />
+      </div>
+
       {/* Kind */}
       <div>
         <label htmlFor="leg-kind" className={labelClass}>
@@ -239,49 +304,6 @@ export function TravelLegForm({
             </option>
           ))}
         </select>
-      </div>
-
-      {/* Depart */}
-      <div>
-        <label htmlFor="leg-depart" className={labelClass}>
-          {M3_UI_STRINGS.arrivals_leg_form_depart_label}
-        </label>
-        <input
-          id="leg-depart"
-          type="datetime-local"
-          {...register("departAt")}
-          disabled={isBusy}
-          className={inputClass}
-        />
-      </div>
-
-      {/* Arrive */}
-      <div>
-        <label htmlFor="leg-arrive" className={labelClass}>
-          {M3_UI_STRINGS.arrivals_leg_form_arrive_label}
-        </label>
-        <input
-          id="leg-arrive"
-          type="datetime-local"
-          {...register("arriveAt")}
-          disabled={isBusy}
-          className={inputClass}
-        />
-        {/* #382: datetime-local carries no TZ — both time fields above are
-            trip-local wall clock, so say which clock the user is typing on. */}
-        <p className="text-muted-foreground mt-1 text-xs">
-          {M3_UI_STRINGS.arrivals_leg_form_tz_caption_template.replace(
-            "{city}",
-            timezoneCityLabel(tripTimezone)
-          )}
-        </p>
-        {/* #478/#479: both time refines attach to arriveAt — one calm
-            inline line per the #209 error-surface contract. */}
-        {errors.arriveAt?.message ? (
-          <p role="alert" className={cn(ERROR_LINE_CLASS, "mt-1 text-sm")}>
-            {errors.arriveAt.message}
-          </p>
-        ) : null}
       </div>
 
       {/* Carrier — AirlinePicker for flights; plain text for all other kinds */}
@@ -334,6 +356,22 @@ export function TravelLegForm({
           />
         </div>
       )}
+
+      {/* Coming from — inbound only (#477), optional free text */}
+      {isInbound ? (
+        <div>
+          <label htmlFor="leg-origin" className={labelClass}>
+            {M3_UI_STRINGS.arrivals_leg_form_origin_label}
+          </label>
+          <input
+            id="leg-origin"
+            type="text"
+            {...register("originLabel")}
+            disabled={isBusy}
+            className={inputClass}
+          />
+        </div>
+      ) : null}
 
       {/* Confirmation code */}
       <div>

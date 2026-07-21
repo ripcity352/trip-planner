@@ -23,7 +23,6 @@ import {
   toLocalInputValue,
   fromLocalInputValue,
   formatTripDateTime,
-  timezoneCityLabel,
   isoToDbTime,
   dbTimeToIso,
 } from "../format-trip-tz";
@@ -185,30 +184,6 @@ describe("trip-TZ round-trip is device-TZ-independent (#382)", () => {
         "2026-08-01T10:45"
       );
     }
-  });
-});
-
-// -------------------------------------------------------------------------
-// timezoneCityLabel — feeds the #382 "times are {city} time" form caption
-// -------------------------------------------------------------------------
-
-describe("timezoneCityLabel", () => {
-  it("extracts the city from an IANA zone, underscores become spaces", () => {
-    expect(timezoneCityLabel("America/Los_Angeles")).toBe("Los Angeles");
-  });
-
-  it("handles single-word cities", () => {
-    expect(timezoneCityLabel("America/Denver")).toBe("Denver");
-  });
-
-  it("uses the last segment of multi-segment zones", () => {
-    expect(timezoneCityLabel("America/Argentina/Buenos_Aires")).toBe(
-      "Buenos Aires"
-    );
-  });
-
-  it("falls back to the raw string for segment-less zones", () => {
-    expect(timezoneCityLabel("UTC")).toBe("UTC");
   });
 });
 
