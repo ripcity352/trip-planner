@@ -70,6 +70,13 @@ export type ErrorKey =
   | "travel_leg_save_failed"
   // #474 — same deterministic/transient split as itinerary_save_rejected.
   | "travel_leg_save_rejected"
+  // #478 — server backstop for the client's required-time refine: a leg
+  // with neither an arrive nor a leave time is a blank card, not travel.
+  // Deterministic (retrying can't succeed), so it gets its own key
+  // instead of collapsing into the generic validation_failed.
+  | "travel_leg_time_required"
+  // #479 — arrive-before-leave cross-field rejection. Same rationale.
+  | "travel_leg_times_reversed"
   | "travel_leg_delete_failed"
   | "lodging_assign_failed"
   | "invite_mint_failed"
@@ -224,6 +231,13 @@ export const ERRORS: Record<ErrorKey, string> = {
   // #474 — deterministic rejection, same split as itinerary_save_rejected.
   travel_leg_save_rejected:
     "That leg didn't take — something's off on our end. Not your signal.",
+  // #478/#479 — deterministic, so no "try again" framing. Strings mirror
+  // the client's inline copy (M3_UI_STRINGS.arrivals_leg_form_*) — the
+  // server is the backstop for the same two rules.
+  travel_leg_time_required:
+    "Drop in an arrive or leave time so we know when to expect you.",
+  travel_leg_times_reversed:
+    "That has you arriving before you leave — double-check the times.",
   travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",
   lodging_assign_failed:
     "Rooms didn't budge. Tap again — it'll catch.",

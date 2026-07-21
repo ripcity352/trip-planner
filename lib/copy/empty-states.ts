@@ -330,6 +330,15 @@ export const M3_UI_STRINGS = {
   // trip-local wall clock, so tell the user which clock they're typing on.
   arrivals_leg_form_tz_caption_template:
     "Times are {city} time — no matter where you're flying from.",
+  // #478: an all-empty leg used to save a blank card the whole trip could
+  // see. At least one time (arrive OR leave) is the minimal gate — the
+  // page exists to answer "who's landing when."
+  arrivals_leg_form_time_required:
+    "Drop in an arrive or leave time so we know when to expect you.",
+  // #479: arrive-before-leave was accepted silently. Only fires when BOTH
+  // times are present; equal times and red-eye overnights pass.
+  arrivals_leg_form_times_reversed:
+    "That has you arriving before you leave — double-check the times.",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   roster_heading: "Who's coming",

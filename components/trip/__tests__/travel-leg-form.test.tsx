@@ -35,7 +35,9 @@ const LEG: TravelLeg = {
   trip_member_id: "33333333-3333-4333-8333-333333333333",
   kind: "drive",
   depart_at: null,
-  arrive_at: null,
+  // #478: legs need at least one time — a null/null fixture would be
+  // blocked client-side before the rejected-await paths under test here.
+  arrive_at: "2026-07-04T18:00:00.000Z",
   carrier: null,
   confirmation_code: null,
   notes: null,

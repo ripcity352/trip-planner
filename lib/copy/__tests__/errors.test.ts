@@ -40,6 +40,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "travel_leg_save_failed",
   // #474 — same deterministic/transient split
   "travel_leg_save_rejected",
+  // #478/#479 — deterministic time-validation rejections
+  "travel_leg_time_required",
+  "travel_leg_times_reversed",
   "travel_leg_delete_failed",
   "lodging_assign_failed",
   "invite_mint_failed",

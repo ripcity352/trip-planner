@@ -57,6 +57,38 @@ const formSchema = z.object({
     .optional(),
 });
 
+// #478/#479: time validation, mirrored on the server schema (the real
+// gate — this copy is for inline UX). Both issues attach to `arriveAt`
+// so one line under the Arrive field carries the message.
+const formSchemaWithTimeRules = formSchema.superRefine((values, ctx) => {
+  const departAt = values.departAt ?? "";
+  const arriveAt = values.arriveAt ?? "";
+
+  // #478: an all-empty form used to save a blank card. One time (either
+  // direction) is the minimal gate — drive legs often only know a rough
+  // arrival.
+  if (!departAt && !arriveAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["arriveAt"],
+      message: M3_UI_STRINGS.arrivals_leg_form_time_required,
+    });
+    return;
+  }
+
+  // #479: when both are present, arrive must be >= depart. Both values are
+  // trip-TZ wall clock in fixed-width datetime-local format
+  // ("YYYY-MM-DDTHH:mm"), so lexicographic comparison is chronological.
+  // Equal timestamps and red-eye overnights (arrive next day) pass.
+  if (departAt && arriveAt && arriveAt < departAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["arriveAt"],
+      message: M3_UI_STRINGS.arrivals_leg_form_times_reversed,
+    });
+  }
+});
+
 type FormValues = z.infer<typeof formSchema>;
 
 const KIND_LABELS: Record<(typeof LEG_KINDS)[number], string> = {
@@ -98,9 +130,9 @@ export function TravelLegForm({
     handleSubmit,
     control,
     watch,
-    formState: { isSubmitting },
+    formState: { isSubmitting, errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(formSchemaWithTimeRules),
     defaultValues: {
       kind: leg?.kind ?? "flight",
       departAt: toLocalInputValue(leg?.depart_at, tripTimezone),
@@ -243,6 +275,13 @@ export function TravelLegForm({
             timezoneCityLabel(tripTimezone)
           )}
         </p>
+        {/* #478/#479: both time refines attach to arriveAt — one calm
+            inline line per the #209 error-surface contract. */}
+        {errors.arriveAt?.message ? (
+          <p role="alert" className={cn(ERROR_LINE_CLASS, "mt-1 text-sm")}>
+            {errors.arriveAt.message}
+          </p>
+        ) : null}
       </div>
 
       {/* Carrier — AirlinePicker for flights; plain text for all other kinds */}
