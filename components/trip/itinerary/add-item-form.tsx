@@ -24,6 +24,8 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { addItineraryItem } from "@/lib/actions/itinerary";
 import type { ItineraryItem } from "@/lib/db/types";
+import { DatetimeField } from "./fields/datetime-field";
+import { DateTimeLocalFieldImpl } from "./fields/datetime-local-field-impl";
 
 const ITEM_KINDS = [
   "event",
@@ -49,6 +51,11 @@ const formSchema = z.object({
   day: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, M3_UI_STRINGS.itineraryForm_validation_day_format),
+  // Fix B: startTime/endTime — UTC ISO-8601 strings from the datetime-local
+  // widget, mirroring EditItemForm's contract. Optional, no cross-field
+  // end-after-start validation (separately filed — not in scope here).
+  startTime: z.string().datetime({ offset: true }).nullable().optional(),
+  endTime: z.string().datetime({ offset: true }).nullable().optional(),
   address: z.string().trim().max(500).optional(),
   dressCode: z.string().trim().max(200).optional(),
   visibility: z.enum(VISIBILITY_OPTIONS),
@@ -73,16 +80,25 @@ const VISIBILITY_LABELS: Record<(typeof VISIBILITY_OPTIONS)[number], string> = {
 
 export interface AddItemFormProps {
   tripId: string;
+  /** IANA timezone from `trips.timezone` — passed from the page level. */
+  tripTimezone: string;
   onSuccess: (item?: ItineraryItem) => void;
   onCancel: () => void;
 }
 
-export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
+export function AddItemForm({
+  tripId,
+  tripTimezone,
+  onSuccess,
+  onCancel,
+}: AddItemFormProps) {
   const [serverErrorKey, setServerErrorKey] = React.useState<ErrorKey | null>(null);
 
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
     reset,
   } = useForm<FormValues>({
@@ -112,6 +128,8 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
           title: values.title,
           kind: values.kind,
           day: values.day,
+          startTime: values.startTime ?? null,
+          endTime: values.endTime ?? null,
           address: values.address || null,
           dressCode: values.dressCode || null,
           visibility: values.visibility,
@@ -192,6 +210,31 @@ export function AddItemForm({ tripId, onSuccess, onCancel }: AddItemFormProps) {
         {errors.day ? (
           <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.day.message}</p>
         ) : null}
+      </div>
+
+      {/* Start time — optional, datetime-local widget rendered in trip TZ
+          (mirrors EditItemForm's pattern; Fix B). */}
+      <DatetimeField
+        value={watch("startTime") ?? null}
+        onChange={(v) => setValue("startTime", v, { shouldValidate: true })}
+        disabled={isSubmitting}
+        tripTimezone={tripTimezone}
+        error={errors.startTime?.message}
+      />
+
+      {/* End time — optional (Fix B) */}
+      <div>
+        <label htmlFor="add-endtime" className={labelClass}>
+          {M3_UI_STRINGS.itineraryForm_ends_label}
+        </label>
+        <DateTimeLocalFieldImpl
+          id="add-endtime"
+          value={watch("endTime") ?? null}
+          onChange={(v) => setValue("endTime", v, { shouldValidate: true })}
+          disabled={isSubmitting}
+          tripTimezone={tripTimezone}
+          error={errors.endTime?.message}
+        />
       </div>
 
       {/* Address */}

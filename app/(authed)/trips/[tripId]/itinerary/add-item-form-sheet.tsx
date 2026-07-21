@@ -20,9 +20,11 @@ import { AddItemForm } from "@/components/trip/itinerary/add-item-form";
 
 export interface AddItemFormSheetProps {
   tripId: string;
+  /** IANA timezone from `trips.timezone` — passed from the page level. */
+  tripTimezone: string;
 }
 
-export function AddItemFormSheet({ tripId }: AddItemFormSheetProps) {
+export function AddItemFormSheet({ tripId, tripTimezone }: AddItemFormSheetProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
 
@@ -50,6 +52,7 @@ export function AddItemFormSheet({ tripId }: AddItemFormSheetProps) {
         <div className="rounded-md border border-border bg-card p-4 shadow-sm">
           <AddItemForm
             tripId={tripId}
+            tripTimezone={tripTimezone}
             onSuccess={handleSuccess}
             onCancel={() => setOpen(false)}
           />

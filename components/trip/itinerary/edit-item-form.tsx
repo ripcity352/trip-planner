@@ -17,6 +17,7 @@ import { callAction } from "@/lib/ui/call-action";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { updateItineraryItem, deleteItineraryItem } from "@/lib/actions/itinerary";
+import { dbTimeToIso } from "@/lib/utils/format-trip-tz";
 import type { ItineraryItem } from "@/lib/db/types";
 import { DressCodeField } from "./fields/dress-code-field";
 import { ActivityTagField } from "./fields/activity-tag-field";
@@ -109,8 +110,14 @@ export function EditItemForm({
       title: item.title,
       kind: item.kind,
       day: item.day,
-      startTime: item.start_time ?? null,
-      endTime: item.end_time ?? null,
+      // Fix B: `item.start_time` / `item.end_time` come back from the DB as
+      // bare `HH:mm:ss` (Postgres `time without time zone`), which fails
+      // this form's zod `.datetime()` schema outright and blocked editing
+      // any item that already had a time set. Reconstitute a full UTC
+      // ISO-8601 instant from day + DB time, in the trip's timezone —
+      // the inverse of the server-side write conversion.
+      startTime: dbTimeToIso(item.day, item.start_time, tripTimezone),
+      endTime: dbTimeToIso(item.day, item.end_time, tripTimezone),
       address: item.address ?? "",
       addressPlaceId: item.address_place_id ?? undefined,
       addressProvider: (item.address_provider as "google" | undefined) ?? undefined,
