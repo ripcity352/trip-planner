@@ -18,6 +18,7 @@
 
 import { z } from "zod";
 import { ERRORS } from "@/lib/copy/errors";
+import { passwordField } from "@/lib/auth/password-field";
 
 // ---------------------------------------------------------------------------
 // Identity state (derived from has_password shadow column + OAuth presence)
@@ -63,9 +64,15 @@ export type FormMode =
 // Zod schemas (client-side — mirrors server schemas in actions.ts)
 // ---------------------------------------------------------------------------
 
+// #471 — passwordField (lib/auth/password-field.ts) splits an empty field
+// ("enter it") from a too-short one ("6+ chars"); both used to collapse
+// into the generic validation_failed. currentPassword has no length rule —
+// only emptiness applies, so it takes the required message directly.
 export const changePasswordClientSchema = z.object({
-  currentPassword: z.string().min(1, { message: ERRORS.validation_failed }),
-  newPassword: z.string().min(6, { message: ERRORS.validation_failed }),
+  currentPassword: z
+    .string()
+    .min(1, { message: ERRORS.auth_password_required }),
+  newPassword: passwordField,
 });
 
 export const otpCodeClientSchema = z.object({
@@ -76,14 +83,14 @@ export const otpCodeClientSchema = z.object({
 });
 
 export const newPasswordClientSchema = z.object({
-  newPassword: z.string().min(6, { message: ERRORS.validation_failed }),
+  newPassword: passwordField,
 });
 
 // State B: set password for the first time (OAuth-only or OTP-only users).
 // Mirrors the server-side setPasswordSchema in actions.ts.
 // No current-password field — there is no current password.
 export const setPasswordClientSchema = z.object({
-  newPassword: z.string().min(6, { message: ERRORS.validation_failed }),
+  newPassword: passwordField,
 });
 
 // ---------------------------------------------------------------------------
