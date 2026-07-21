@@ -82,6 +82,9 @@ function makeLeg(tripMemberId: string): TravelLeg {
     notes: null,
     idempotency_key: null,
     created_at: "2026-01-01T00:00:00Z",
+    direction: "inbound",
+    airport: null,
+    origin_label: null,
   };
 }
 
@@ -145,5 +148,117 @@ describe("ArrivalsManifest — UUID-leak regression (#240)", () => {
     const fallback = M3_UI_STRINGS.roster_member_fallback_name; // "Guest"
     expect(ownerNameEl.textContent).toBe(fallback);
     expect(ownerNameEl.textContent).not.toBe(KNOWN_MEMBER_ID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #477: two-section manifest — inbound grouped by day, quieter outbound
+// section, and the computed ride-share line (no matching engine).
+// ---------------------------------------------------------------------------
+
+describe("ArrivalsManifest — two sections (#477)", () => {
+  const member = (n: number): TripMember => ({
+    ...knownMember,
+    id: `aaaaaaaa-0000-0000-0000-00000000000${n}`,
+    display_name: `Member ${n}`,
+  });
+
+  const legFor = (
+    n: number,
+    overrides: Partial<TravelLeg> = {},
+  ): TravelLeg => ({
+    ...makeLeg(member(n).id),
+    id: `leg-${n}`,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const renderManifest = (legs: TravelLeg[]) =>
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={legs}
+        myTripMemberId={KNOWN_MEMBER_ID}
+        tripMembers={[member(1), member(2), member(3)]}
+        tripTimezone="UTC"
+      />,
+    );
+
+  it("renders inbound legs under trip-local day headings", () => {
+    renderManifest([
+      legFor(1, { arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, { arrive_at: "2026-08-14T18:00:00Z" }),
+      legFor(3, { arrive_at: "2026-08-15T09:00:00Z" }),
+    ]);
+
+    expect(screen.getByText("Fri, Aug 14")).toBeInTheDocument();
+    expect(screen.getByText("Sat, Aug 15")).toBeInTheDocument();
+  });
+
+  it('renders the "Heading home" section only when outbound legs exist', () => {
+    renderManifest([legFor(1, { arrive_at: "2026-08-14T10:00:00Z" })]);
+    expect(
+      screen.queryByText(M3_UI_STRINGS.arrivals_section_outbound_heading),
+    ).not.toBeInTheDocument();
+  });
+
+  it("splits outbound legs into the 'Heading home' section", () => {
+    renderManifest([
+      legFor(1, { arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, {
+        direction: "outbound",
+        arrive_at: null,
+        depart_at: "2026-08-16T08:00:00Z",
+      }),
+    ]);
+
+    expect(
+      screen.getByText(M3_UI_STRINGS.arrivals_section_outbound_heading),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("leg-card-leg-1")).toBeInTheDocument();
+    expect(screen.getByTestId("leg-card-leg-2")).toBeInTheDocument();
+  });
+
+  it("renders the ride-share line when 2+ people land at the same airport within an hour", () => {
+    renderManifest([
+      legFor(1, { airport: "LAX", arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, { airport: "LAX", arrive_at: "2026-08-14T10:40:00Z" }),
+      legFor(3, { airport: "LAX", arrive_at: "2026-08-14T10:55:00Z" }),
+    ]);
+
+    expect(
+      screen.getByText("3 of you land at LAX within an hour — split a ride?"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not render a ride-share line across different airports", () => {
+    renderManifest([
+      legFor(1, { airport: "LAX", arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, { airport: "BUR", arrive_at: "2026-08-14T10:20:00Z" }),
+    ]);
+
+    expect(screen.queryByText(/split a ride/)).not.toBeInTheDocument();
+  });
+
+  it("does not render a ride-share line for outbound legs", () => {
+    renderManifest([
+      legFor(1, {
+        direction: "outbound",
+        airport: "LAX",
+        arrive_at: null,
+        depart_at: "2026-08-16T08:00:00Z",
+      }),
+      legFor(2, {
+        direction: "outbound",
+        airport: "LAX",
+        arrive_at: null,
+        depart_at: "2026-08-16T08:30:00Z",
+      }),
+    ]);
+
+    expect(screen.queryByText(/split a ride/)).not.toBeInTheDocument();
   });
 });

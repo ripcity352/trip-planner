@@ -43,6 +43,9 @@ const LEG: TravelLeg = {
   notes: null,
   idempotency_key: null,
   created_at: "2026-07-01T00:00:00.000Z",
+  direction: "inbound",
+  airport: null,
+  origin_label: null,
 };
 
 async function renderEditForm() {

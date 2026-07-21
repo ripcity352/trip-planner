@@ -97,6 +97,10 @@ const mockLeg = {
   notes: null,
   idempotency_key: VALID_IDEMPOTENCY_KEY,
   created_at: "2026-05-20T00:00:00.000Z",
+  // #477 two-section travel model
+  direction: "inbound",
+  airport: "LAX",
+  origin_label: null,
 };
 
 describe("upsertTravelLeg", () => {
@@ -113,7 +117,7 @@ describe("upsertTravelLeg", () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       "not-a-uuid"
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -124,7 +128,7 @@ describe("upsertTravelLeg", () => {
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
       // @ts-expect-error intentionally bad kind
-      { tripId: VALID_TRIP_ID, kind: "helicopter" },
+      { tripId: VALID_TRIP_ID, kind: "helicopter", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -134,7 +138,7 @@ describe("upsertTravelLeg", () => {
     primeAuth(null);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
@@ -145,7 +149,7 @@ describe("upsertTravelLeg", () => {
     tableResolvers.set("trip_members", () => ({ data: null, error: null }));
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
@@ -164,7 +168,7 @@ describe("upsertTravelLeg", () => {
     );
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
@@ -182,6 +186,7 @@ describe("upsertTravelLeg", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "flight",
+        direction: "inbound",
         carrier: "Southwest",
         arriveAt: VALID_ARRIVE_AT,
       },
@@ -206,7 +211,7 @@ describe("upsertTravelLeg", () => {
     });
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: true, leg: mockLeg });
@@ -227,7 +232,7 @@ describe("upsertTravelLeg", () => {
     }));
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "travel_leg_save_rejected" });
@@ -246,7 +251,7 @@ describe("upsertTravelLeg", () => {
     }));
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "travel_leg_save_failed" });
@@ -266,6 +271,7 @@ describe("upsertTravelLeg", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "flight",
+        direction: "inbound",
         airlineIata: "AA",
         flightNumber: "1234",
         arriveAt: VALID_ARRIVE_AT,
@@ -279,7 +285,7 @@ describe("upsertTravelLeg", () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", airlineIata: "AAA" },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT, airlineIata: "AAA" },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -289,7 +295,7 @@ describe("upsertTravelLeg", () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", airlineIata: "aa" },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT, airlineIata: "aa" },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -299,7 +305,7 @@ describe("upsertTravelLeg", () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight", flightNumber: "AB!23" },
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound", arriveAt: VALID_ARRIVE_AT, flightNumber: "AB!23" },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -317,7 +323,7 @@ describe("upsertTravelLeg", () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "drive", airlineIata: "AA" },
+      { tripId: VALID_TRIP_ID, kind: "drive", direction: "inbound", arriveAt: VALID_ARRIVE_AT, airlineIata: "AA" },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -327,7 +333,7 @@ describe("upsertTravelLeg", () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "train", flightNumber: "1234" },
+      { tripId: VALID_TRIP_ID, kind: "train", direction: "inbound", arriveAt: VALID_ARRIVE_AT, flightNumber: "1234" },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
@@ -340,6 +346,8 @@ describe("upsertTravelLeg", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "other",
+        direction: "inbound",
+        arriveAt: VALID_ARRIVE_AT,
         airlineIata: "BA",
         flightNumber: "100",
       },
@@ -363,6 +371,7 @@ describe("upsertTravelLeg", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "drive",
+        direction: "inbound",
         airlineIata: null,
         flightNumber: null,
         arriveAt: VALID_ARRIVE_AT,
@@ -388,6 +397,7 @@ describe("upsertTravelLeg", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "flight",
+        direction: "inbound",
         carrier: "AirNullXYZ",
         arriveAt: VALID_ARRIVE_AT,
       },
@@ -409,6 +419,7 @@ describe("upsertTravelLeg", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "flight",
+        direction: "inbound",
         carrier: "AirInject",
         arriveAt: VALID_ARRIVE_AT,
       },
@@ -462,13 +473,13 @@ describe("deleteTravelLeg", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #478/#479: time validation — at least one time required; when both are
-// present, arrive must be >= depart. Server is the real gate (client
-// mirrors it for inline UX). Deterministic rejections map to dedicated
-// error keys, not the generic validation_failed.
+// #477: two-section model — direction-specific required time (reusing the
+// #478 travel_leg_time_required key), originLabel is inbound-only, and the
+// vestigial #479 arrive>=depart guard still fires on hand-crafted payloads.
+// Server is the real gate (client mirrors it for inline UX).
 // ---------------------------------------------------------------------------
 
-describe("upsertTravelLeg — time validation (#478/#479)", () => {
+describe("upsertTravelLeg — two-section rules (#477)", () => {
   beforeEach(() => {
     getUserMock.mockReset();
     tableResolvers.clear();
@@ -487,11 +498,38 @@ describe("upsertTravelLeg — time validation (#478/#479)", () => {
     tableResolvers.set("travel_legs", () => ({ data: mockLeg, error: null }));
   };
 
-  it("returns travel_leg_time_required when neither time is present (#478)", async () => {
+  it("returns validation_failed when direction is missing", async () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      { tripId: VALID_TRIP_ID, kind: "flight" },
+      // @ts-expect-error intentionally missing direction
+      { tripId: VALID_TRIP_ID, kind: "flight", arriveAt: VALID_ARRIVE_AT },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed on an unknown direction", async () => {
+    primeAuth(VALID_USER_ID);
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "flight",
+        // @ts-expect-error intentionally bad direction
+        direction: "sideways",
+        arriveAt: VALID_ARRIVE_AT,
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns travel_leg_time_required for an inbound leg without arriveAt", async () => {
+    primeAuth(VALID_USER_ID);
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      { tripId: VALID_TRIP_ID, kind: "flight", direction: "inbound" },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({
@@ -500,16 +538,16 @@ describe("upsertTravelLeg — time validation (#478/#479)", () => {
     });
   });
 
-  it("returns travel_leg_time_required when both times are explicitly null", async () => {
+  it("returns travel_leg_time_required for an outbound leg without departAt", async () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
       {
         tripId: VALID_TRIP_ID,
-        kind: "drive",
-        departAt: null,
-        arriveAt: null,
-        notes: "roadtrip crew",
+        kind: "flight",
+        direction: "outbound",
+        // arriveAt alone does not satisfy an outbound leg
+        arriveAt: VALID_ARRIVE_AT,
       },
       VALID_IDEMPOTENCY_KEY
     );
@@ -519,13 +557,96 @@ describe("upsertTravelLeg — time validation (#478/#479)", () => {
     });
   });
 
-  it("returns travel_leg_times_reversed when arrive is before depart (#479)", async () => {
+  it("accepts an inbound leg with only an arrival time", async () => {
+    primeHappyTables();
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "drive",
+        direction: "inbound",
+        arriveAt: "2026-08-14T20:00:00.000Z",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, leg: mockLeg });
+  });
+
+  it("accepts an outbound leg with only a departure time", async () => {
+    primeHappyTables();
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "train",
+        direction: "outbound",
+        departAt: "2026-08-16T08:00:00.000Z",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, leg: mockLeg });
+  });
+
+  it("accepts an inbound leg with an airport and an originLabel", async () => {
+    primeHappyTables();
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "flight",
+        direction: "inbound",
+        arriveAt: VALID_ARRIVE_AT,
+        airport: "LAX",
+        originLabel: "JFK",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, leg: mockLeg });
+  });
+
+  it("returns validation_failed when an outbound leg carries an originLabel", async () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
       {
         tripId: VALID_TRIP_ID,
         kind: "flight",
+        direction: "outbound",
+        departAt: "2026-08-16T08:00:00.000Z",
+        originLabel: "JFK",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("accepts an outbound leg with an airport (airport is direction-agnostic)", async () => {
+    primeHappyTables();
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "flight",
+        direction: "outbound",
+        departAt: "2026-08-16T08:00:00.000Z",
+        airport: "LAX",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, leg: mockLeg });
+  });
+
+  // #479 vestigial guard — the form only ever submits one time per
+  // direction, but a hand-crafted payload with both times reversed must
+  // still be rejected.
+  it("returns travel_leg_times_reversed on a hand-crafted both-times-reversed payload", async () => {
+    primeAuth(VALID_USER_ID);
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      {
+        tripId: VALID_TRIP_ID,
+        kind: "flight",
+        direction: "inbound",
         departAt: "2026-08-14T18:00:00.000Z",
         arriveAt: "2026-08-14T10:00:00.000Z",
       },
@@ -537,34 +658,6 @@ describe("upsertTravelLeg — time validation (#478/#479)", () => {
     });
   });
 
-  it("accepts an arrive-only leg (rough drive ETA)", async () => {
-    primeHappyTables();
-    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
-    const result = await upsertTravelLeg(
-      {
-        tripId: VALID_TRIP_ID,
-        kind: "drive",
-        arriveAt: "2026-08-14T20:00:00.000Z",
-      },
-      VALID_IDEMPOTENCY_KEY
-    );
-    expect(result).toEqual({ ok: true, leg: mockLeg });
-  });
-
-  it("accepts a depart-only leg", async () => {
-    primeHappyTables();
-    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
-    const result = await upsertTravelLeg(
-      {
-        tripId: VALID_TRIP_ID,
-        kind: "train",
-        departAt: "2026-08-14T08:00:00.000Z",
-      },
-      VALID_IDEMPOTENCY_KEY
-    );
-    expect(result).toEqual({ ok: true, leg: mockLeg });
-  });
-
   it("accepts equal depart and arrive timestamps", async () => {
     primeHappyTables();
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
@@ -572,6 +665,7 @@ describe("upsertTravelLeg — time validation (#478/#479)", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "other",
+        direction: "inbound",
         departAt: "2026-08-14T12:00:00.000Z",
         arriveAt: "2026-08-14T12:00:00.000Z",
       },
@@ -587,6 +681,7 @@ describe("upsertTravelLeg — time validation (#478/#479)", () => {
       {
         tripId: VALID_TRIP_ID,
         kind: "flight",
+        direction: "inbound",
         departAt: "2026-08-14T22:30:00.000Z",
         arriveAt: "2026-08-15T06:10:00.000Z",
       },
@@ -601,8 +696,8 @@ describe("upsertTravelLeg — time validation (#478/#479)", () => {
     primeAuth(VALID_USER_ID);
     const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
     const result = await upsertTravelLeg(
-      // @ts-expect-error intentionally bad kind
-      { tripId: VALID_TRIP_ID, kind: "helicopter" },
+      // @ts-expect-error intentionally bad kind (and no time)
+      { tripId: VALID_TRIP_ID, kind: "helicopter", direction: "inbound" },
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });

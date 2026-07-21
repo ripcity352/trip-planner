@@ -373,6 +373,16 @@ export interface LodgingAssignment {
 }
 
 /**
+ * Which way a travel leg points (#477 two-section model).
+ * `inbound` = getting there — the leg records the trip-city-side ARRIVAL
+ * instant. `outbound` = heading home — the leg records the trip-city-side
+ * DEPARTURE instant. Each direction stores only its trip-city instant, so
+ * trip-timezone display is inherently correct and matches the airline
+ * convention (origin-local depart / destination-local arrive).
+ */
+export type TravelLegDirection = "inbound" | "outbound";
+
+/**
  * A travel leg logged by a trip member. `trip_member_id` is owner-only
  * for write operations; all trip members can read the arrivals manifest.
  */
@@ -391,6 +401,12 @@ export interface TravelLeg {
   // M4 additions (Delta 7)
   airline_iata?: string | null;
   flight_number?: string | null;
+  // #477 two-section travel model
+  direction: TravelLegDirection;
+  /** Free-text airport, e.g. "LAX". No validation, no place-ids. */
+  airport: string | null;
+  /** Optional "from JFK" label — inbound only, free text. */
+  origin_label: string | null;
 }
 
 /**

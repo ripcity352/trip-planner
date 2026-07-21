@@ -1,6 +1,10 @@
 /**
- * Unit tests for TravelLegForm — TDD RED phase.
- * Written before implementation.
+ * Unit tests for TravelLegForm — #477 two-section model.
+ *
+ * A leg is inbound ("Getting there" — arrival required) or outbound
+ * ("Heading home" — departure required). Each direction renders ONE time
+ * field (its trip-city-side instant); edit mode derives the section from
+ * `leg.direction`.
  */
 
 import "@testing-library/jest-dom/vitest";
@@ -26,7 +30,7 @@ const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   trip_id: "trip-1",
   trip_member_id: "member-1",
   kind: "flight",
-  depart_at: "2026-08-14T06:00:00Z",
+  depart_at: null,
   arrive_at: "2026-08-14T10:30:00Z",
   carrier: "Southwest",
   confirmation_code: "ABC123",
@@ -35,64 +39,74 @@ const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   created_at: "2026-05-20T00:00:00Z",
   airline_iata: null,
   flight_number: null,
+  direction: "inbound",
+  airport: null,
+  origin_label: null,
   ...overrides,
 });
 
-describe("TravelLegForm — add mode", () => {
+describe("TravelLegForm — add mode (inbound)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("renders all form fields (flight default — AirlinePicker instead of plain carrier)", () => {
+  it("renders the inbound field set: Arrive, Airport, kind, AirlinePicker, Coming from, confirmation, notes", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
-    expect(screen.getByLabelText("How")).toBeInTheDocument();
-    expect(screen.getByLabelText("Leave")).toBeInTheDocument();
     expect(screen.getByLabelText("Arrive")).toBeInTheDocument();
-    // Default kind is "flight" — AirlinePicker renders instead of plain carrier input
-    expect(screen.getByRole("combobox", { name: /airline/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Airport")).toBeInTheDocument();
+    expect(screen.getByLabelText("How")).toBeInTheDocument();
+    // Default kind is "flight" — AirlinePicker renders instead of plain carrier
+    expect(
+      screen.getByRole("combobox", { name: /airline/i })
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Carrier")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Coming from")).toBeInTheDocument();
     expect(screen.getByLabelText("Confirmation #")).toBeInTheDocument();
     expect(screen.getByLabelText("Notes")).toBeInTheDocument();
+    // #477: inbound records ONLY the trip-city arrival — no Leave field
+    expect(screen.queryByLabelText("Leave")).not.toBeInTheDocument();
   });
 
   it("renders kind options: Flight, Train, Drive, Other", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
-    const select = screen.getByLabelText("How");
-    expect(select).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Flight" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Train" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Drive" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Other" })).toBeInTheDocument();
   });
 
-  it("renders the submit button with 'Save it' label", () => {
+  it("does not render the dead #382 tz caption", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
-        tripTimezone="UTC"
+        direction="inbound"
+        tripTimezone="America/Los_Angeles"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
-    expect(
-      screen.getByRole("button", { name: "Save it" })
-    ).toBeInTheDocument();
+
+    // The "Times are Los Angeles time" disclosure died with the
+    // two-section model — the one time you type IS a trip-city time.
+    expect(screen.queryByText(/Times are .* time/)).not.toBeInTheDocument();
   });
 
   it("calls onCancel when cancel button is clicked", () => {
@@ -100,6 +114,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={onCancel}
@@ -110,29 +125,41 @@ describe("TravelLegForm — add mode", () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
-  it("calls upsertTravelLeg with correct tripId and kind on submit", async () => {
-    const onSuccess = vi.fn();
-    const fakeLeg = makeLeg();
-    mockUpsert.mockResolvedValue({ ok: true, leg: fakeLeg });
+  it("submits direction, tripId, kind, airport and originLabel", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
 
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
-        onSuccess={onSuccess}
+        onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
-    // #478: a time is now required — fill Arrive before submitting.
     fireEvent.change(screen.getByLabelText("Arrive"), {
       target: { value: "2026-08-14T10:30" },
+    });
+    fireEvent.change(screen.getByLabelText("Airport"), {
+      target: { value: "LAX" },
+    });
+    fireEvent.change(screen.getByLabelText("Coming from"), {
+      target: { value: "JFK" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     await waitFor(() => {
       expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({ tripId: "trip-1", kind: "flight" }),
+        expect.objectContaining({
+          tripId: "trip-1",
+          kind: "flight",
+          direction: "inbound",
+          airport: "LAX",
+          originLabel: "JFK",
+          arriveAt: "2026-08-14T10:30:00.000Z",
+          departAt: null,
+        }),
         expect.any(String) // idempotency key
       );
     });
@@ -145,13 +172,13 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
         onSuccess={onSuccess}
         onCancel={vi.fn()}
       />
     );
 
-    // #478: a time is now required — fill Arrive before submitting.
     fireEvent.change(screen.getByLabelText("Arrive"), {
       target: { value: "2026-08-14T10:30" },
     });
@@ -171,13 +198,13 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
-    // #478: a time is now required — fill Arrive before submitting.
     fireEvent.change(screen.getByLabelText("Arrive"), {
       target: { value: "2026-08-14T10:30" },
     });
@@ -192,6 +219,7 @@ describe("TravelLegForm — add mode", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -200,6 +228,63 @@ describe("TravelLegForm — add mode", () => {
     expect(
       screen.queryByRole("button", { name: /delete/i })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("TravelLegForm — add mode (outbound)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders Leave but neither Arrive nor Coming from (#477 originLabel is inbound-only)", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="outbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Leave")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Arrive")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Coming from")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Airport")).toBeInTheDocument();
+  });
+
+  it("submits direction outbound with departAt and a null arriveAt", async () => {
+    mockUpsert.mockResolvedValue({
+      ok: true,
+      leg: makeLeg({ direction: "outbound" }),
+    });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="outbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Leave"), {
+      target: { value: "2026-08-16T08:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          direction: "outbound",
+          departAt: "2026-08-16T08:00:00.000Z",
+          arriveAt: null,
+          originLabel: null,
+        }),
+        expect.any(String)
+      );
+    });
   });
 });
 
@@ -213,13 +298,12 @@ describe("TravelLegForm — edit mode", () => {
       <TravelLegForm
         tripId="trip-1"
         tripTimezone="UTC"
-        leg={makeLeg({ kind: "train" })}
+        leg={makeLeg({ kind: "train", airport: "LAX", origin_label: "Ohio" })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
-    // Train uses plain carrier input — verify pre-population
     const carrierInput = screen.getByLabelText("Carrier") as HTMLInputElement;
     expect(carrierInput.value).toBe("Southwest");
 
@@ -227,6 +311,50 @@ describe("TravelLegForm — edit mode", () => {
       "Confirmation #"
     ) as HTMLInputElement;
     expect(confirmationInput.value).toBe("ABC123");
+
+    expect((screen.getByLabelText("Airport") as HTMLInputElement).value).toBe(
+      "LAX"
+    );
+    expect(
+      (screen.getByLabelText("Coming from") as HTMLInputElement).value
+    ).toBe("Ohio");
+  });
+
+  it("derives the inbound section from leg.direction — Arrive field, no Leave", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        tripTimezone="UTC"
+        leg={makeLeg({ direction: "inbound" })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Arrive")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Leave")).not.toBeInTheDocument();
+  });
+
+  it("derives the outbound section from leg.direction — Leave field, no Arrive, even if the CTA direction prop disagrees", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        tripTimezone="UTC"
+        // direction prop must lose to leg.direction in edit mode
+        direction="inbound"
+        leg={makeLeg({
+          direction: "outbound",
+          depart_at: "2026-08-16T08:00:00Z",
+          arrive_at: null,
+        })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Leave")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Arrive")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Coming from")).not.toBeInTheDocument();
   });
 
   it("pre-populates kind select from the existing leg", () => {
@@ -327,6 +455,38 @@ describe("TravelLegForm — edit mode", () => {
     });
   });
 
+  it("editing a legacy inbound leg that carried both times nulls the vestigial depart_at", async () => {
+    // #477: legacy rows were backfilled inbound and may hold both
+    // instants — an inbound save writes ONLY the arrival.
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        tripTimezone="UTC"
+        leg={makeLeg({
+          depart_at: "2026-08-14T06:00:00Z",
+          arrive_at: "2026-08-14T10:30:00Z",
+        })}
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          direction: "inbound",
+          arriveAt: "2026-08-14T10:30:00.000Z",
+          departAt: null,
+        }),
+        expect.any(String)
+      );
+    });
+  });
+
   it("pre-populates airlineIata and flightNumber from existing leg", () => {
     render(
       <TravelLegForm
@@ -338,11 +498,14 @@ describe("TravelLegForm — edit mode", () => {
       />
     );
 
-    // The AirlinePicker displays the selected airline name in the combobox
-    const airlineInput = screen.getByRole("combobox", { name: /airline/i }) as HTMLInputElement;
+    const airlineInput = screen.getByRole("combobox", {
+      name: /airline/i,
+    }) as HTMLInputElement;
     expect(airlineInput.value).toContain("American Airlines");
 
-    const flightInput = screen.getByRole("textbox", { name: /flight number/i }) as HTMLInputElement;
+    const flightInput = screen.getByRole("textbox", {
+      name: /flight number/i,
+    }) as HTMLInputElement;
     expect(flightInput.value).toBe("1234");
   });
 
@@ -353,7 +516,11 @@ describe("TravelLegForm — edit mode", () => {
       <TravelLegForm
         tripId="trip-1"
         tripTimezone="UTC"
-        leg={makeLeg({ id: "leg-55", airline_iata: "DL", flight_number: "200" })}
+        leg={makeLeg({
+          id: "leg-55",
+          airline_iata: "DL",
+          flight_number: "200",
+        })}
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
@@ -393,9 +560,9 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
       />
     );
 
-    // AirlinePicker combobox must be present
-    expect(screen.getByRole("combobox", { name: /airline/i })).toBeInTheDocument();
-    // Plain carrier text input must NOT be present
+    expect(
+      screen.getByRole("combobox", { name: /airline/i })
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Carrier")).not.toBeInTheDocument();
   });
 
@@ -410,10 +577,10 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
       />
     );
 
-    // Plain carrier input must be present
     expect(screen.getByLabelText("Carrier")).toBeInTheDocument();
-    // AirlinePicker combobox must NOT be present
-    expect(screen.queryByRole("combobox", { name: /airline/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: /airline/i })
+    ).not.toBeInTheDocument();
   });
 
   it("train kind renders plain carrier text input and NOT the AirlinePicker", () => {
@@ -428,7 +595,9 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     );
 
     expect(screen.getByLabelText("Carrier")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /airline/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: /airline/i })
+    ).not.toBeInTheDocument();
   });
 
   it("other kind renders plain carrier text input and NOT the AirlinePicker", () => {
@@ -443,21 +612,25 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
     );
 
     expect(screen.getByLabelText("Carrier")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /airline/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: /airline/i })
+    ).not.toBeInTheDocument();
   });
 
   it("add mode defaults to flight: shows AirlinePicker, not plain carrier input", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
-    // Default kind is "flight"
-    expect(screen.getByRole("combobox", { name: /airline/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: /airline/i })
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Carrier")).not.toBeInTheDocument();
   });
 });
@@ -465,16 +638,6 @@ describe("TravelLegForm — carrier vs AirlinePicker rendering", () => {
 // ---------------------------------------------------------------------------
 // #248: cross-field guard — client clears airline fields when kind != flight
 // ---------------------------------------------------------------------------
-//
-// Pre-#248: edit a flight leg (airlineIata="AA", flightNumber="1234"), switch
-// the kind to "drive", click save — RHF retained the airline values in
-// memory and posted them to the server. Server accepted them (no
-// cross-field guard).
-//
-// The server now rejects this combination (#248 superRefine guard). The
-// client clears the two airline fields in onSubmit so the server rejection
-// is never reached in normal use — UX defense to keep the form from
-// surfacing a "validation_failed" the user can't act on.
 
 describe("TravelLegForm — kind switch clears airline fields on submit", () => {
   beforeEach(() => {
@@ -499,8 +662,6 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
       />
     );
 
-    // Switch kind off flight — the airline picker un-renders, but RHF
-    // would otherwise still hold the stale airlineIata/flightNumber.
     fireEvent.change(screen.getByLabelText("How"), {
       target: { value: "drive" },
     });
@@ -520,10 +681,6 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
   });
 
   it("self-heals: editing a non-flight leg that has stale airline data nulls them on save", async () => {
-    // Pre-#248 data path: a row exists with kind=drive but stale
-    // airline_iata/flight_number from before the form learned to clear them.
-    // Opening this row in edit mode + clicking save (without changing
-    // anything) should write null/null back to the airline columns.
     mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
 
     render(
@@ -589,9 +746,10 @@ describe("TravelLegForm — kind switch clears airline fields on submit", () => 
 });
 
 // ---------------------------------------------------------------------------
-// #382: trip-TZ datetime contract — the form parses and renders Leave/Arrive
-// as wall-clock time in the TRIP's timezone, never the device's. Repro from
-// the issue: an EDT device (TZ stubbed) on a Pacific trip.
+// #382: trip-TZ datetime contract — the form parses and renders the time
+// field as wall-clock time in the TRIP's timezone, never the device's.
+// Under #477 that is also the airline convention's clock for the one
+// instant each direction records.
 // ---------------------------------------------------------------------------
 
 describe("TravelLegForm — trip-TZ datetime contract (#382)", () => {
@@ -603,14 +761,13 @@ describe("TravelLegForm — trip-TZ datetime contract (#382)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("pre-populates Leave/Arrive as trip-local wall clock, not device-local", () => {
+  it("pre-populates Arrive as trip-local wall clock, not device-local", () => {
     vi.stubEnv("TZ", "America/New_York"); // off-TZ device
     render(
       <TravelLegForm
         tripId="trip-1"
         tripTimezone="America/Los_Angeles"
         leg={makeLeg({
-          depart_at: "2026-08-01T18:00:00Z", // 11:00 PDT
           arrive_at: "2026-08-01T21:30:00Z", // 14:30 PDT
         })}
         onSuccess={vi.fn()}
@@ -618,9 +775,6 @@ describe("TravelLegForm — trip-TZ datetime contract (#382)", () => {
       />
     );
 
-    expect((screen.getByLabelText("Leave") as HTMLInputElement).value).toBe(
-      "2026-08-01T11:00"
-    );
     expect((screen.getByLabelText("Arrive") as HTMLInputElement).value).toBe(
       "2026-08-01T14:30"
     );
@@ -633,6 +787,7 @@ describe("TravelLegForm — trip-TZ datetime contract (#382)", () => {
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction="inbound"
         tripTimezone="America/Los_Angeles"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
@@ -653,31 +808,14 @@ describe("TravelLegForm — trip-TZ datetime contract (#382)", () => {
       );
     });
   });
-
-  it("shows the trip-time caption naming the trip's city", () => {
-    render(
-      <TravelLegForm
-        tripId="trip-1"
-        tripTimezone="America/Los_Angeles"
-        onSuccess={vi.fn()}
-        onCancel={vi.fn()}
-      />
-    );
-
-    expect(
-      screen.getByText(
-        "Times are Los Angeles time — no matter where you're flying from."
-      )
-    ).toBeInTheDocument();
-  });
 });
 
 // ---------------------------------------------------------------------------
-// #478/#479: client time validation — mirrors the server refines for
-// inline UX. Empty forms and arrive-before-leave never reach the action.
+// #477: client time validation — inbound needs the arrival, outbound
+// needs the departure. Mirrors the server refine for inline UX.
 // ---------------------------------------------------------------------------
 
-describe("TravelLegForm — time validation (#478/#479)", () => {
+describe("TravelLegForm — required time per direction (#477)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     // restoreAllMocks doesn't clear call history on module-mock fns, and
@@ -685,100 +823,47 @@ describe("TravelLegForm — time validation (#478/#479)", () => {
     mockUpsert.mockReset();
   });
 
-  const renderAddForm = () =>
+  const renderAddForm = (direction: "inbound" | "outbound") =>
     render(
       <TravelLegForm
         tripId="trip-1"
+        direction={direction}
         tripTimezone="UTC"
         onSuccess={vi.fn()}
         onCancel={vi.fn()}
       />
     );
 
-  it("blocks a completely empty submit with the time-required message (#478)", async () => {
+  it("blocks an inbound submit without an arrival time", async () => {
     mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
-    renderAddForm();
+    renderAddForm("inbound");
 
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     expect(
-      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_time_required)
+      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_arrive_required)
     ).toBeInTheDocument();
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
-  it("blocks arrive-before-leave with the reversed-times message (#479)", async () => {
+  it("blocks an outbound submit without a departure time", async () => {
     mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
-    renderAddForm();
+    renderAddForm("outbound");
 
-    fireEvent.change(screen.getByLabelText("Leave"), {
-      target: { value: "2026-08-14T18:00" },
-    });
-    fireEvent.change(screen.getByLabelText("Arrive"), {
-      target: { value: "2026-08-14T10:00" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     expect(
-      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_times_reversed)
+      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_depart_required)
     ).toBeInTheDocument();
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
-  it("submits with only an arrive time (rough drive ETA)", async () => {
+  it("submits an inbound leg once the arrival is filled", async () => {
     mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
-    renderAddForm();
+    renderAddForm("inbound");
 
     fireEvent.change(screen.getByLabelText("Arrive"), {
       target: { value: "2026-08-14T20:00" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
-
-    await waitFor(() => {
-      expect(mockUpsert).toHaveBeenCalledOnce();
-    });
-  });
-
-  it("submits with only a leave time", async () => {
-    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
-    renderAddForm();
-
-    fireEvent.change(screen.getByLabelText("Leave"), {
-      target: { value: "2026-08-14T08:00" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
-
-    await waitFor(() => {
-      expect(mockUpsert).toHaveBeenCalledOnce();
-    });
-  });
-
-  it("submits with equal leave and arrive times", async () => {
-    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
-    renderAddForm();
-
-    fireEvent.change(screen.getByLabelText("Leave"), {
-      target: { value: "2026-08-14T12:00" },
-    });
-    fireEvent.change(screen.getByLabelText("Arrive"), {
-      target: { value: "2026-08-14T12:00" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
-
-    await waitFor(() => {
-      expect(mockUpsert).toHaveBeenCalledOnce();
-    });
-  });
-
-  it("submits a red-eye overnight (arrives the next day)", async () => {
-    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
-    renderAddForm();
-
-    fireEvent.change(screen.getByLabelText("Leave"), {
-      target: { value: "2026-08-14T22:30" },
-    });
-    fireEvent.change(screen.getByLabelText("Arrive"), {
-      target: { value: "2026-08-15T06:10" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
@@ -789,11 +874,11 @@ describe("TravelLegForm — time validation (#478/#479)", () => {
 
   it("clears the message once a valid time fixes the form", async () => {
     mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
-    renderAddForm();
+    renderAddForm("inbound");
 
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
     expect(
-      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_time_required)
+      await screen.findByText(M3_UI_STRINGS.arrivals_leg_form_arrive_required)
     ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Arrive"), {
@@ -805,7 +890,7 @@ describe("TravelLegForm — time validation (#478/#479)", () => {
       expect(mockUpsert).toHaveBeenCalledOnce();
     });
     expect(
-      screen.queryByText(M3_UI_STRINGS.arrivals_leg_form_time_required)
+      screen.queryByText(M3_UI_STRINGS.arrivals_leg_form_arrive_required)
     ).not.toBeInTheDocument();
   });
 });

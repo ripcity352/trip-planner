@@ -259,6 +259,7 @@ async function seedLateArrivalLeg(
     trip_id: tripId,
     trip_member_id: memberId,
     kind: "flight",
+    direction: "inbound",
     depart_at: departAt.toISOString(),
     arrive_at: arriveAt.toISOString(),
     carrier: "Late Air",

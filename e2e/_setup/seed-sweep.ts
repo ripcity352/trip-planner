@@ -374,6 +374,7 @@ async function ensureOnTimeLeg(
     trip_id: opts.tripId,
     trip_member_id: opts.memberId,
     kind: "flight",
+    direction: "inbound",
     depart_at: depart.toISOString(),
     arrive_at: arrive.toISOString(),
     carrier: "Sweep Air",
