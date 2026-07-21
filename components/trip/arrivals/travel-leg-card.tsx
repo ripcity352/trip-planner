@@ -80,7 +80,7 @@ export function TravelLegCard({
       : null;
 
   return (
-    <article className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
+    <article className="border-border bg-card flex flex-col gap-2 rounded-md border px-4 py-3">
       {/* Header: kind icon + label + owner name + edit affordance */}
       <div className="flex items-center gap-2">
         {(() => {
@@ -88,7 +88,7 @@ export function TravelLegCard({
           return (
             <Icon
               aria-hidden
-              className="h-4 w-4 text-muted-foreground"
+              className="text-muted-foreground h-4 w-4"
               strokeWidth={2}
             />
           );
@@ -98,10 +98,14 @@ export function TravelLegCard({
           <span className="text-muted-foreground text-sm">{carrierLabel}</span>
         ) : null}
         {airportLabel ? (
-          <span className="text-sm font-medium">{airportLabel}</span>
+          <span className="min-w-0 truncate text-sm font-medium">
+            {airportLabel}
+          </span>
         ) : null}
         {originLabel ? (
-          <span className="text-muted-foreground text-sm">{originLabel}</span>
+          <span className="text-muted-foreground min-w-0 truncate text-sm">
+            {originLabel}
+          </span>
         ) : null}
         <span className="text-muted-foreground ml-auto min-w-0 truncate text-xs">
           {ownerName}
@@ -120,7 +124,7 @@ export function TravelLegCard({
         <div className="flex flex-wrap gap-4">
           {leg.depart_at ? (
             <div className="flex flex-col">
-              <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {M3_UI_STRINGS.arrivals_leg_form_depart_label}
               </span>
               <span className="text-sm">
@@ -130,7 +134,7 @@ export function TravelLegCard({
           ) : null}
           {leg.arrive_at ? (
             <div className="flex flex-col">
-              <span className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {M3_UI_STRINGS.arrivals_leg_form_arrive_label}
               </span>
               <span className="text-sm">

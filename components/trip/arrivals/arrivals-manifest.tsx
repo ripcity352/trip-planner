@@ -102,8 +102,9 @@ export function ArrivalsManifest({
   // arrive_at ASC (nulls last), which is the right order for inbound;
   // outbound is re-sorted by depart_at.
   const inboundLegs = legs.filter((leg) => leg.direction === "inbound");
-  const outboundLegs = [...legs.filter((leg) => leg.direction === "outbound")]
-    .sort((a, b) => (a.depart_at ?? "").localeCompare(b.depart_at ?? ""));
+  const outboundLegs = [
+    ...legs.filter((leg) => leg.direction === "outbound"),
+  ].sort((a, b) => (a.depart_at ?? "").localeCompare(b.depart_at ?? ""));
 
   const dayGroups = groupInboundByDay(inboundLegs, tripTimezone);
   const rideShareClusters = computeRideShareClusters(inboundLegs);
@@ -123,9 +124,10 @@ export function ArrivalsManifest({
       {/* Inbound — "Who's landing when" is the page <h1> */}
       <div className="flex flex-col gap-4">
         {/* Ride-share nudge: one quiet static line per cluster (#477) */}
-        {rideShareClusters.map((cluster) => (
+        {rideShareClusters.map((cluster, i) => (
           <p
-            key={cluster.airport}
+            // Same airport can emit multiple time-window clusters — index disambiguates
+            key={`${cluster.airport}-${i}`}
             className="text-muted-foreground text-sm"
           >
             {M3_UI_STRINGS.arrivals_ride_share_template
@@ -141,7 +143,7 @@ export function ArrivalsManifest({
         ) : (
           dayGroups.map((group) => (
             <section key={group.key} className="flex flex-col gap-3">
-              <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+              <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {group.label}
               </h2>
               {group.legs.map(renderCard)}
