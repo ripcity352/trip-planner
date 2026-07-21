@@ -230,7 +230,15 @@ export async function addItineraryItem(
           if (error.code === "42501") {
             throw new ItineraryActionError("rls_denied");
           }
-          throw new ItineraryActionError("save_failed");
+          // #474: any other Postgres/PostgREST error carries a non-empty
+          // `code` (constraint violation, type mismatch, check failure,
+          // etc.) — that's a deterministic server-side rejection, not a
+          // flaky connection. Retrying can never change the outcome, so
+          // route it to the non-retry-framed copy instead of collapsing
+          // it into the transient "flaky connection" bucket.
+          throw new ItineraryActionError(
+            error.code ? "save_rejected" : "save_failed"
+          );
         }
         return data as ItineraryItem;
       }
@@ -242,11 +250,7 @@ export async function addItineraryItem(
       return { ok: false, errorKey: "rate_limit" };
     }
     if (err instanceof ItineraryActionError) {
-      return {
-        ok: false,
-        errorKey:
-          err.reason === "rls_denied" ? "rls_denied" : "itinerary_save_failed",
-      };
+      return { ok: false, errorKey: itineraryErrorKey(err.reason) };
     }
     console.error("[itinerary] addItineraryItem unexpected:", err);
     return { ok: false, errorKey: "itinerary_save_failed" };
@@ -363,7 +367,11 @@ export async function updateItineraryItem(
           if (error.code === "42501" || error.code === "PGRST116") {
             throw new ItineraryActionError("rls_denied");
           }
-          throw new ItineraryActionError("save_failed");
+          // #474: see addItineraryItem — a coded Postgres/PostgREST error
+          // is a deterministic rejection, not a flaky connection.
+          throw new ItineraryActionError(
+            error.code ? "save_rejected" : "save_failed"
+          );
         }
         return data as ItineraryItem;
       }
@@ -375,11 +383,7 @@ export async function updateItineraryItem(
       return { ok: false, errorKey: "rate_limit" };
     }
     if (err instanceof ItineraryActionError) {
-      return {
-        ok: false,
-        errorKey:
-          err.reason === "rls_denied" ? "rls_denied" : "itinerary_save_failed",
-      };
+      return { ok: false, errorKey: itineraryErrorKey(err.reason) };
     }
     console.error("[itinerary] updateItineraryItem unexpected:", err);
     return { ok: false, errorKey: "itinerary_save_failed" };
@@ -435,12 +439,29 @@ export async function deleteItineraryItem(
 // Internal error sentinel
 // ---------------------------------------------------------------------------
 
-class ItineraryActionError extends Error {
-  readonly reason: "save_failed" | "rls_denied";
+type ItineraryErrorReason = "save_failed" | "save_rejected" | "rls_denied";
 
-  constructor(reason: "save_failed" | "rls_denied") {
+class ItineraryActionError extends Error {
+  readonly reason: ItineraryErrorReason;
+
+  constructor(reason: ItineraryErrorReason) {
     super(`itinerary_action_error:${reason}`);
     this.name = "ItineraryActionError";
     this.reason = reason;
+  }
+}
+
+// #474: maps the internal sentinel reason to the copy-table key. Kept as a
+// single function so both addItineraryItem and updateItineraryItem stay
+// in lockstep — a new reason can't be added to one call site without a
+// compiler error surfacing here.
+function itineraryErrorKey(reason: ItineraryErrorReason): ErrorKey {
+  switch (reason) {
+    case "rls_denied":
+      return "rls_denied";
+    case "save_rejected":
+      return "itinerary_save_rejected";
+    case "save_failed":
+      return "itinerary_save_failed";
   }
 }

@@ -26,13 +26,20 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "rsvp_not_member",
   // M3 keys (Wave 0a)
   "itinerary_save_failed",
+  // #474 — deterministic Postgres/PostgREST rejection, split from the
+  // transient itinerary_save_failed
+  "itinerary_save_rejected",
   "itinerary_delete_failed",
   "item_rsvp_save_failed",
   "item_flag_save_failed",
   "announcement_post_failed",
+  // #474 — same deterministic/transient split
+  "announcement_post_rejected",
   "trip_notes_save_failed",
   "trip_update_failed",
   "travel_leg_save_failed",
+  // #474 — same deterministic/transient split
+  "travel_leg_save_rejected",
   "travel_leg_delete_failed",
   "lodging_assign_failed",
   "invite_mint_failed",

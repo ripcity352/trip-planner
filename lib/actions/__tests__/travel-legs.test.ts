@@ -204,6 +204,46 @@ describe("upsertTravelLeg", () => {
     expect(result).toEqual({ ok: true, leg: mockLeg });
   });
 
+  // #474: a coded Postgres/PostgREST error is a deterministic rejection —
+  // retrying can never succeed — so it routes to travel_leg_save_rejected,
+  // not the retry-framed travel_leg_save_failed.
+  it("returns travel_leg_save_rejected on a coded Postgres/PostgREST error", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({
+      data: null,
+      error: { code: "23514", message: "check constraint violated" },
+    }));
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      { tripId: VALID_TRIP_ID, kind: "flight" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "travel_leg_save_rejected" });
+  });
+
+  // #474: an error with no `code` stays on the transient, retry-framed copy.
+  it("returns travel_leg_save_failed when the error carries no code", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({
+      data: null,
+      error: { code: "", message: "network hiccup" },
+    }));
+    const { upsertTravelLeg } = await import("@/lib/actions/travel-legs");
+    const result = await upsertTravelLeg(
+      { tripId: VALID_TRIP_ID, kind: "flight" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "travel_leg_save_failed" });
+  });
+
   // ── M4 W2c: airlineIata + flightNumber validation ────────────────────────
 
   it("accepts valid airlineIata 'AA' and flightNumber '1234'", async () => {
