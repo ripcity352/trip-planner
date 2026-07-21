@@ -103,6 +103,16 @@ export const M2_UI_STRINGS = {
   newTrip_vibePromptLabel: "What's the vibe?",
   // /trips/[tripId] dashboard
   dashboard_section_rsvp_heading: "Who's in",
+  // #483 — small kicker over the viewer's own RSVP chips, same register
+  // as the now/next card's "Right now"/"Up next" labels. The chips sit
+  // under the group-scoped "Who's in" heading; without this they read
+  // as a filter on the group, not a control for "you". Reused unmodified
+  // from lib/copy per house rule (no inline literals).
+  dashboard_rsvp_your_rsvp_label: "Your RSVP",
+  // #483 — "Who's coming" (identical headcount to "Who's in") was
+  // removed as a duplicate module; this footer link keeps the roster
+  // reachable from the dashboard now that it was the only such link.
+  dashboard_rsvp_roster_link: "See the full roster",
   dashboard_section_invite_heading: "Share the link",
   dashboard_section_invite_body:
     "Pop a link in the group chat. People click it, they're in.",
@@ -632,10 +642,13 @@ export const MEMBER_DAYS_UI_STRINGS = {
 export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;
 
 /**
- * Dashboard-header trip edit (name + location). Rule 11: the trigger is
- * an organizer micro-affordance — non-organizers never see it, so there
- * is no locked/disabled register here. Dates are deliberately absent:
- * they belong to the /dates poll flow, not a form field.
+ * Dashboard-header trip edit (name + location + — as of #476 — dates,
+ * but ONLY once a trip already has dates). Rule 11: the trigger is an
+ * organizer micro-affordance — non-organizers never see it, so there is
+ * no locked/disabled register here. An undated trip still doesn't get
+ * date fields here: the /dates poll flow is the only way to *set*
+ * dates for the first time; this sheet only ever corrects a window
+ * that's already locked in.
  */
 export const TRIP_EDIT_UI_STRINGS = {
   tripEdit_cta: "Edit",
@@ -644,6 +657,13 @@ export const TRIP_EDIT_UI_STRINGS = {
   tripEdit_name_label: "Trip name",
   tripEdit_location_label: "Where's it happening?",
   tripEdit_location_placeholder: "City, house, boat…",
+  // #476 — dates section, gated to trips that already have dates set.
+  tripEdit_startLabel: "From",
+  tripEdit_endLabel: "To",
+  // Quiet caution line under the date fields — no confirm dialog (an
+  // explicit-save sheet is deliberate enough), just a heads-up that this
+  // isn't a draft.
+  tripEdit_dates_caution: "Everyone sees the new dates the moment you save.",
   tripEdit_submit: "Save it",
   tripEdit_cancel: "Never mind",
 } as const;

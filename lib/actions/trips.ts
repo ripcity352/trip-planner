@@ -208,27 +208,46 @@ export async function createTripAction(
 const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
 
 /**
- * Exactly the two header fields. Dates are deliberately excluded — the
- * trip window is decided by the /dates poll flow, and letting this
- * action touch starts_at/ends_at would bypass the vote. Bounds mirror
+ * Name + location, plus an optional dates correction (#476). Dates stay
+ * OUT of trip creation's free-for-all: this action only ever corrects a
+ * window that's already set — an undated trip stays on the /dates poll
+ * flow exclusively, which is why `starts_at`/`ends_at` here are a
+ * both-or-neither pair (never a way to seed a first date) and
+ * `updateTrip` re-checks that guard at the query level. Bounds mirror
  * `createTripAction` (name ≤ 100, location ≤ 200); an empty/whitespace
- * location clears the field (Trip.location is nullable).
+ * location clears the field (Trip.location is nullable). The
+ * `ends_at >= starts_at` refine mirrors `createTripAction`'s and reuses
+ * the same `trip_dates_reversed` errorKey (#405-D) — the DB's
+ * `trips_end_after_start` CHECK is the data-integrity backstop either way.
  */
-const updateTripSchema = z.object({
-  tripId: z.string().uuid(),
-  name: z.string().trim().min(1).max(100),
-  location: z
-    .string()
-    .trim()
-    .max(200)
-    .transform((v) => (v.length > 0 ? v : null))
-    .nullable(),
-});
+const updateTripSchema = z
+  .object({
+    tripId: z.string().uuid(),
+    name: z.string().trim().min(1).max(100),
+    location: z
+      .string()
+      .trim()
+      .max(200)
+      .transform((v) => (v.length > 0 ? v : null))
+      .nullable(),
+    starts_at: z.string().trim().min(1).optional(),
+    ends_at: z.string().trim().min(1).optional(),
+  })
+  .refine(
+    (data) =>
+      !data.starts_at || !data.ends_at || data.ends_at >= data.starts_at,
+    {
+      message: "End date can't be before the start date.",
+      path: ["ends_at"],
+    }
+  );
 
 export interface UpdateTripActionInput {
   tripId: string;
   name: string;
   location?: string | null;
+  starts_at?: string;
+  ends_at?: string;
 }
 
 export type UpdateTripResult =
@@ -236,11 +255,15 @@ export type UpdateTripResult =
   | { ok: false; errorKey: ErrorKey };
 
 /**
- * Update a trip's name + location. Organizer-gated by RLS ("organizers
- * can update their trips") — there is no app-level role check, and the
+ * Update a trip's name + location, and — as of #476 — its dates when the
+ * trip already has dates set. Organizer-gated by RLS ("organizers can
+ * update their trips") — there is no app-level role check, and the
  * action stays honest when the policy swallows the write: a zero-row
  * update (detected via the `.select()`-chained write in `updateTrip`)
- * returns `rls_denied`, never a fake success.
+ * returns `rls_denied`, never a fake success. That same zero-row path is
+ * also what fires if `starts_at`/`ends_at` are sent for a trip that
+ * doesn't yet have dates — `updateTrip`'s query-level guard rejects the
+ * write rather than silently seeding the poll's job.
  *
  * Idempotency (rule 9): the client-minted key is validated but not
  * persisted — this is a last-write-wins update of two mutable columns
@@ -260,11 +283,21 @@ export async function updateTripAction(
     tripId: input.tripId,
     name: input.name,
     location: input.location ?? null,
+    starts_at: input.starts_at,
+    ends_at: input.ends_at,
   });
   if (!parsed.success) {
-    return { ok: false, errorKey: "validation_failed" };
+    // #405-D pattern reused: surface the specific reversed-dates message
+    // instead of collapsing to the generic validation_failed.
+    const datesReversed = parsed.error.issues.some(
+      (issue) => issue.code === "custom" && issue.path[0] === "ends_at"
+    );
+    return {
+      ok: false,
+      errorKey: datesReversed ? "trip_dates_reversed" : "validation_failed",
+    };
   }
-  const { tripId, name, location } = parsed.data;
+  const { tripId, name, location, starts_at, ends_at } = parsed.data;
 
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
@@ -277,7 +310,7 @@ export async function updateTripAction(
     const updated = await rateLimitedAction(
       RATE_LIMIT_SCOPES.UPDATE_TRIP,
       userId,
-      () => updateTrip(supabase, tripId, { name, location })
+      () => updateTrip(supabase, tripId, { name, location, starts_at, ends_at })
     );
     if (!updated) {
       // RLS swallowed the write — the caller isn't an organizer of this

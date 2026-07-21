@@ -311,34 +311,65 @@ export async function createTrip(
 }
 
 /**
- * Fields the dashboard-header edit may touch. Dates are deliberately
- * NOT here — they're owned by the /dates poll flow (`decide_trip_dates`),
- * and routing them through a free-text edit would bypass the vote.
+ * Fields the dashboard-header edit may touch. Name + location are always
+ * writable. `starts_at`/`ends_at` (#476) are writable too, but ONLY as a
+ * correction to dates that already exist — an undated trip still routes
+ * exclusively through the /dates poll flow (`decide_trip_dates`), so this
+ * pair must be provided together (both or neither) and `updateTrip` below
+ * additionally guards the write at the query level: it only lands against
+ * a row that already carries both dates.
  */
 export interface UpdateTripInput {
   name: string;
   location: string | null;
+  starts_at?: string;
+  ends_at?: string;
 }
 
 /**
- * Update a trip's name + location. RLS ("organizers can update their
- * trips", 0001_init.sql) gates WHO can write — no app-level role check
- * here, per the lib/db contract. We chain `.select(...).maybeSingle()`
- * so a policy-swallowed zero-row update is detectable: returns the
- * updated Trip, or null when RLS hid the row (non-organizer / not a
- * member / no such trip) instead of lying about success.
+ * Update a trip's name + location, and optionally its dates. RLS
+ * ("organizers can update their trips", 0001_init.sql) gates WHO can
+ * write — no app-level role check here, per the lib/db contract. We
+ * chain `.select(...).maybeSingle()` so a policy-swallowed zero-row
+ * update is detectable: returns the updated Trip, or null when RLS hid
+ * the row (non-organizer / not a member / no such trip) instead of
+ * lying about success.
+ *
+ * #476: when both `starts_at` and `ends_at` are supplied, this is a
+ * correction to a trip that's already dated — not a way to seed dates
+ * for the first time. The `.not(..., "is", null)` predicates below are
+ * a DB-level backstop for that guard: even if the action layer's gating
+ * were bypassed, the write can only ever match a row where both dates
+ * are already set, so an undated trip's poll-bypass guard holds at the
+ * query, not just the UI.
  */
 export async function updateTrip(
   supabase: SupabaseClient,
   tripId: string,
   input: UpdateTripInput
 ): Promise<Trip | null> {
-  const { data, error } = await supabase
-    .from("trips")
-    .update({ name: input.name, location: input.location })
-    .eq("id", tripId)
-    .select(TRIP_COLUMNS)
-    .maybeSingle();
+  const includeDates = input.starts_at !== undefined && input.ends_at !== undefined;
+
+  const { data, error } = includeDates
+    ? await supabase
+        .from("trips")
+        .update({
+          name: input.name,
+          location: input.location,
+          starts_at: input.starts_at,
+          ends_at: input.ends_at,
+        })
+        .eq("id", tripId)
+        .not("starts_at", "is", null)
+        .not("ends_at", "is", null)
+        .select(TRIP_COLUMNS)
+        .maybeSingle()
+    : await supabase
+        .from("trips")
+        .update({ name: input.name, location: input.location })
+        .eq("id", tripId)
+        .select(TRIP_COLUMNS)
+        .maybeSingle();
 
   if (error) {
     throw new Error(`updateTrip failed: ${error.message}`);
