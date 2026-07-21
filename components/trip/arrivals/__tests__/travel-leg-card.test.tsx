@@ -317,4 +317,21 @@ describe("TravelLegCard — flight number rendering (#396)", () => {
     expect(screen.queryByText(/UA/)).not.toBeInTheDocument();
     expect(screen.queryByText("Southwest")).not.toBeInTheDocument();
   });
+
+  // #465 — an unbroken long owner name (up to DISPLAY_NAME_MAX_LENGTH,
+  // 80 chars) must not force horizontal scroll at 375px.
+  it("truncates a long owner name instead of overflowing the card", () => {
+    const longName = "C".repeat(80);
+    render(
+      <TravelLegCard
+        leg={makeLeg()}
+        myTripMemberId="member-99"
+        ownerName={longName}
+        tripTimezone="UTC"
+      />
+    );
+    const ownerEl = screen.getByText(longName);
+    expect(ownerEl).toHaveClass("truncate");
+    expect(ownerEl).toHaveClass("min-w-0");
+  });
 });

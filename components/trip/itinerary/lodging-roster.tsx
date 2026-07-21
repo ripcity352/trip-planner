@@ -118,7 +118,7 @@ export function LodgingRoster({
               key={a.id}
               className="flex items-center justify-between gap-2 text-sm"
             >
-              <span>
+              <span className="min-w-0 truncate">
                 {resolveMemberName(memberMap, a.trip_member_id)}
                 {a.room_label ? (
                   <span className="text-muted-foreground"> · {a.room_label}</span>

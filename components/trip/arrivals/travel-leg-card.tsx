@@ -86,7 +86,7 @@ export function TravelLegCard({
         {carrierLabel ? (
           <span className="text-muted-foreground text-sm">{carrierLabel}</span>
         ) : null}
-        <span className="text-muted-foreground ml-auto text-xs">
+        <span className="text-muted-foreground ml-auto min-w-0 truncate text-xs">
           {ownerName}
         </span>
         {isOwner ? (

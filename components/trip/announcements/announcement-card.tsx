@@ -85,8 +85,8 @@ export function AnnouncementCard({
       <p className="text-sm leading-relaxed">{announcement.body}</p>
 
       {/* Footer: author + relative time */}
-      <footer className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span>
+      <footer className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate">
           {authorDisplayName ?? M3_UI_STRINGS.announcements_author_fallback}
         </span>
         <span aria-hidden>·</span>
