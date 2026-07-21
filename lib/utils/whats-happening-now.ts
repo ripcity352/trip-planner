@@ -14,6 +14,9 @@
  *     item that is "now" for the entire local calendar day.
  *   - `end_time` is HH:MM (nullable). If null on a timed item (start_time
  *     present), the item is treated as ongoing indefinitely past its start.
+ *   - `end_day` is YYYY-MM-DD (nullable, #504). The end instant is
+ *     `(end_day ?? day) + end_time` — multi-day items stay "now" until
+ *     their real end day.
  *   - End time is exclusive: an item ending at 12:00 is not "now" at 12:00.
  *
  * Items MUST be pre-sorted by (day ASC, start_time ASC nulls last) — this
@@ -75,7 +78,9 @@ function isInProgress(item: ItineraryItem, now: Date): boolean {
     return true;
   }
 
-  const end = toLocalDateTime(item.day, item.end_time);
+  // #504: a multi-day item ends on end_day, not day — same-day items have
+  // end_day null (or equal to day), so the fallback keeps them unchanged.
+  const end = toLocalDateTime(item.end_day ?? item.day, item.end_time);
   // End is exclusive
   return now < end;
 }

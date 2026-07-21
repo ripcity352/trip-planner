@@ -30,6 +30,21 @@ export function formatNextWhen(item: ItineraryItem, now: Date): string {
   return dayLabel ?? timeLabel ?? "";
 }
 
+/**
+ * End-of-range label for NowNextCard's "Now" line. A same-day end keeps the
+ * bare time ("9:00 PM"); a cross-day end (#504 `end_day`) carries its day in
+ * the #404-A register ("Tue Aug 18 · 12:00 PM") so a multi-day item's end
+ * doesn't read as ending today. Returns null when the item has no end_time.
+ */
+export function formatEndWhen(item: ItineraryItem): string | null {
+  if (!item.end_time) return null;
+  const timeLabel = formatTimeShort(item.end_time);
+  if (item.end_day && item.end_day !== item.day) {
+    return `${format(parseDateOnly(item.end_day), "EEE MMM d")} · ${timeLabel}`;
+  }
+  return timeLabel;
+}
+
 /** HH:MM (24h DB string) → "6:30 PM" (NowNextCard's shipped register). */
 export function formatTimeShort(time: string): string {
   const [h, m] = time.split(":").map(Number);

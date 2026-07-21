@@ -177,4 +177,36 @@ describe("whatsHappeningNow", () => {
     expect(result.now).toBeNull();
     expect(result.next?.id).toBe("b");
   });
+
+  // #504 end_day: the end instant is (end_day ?? day) + end_time.
+  it("multi-day item (end_day) stays 'now' past its start day's end_time", () => {
+    // Sun 8am → Tue 12pm; Monday afternoon is still in progress
+    const multi = {
+      ...item("a", "2026-06-14", "08:00", "12:00"),
+      end_day: "2026-06-16",
+    };
+    const result = whatsHappeningNow([multi], new Date("2026-06-15T13:00:00"));
+    expect(result.now?.id).toBe("a");
+  });
+
+  it("multi-day item ends (exclusive) at end_day + end_time", () => {
+    const multi = {
+      ...item("a", "2026-06-14", "08:00", "12:00"),
+      end_day: "2026-06-16",
+    };
+    const result = whatsHappeningNow([multi], new Date("2026-06-16T12:00:00"));
+    expect(result.now).toBeNull();
+  });
+
+  it("end_day equal to day behaves exactly like a same-day item", () => {
+    const sameDay = {
+      ...item("a", "2026-06-15", "08:00", "12:00"),
+      end_day: "2026-06-15",
+    };
+    const result = whatsHappeningNow(
+      [sameDay],
+      new Date("2026-06-15T13:00:00")
+    );
+    expect(result.now).toBeNull();
+  });
 });

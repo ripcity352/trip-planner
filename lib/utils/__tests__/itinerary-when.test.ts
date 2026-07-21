@@ -6,7 +6,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { formatNextWhen, formatTimeShort } from "@/lib/utils/itinerary-when";
+import {
+  formatEndWhen,
+  formatNextWhen,
+  formatTimeShort,
+} from "@/lib/utils/itinerary-when";
 import type { ItineraryItem } from "@/lib/db/types";
 
 // Minimal fixture — only day / start_time matter to formatNextWhen.
@@ -58,6 +62,32 @@ describe("formatNextWhen", () => {
 
   it("returns empty string for a same-day whole-day item", () => {
     expect(formatNextWhen(item("2026-07-25", null), now)).toBe("");
+  });
+});
+
+describe("formatEndWhen", () => {
+  it("carries the end day for a cross-day item (#504)", () => {
+    const crossDay = {
+      ...item("2026-08-16", "08:00", "12:00"),
+      end_day: "2026-08-18",
+    };
+    expect(formatEndWhen(crossDay)).toBe("Tue Aug 18 · 12:00 PM");
+  });
+
+  it("keeps the bare time when end_day equals day", () => {
+    const sameDay = {
+      ...item("2026-08-16", "18:00", "21:00"),
+      end_day: "2026-08-16",
+    };
+    expect(formatEndWhen(sameDay)).toBe("9:00 PM");
+  });
+
+  it("keeps the bare time when end_day is null (pre-#504 rows)", () => {
+    expect(formatEndWhen(item("2026-08-16", "18:00", "21:00"))).toBe("9:00 PM");
+  });
+
+  it("returns null when the item has no end_time", () => {
+    expect(formatEndWhen(item("2026-08-16", "18:00"))).toBeNull();
   });
 });
 

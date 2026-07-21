@@ -24,7 +24,11 @@ import { differenceInCalendarDays } from "date-fns";
 
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { whatsHappeningNow } from "@/lib/utils/whats-happening-now";
-import { formatNextWhen, formatTimeShort } from "@/lib/utils/itinerary-when";
+import {
+  formatEndWhen,
+  formatNextWhen,
+  formatTimeShort,
+} from "@/lib/utils/itinerary-when";
 import { parseDateOnly } from "@/lib/utils/date-only";
 import type { ItineraryItem, Trip } from "@/lib/db/types";
 
@@ -87,9 +91,11 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
           <p className="text-sm font-medium mt-0.5">{currentItem.title}</p>
           {currentItem.start_time ? (
             <p className="text-xs text-muted-foreground">
+              {/* #504: formatEndWhen carries the end day when the item
+                  crosses days, so the end doesn't read as ending today. */}
               {formatTimeShort(currentItem.start_time)}
               {currentItem.end_time
-                ? ` – ${formatTimeShort(currentItem.end_time)}`
+                ? ` – ${formatEndWhen(currentItem)}`
                 : null}
             </p>
           ) : null}
