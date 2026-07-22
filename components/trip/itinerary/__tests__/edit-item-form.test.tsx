@@ -236,4 +236,76 @@ describe("EditItemForm", () => {
     expect(deleteButton.className).toMatch(/border-destructive(?:$| )/);
     expect(deleteButton.className).toMatch(/text-destructive(?:$| )/);
   });
+
+  // #394: cost field. The clear-to-null case is LOAD-BEARING —
+  // updateItineraryItem only writes cost_cents when `costCents !==
+  // undefined`, so the form must always pass a concrete value.
+  describe("cost", () => {
+    it("pre-fills the cost from cost_cents as a decimal string", () => {
+      render(
+        <EditItemForm {...defaultProps} item={{ ...baseItem, cost_cents: 4500 }} />
+      );
+      const costInput = screen.getByLabelText(/cost/i) as HTMLInputElement;
+      expect(costInput.value).toBe("45.00");
+    });
+
+    it("pre-fills an empty cost input when cost_cents is null", () => {
+      render(
+        <EditItemForm {...defaultProps} item={{ ...baseItem, cost_cents: null }} />
+      );
+      const costInput = screen.getByLabelText(/cost/i) as HTMLInputElement;
+      expect(costInput.value).toBe("");
+    });
+
+    it("sends the updated cents value when the cost is changed", async () => {
+      render(
+        <EditItemForm {...defaultProps} item={{ ...baseItem, cost_cents: 4500 }} />
+      );
+      fireEvent.change(screen.getByLabelText(/cost/i), {
+        target: { value: "89.99" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc", costCents: 8999 }),
+          expect.any(String)
+        );
+      });
+    });
+
+    // LOAD-BEARING: clearing the cost field must send costCents: null,
+    // not omit the field — omission would leave the old price in place
+    // under updateItineraryItem's `fields.costCents !== undefined` guard.
+    it("clears the cost to null when the field is emptied", async () => {
+      render(
+        <EditItemForm {...defaultProps} item={{ ...baseItem, cost_cents: 4500 }} />
+      );
+      fireEvent.change(screen.getByLabelText(/cost/i), {
+        target: { value: "" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc", costCents: null }),
+          expect.any(String)
+        );
+      });
+    });
+
+    it("always includes costCents even when nothing else changed", async () => {
+      render(
+        <EditItemForm {...defaultProps} item={{ ...baseItem, cost_cents: 4500 }} />
+      );
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc", costCents: 4500 }),
+          expect.any(String)
+        );
+      });
+    });
+  });
 });

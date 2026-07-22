@@ -177,4 +177,90 @@ describe("AddItemForm", () => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
   });
+
+  // #394: cost round-trip — the cents conversion happens on submit, not
+  // in the zod schema, so these assert against what actually reaches the
+  // server action.
+  describe("cost", () => {
+    const fillRequired = () => {
+      fireEvent.change(screen.getByLabelText(/what is it\?/i), {
+        target: { value: "Golf outing" },
+      });
+      fireEvent.change(
+        screen.getByLabelText(/starts/i, { selector: "input[type='date']" }),
+        { target: { value: "2026-08-01" } }
+      );
+    };
+
+    it("renders the cost input with no asterisk in its label", () => {
+      render(<AddItemForm {...defaultProps} />);
+      const label = screen.getByText(/cost/i);
+      expect(label.textContent).not.toMatch(/\*/);
+    });
+
+    it("converts a whole-dollar string to cents on submit", async () => {
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      fireEvent.change(screen.getByLabelText(/cost/i), {
+        target: { value: "45" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ costCents: 4500 }),
+          expect.any(String)
+        );
+      });
+    });
+
+    it("converts a cents-bearing string to cents on submit", async () => {
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      fireEvent.change(screen.getByLabelText(/cost/i), {
+        target: { value: "89.99" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ costCents: 8999 }),
+          expect.any(String)
+        );
+      });
+    });
+
+    it("sends costCents: null when the field is left empty", async () => {
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ costCents: null }),
+          expect.any(String)
+        );
+      });
+    });
+
+    it("rejects a cost with more than 2 decimal places", async () => {
+      // #431/restoreAllMocks doesn't clear prior calls on this file's
+      // vi.fn() mocks — assert against the call count at this point,
+      // not an absolute "never called."
+      const callsBefore = mockAdd.mock.calls.length;
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      fireEvent.change(screen.getByLabelText(/cost/i), {
+        target: { value: "12.345" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/enter a dollar amount/i)
+        ).toBeInTheDocument();
+      });
+      expect(mockAdd.mock.calls.length).toBe(callsBefore);
+    });
+  });
 });
