@@ -26,6 +26,7 @@ const makeItem = (
   day: "2026-08-01",
   start_time: "14:00",
   end_time: "17:00",
+  end_day: null,
   location: null,
   address: null,
   notes: null,

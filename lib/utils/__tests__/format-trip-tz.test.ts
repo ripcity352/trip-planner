@@ -24,6 +24,7 @@ import {
   fromLocalInputValue,
   formatTripDateTime,
   isoToDbTime,
+  isoToDbDate,
   dbTimeToIso,
 } from "../format-trip-tz";
 
@@ -385,5 +386,46 @@ describe("dbTimeToIso", () => {
     const dbTime = isoToDbTime(originalIso, "America/New_York");
     const recovered = dbTimeToIso(day, dbTime, "America/New_York");
     expect(recovered).toBe(originalIso);
+  });
+});
+
+// -------------------------------------------------------------------------
+// isoToDbDate — #504 end_day derivation.
+//
+// `itinerary_items.end_day` is a Postgres `date` column. The client sends
+// the end time as a full UTC ISO-8601 instant; the server derives the
+// trip-local calendar date ("yyyy-MM-dd") from it, so a multi-day item's
+// end date is no longer destroyed at write time.
+// -------------------------------------------------------------------------
+
+describe("isoToDbDate", () => {
+  it("derives the trip-local date from a UTC instant (EDT)", () => {
+    // 2026-08-18T16:00:00Z = 2026-08-18 12:00 EDT (UTC-4)
+    expect(isoToDbDate("2026-08-18T16:00:00Z", "America/New_York")).toBe(
+      "2026-08-18"
+    );
+  });
+
+  it("crosses the date boundary: a UTC instant early in the day is the prior trip-local date", () => {
+    // 2026-06-01T03:00:00Z = 2026-05-31 23:00 EDT (UTC-4)
+    expect(isoToDbDate("2026-06-01T03:00:00Z", "America/New_York")).toBe(
+      "2026-05-31"
+    );
+  });
+
+  it("returns null for null input", () => {
+    expect(isoToDbDate(null, "America/New_York")).toBeNull();
+  });
+
+  it("returns null for undefined input", () => {
+    expect(isoToDbDate(undefined, "America/New_York")).toBeNull();
+  });
+
+  it("returns null for an invalid ISO string", () => {
+    expect(isoToDbDate("not-a-date", "America/New_York")).toBeNull();
+  });
+
+  it("returns null for an invalid timezone", () => {
+    expect(isoToDbDate("2026-08-18T16:00:00Z", "Not/A_Timezone")).toBeNull();
   });
 });

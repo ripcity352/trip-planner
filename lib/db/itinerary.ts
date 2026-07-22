@@ -20,7 +20,7 @@ import type {
 } from "./types";
 
 const ITINERARY_ITEM_COLUMNS =
-  "id, trip_id, day, start_time, end_time, title, location, address, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key";
+  "id, trip_id, day, start_time, end_time, end_day, title, location, address, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key";
 
 /**
  * Return all itinerary items for a trip, ordered by day ASC then

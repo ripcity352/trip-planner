@@ -32,6 +32,7 @@ const baseItem: ItineraryItem = {
   // handing them to the datetime-local widget.
   start_time: "19:00:00",
   end_time: "21:00:00",
+  end_day: null,
   location: null,
   address: "3131 Las Vegas Blvd S, Las Vegas, NV 89109",
   notes: null,
@@ -141,6 +142,25 @@ describe("EditItemForm", () => {
         expect.any(String)
       );
     });
+  });
+
+  // #504: a multi-day item's end time must rehydrate against its end_day,
+  // not the start day — the old `dbTimeToIso(item.day, item.end_time, …)`
+  // silently pulled the end instant back to the start day on every edit.
+  it("hydrates the end time against end_day for a multi-day item", () => {
+    render(
+      <EditItemForm
+        {...defaultProps}
+        item={{
+          ...baseItem,
+          day: "2026-08-01",
+          end_day: "2026-08-03",
+          end_time: "01:00:00",
+        }}
+      />
+    );
+    const endInput = document.getElementById("edit-endtime") as HTMLInputElement;
+    expect(endInput.value).toBe("2026-08-03T01:00");
   });
 
   it("shows delete confirmation before deleting", async () => {

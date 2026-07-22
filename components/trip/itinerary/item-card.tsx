@@ -96,7 +96,12 @@ export function ItemCard({
     );
   }
 
-  const timeLabel = formatTimeRange(item.start_time, item.end_time);
+  const timeLabel = formatTimeRange(
+    item.day,
+    item.end_day,
+    item.start_time,
+    item.end_time
+  );
   const KindIcon = KIND_ICON[item.kind];
 
   return (
@@ -205,7 +210,16 @@ export function ItemCard({
   );
 }
 
+/**
+ * Design-system date/time register, §"Cross-day time range": a same-day
+ * range renders `7:00 pm – 9:00 pm` (en dash); when the item ends on a
+ * later day (#504 `end_day`), the end gets its `Mmm d` date and the
+ * separator becomes the Range-tier arrow: `8:00 am → Aug 18, 12:00 pm`.
+ * Lowercase am/pm throughout (`aaa` — uppercase AM/PM is an anti-tell).
+ */
 function formatTimeRange(
+  day: string,
+  endDay: string | null,
   startTime: string | null,
   endTime: string | null
 ): string | null {
@@ -215,12 +229,21 @@ function formatTimeRange(
   const parseTime = (t: string) => {
     const [h, m] = t.split(":").map(Number);
     const d = new Date(2000, 0, 1, h, m);
-    return format(d, "h:mm a");
+    return format(d, "h:mm aaa");
   };
 
   const start = parseTime(startTime);
   if (!endTime) return start;
   const end = parseTime(endTime);
+
+  if (endDay && endDay !== day) {
+    // Parse the YYYY-MM-DD parts directly — `new Date("YYYY-MM-DD")` would
+    // interpret the string as UTC midnight and shift the day in western TZs.
+    const [y, mo, d] = endDay.split("-").map(Number);
+    const endDateLabel = format(new Date(y, mo - 1, d), "MMM d");
+    return `${start} → ${endDateLabel}, ${end}`;
+  }
+
   return `${start} – ${end}`;
 }
 

@@ -40,6 +40,7 @@ describe("AddItemForm", () => {
         day: "2026-08-01",
         start_time: null,
         end_time: null,
+        end_day: null,
         location: null,
         address: null,
         notes: null,

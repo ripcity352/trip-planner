@@ -117,6 +117,7 @@ const mockItem = {
   day: "2026-06-15",
   start_time: null,
   end_time: null,
+  end_day: null,
   title: "Dinner",
   location: null,
   address: null,
@@ -338,6 +339,43 @@ describe("addItineraryItem — datetime fields (Fix B)", () => {
     const payload = insertCalls[0]?.payload as Record<string, unknown>;
     expect(payload.start_time).toBe("23:00:00");
     expect(payload.end_time).toBe("01:00:00");
+    // #504: the end *date* is no longer discarded — end_day is derived from
+    // the endTime instant in the trip's timezone.
+    expect(payload.end_day).toBe("2026-06-01");
+  });
+
+  // #504: a genuinely multi-day item (ends days after `day`) persists its
+  // trip-local end date.
+  it("persists end_day for a multi-day item", async () => {
+    primeAuth(VALID_USER_ID);
+    const createdItem = {
+      ...mockItem,
+      day: "2026-08-16",
+      start_time: "08:00:00",
+      end_time: "12:00:00",
+      end_day: "2026-08-18",
+    };
+    tableResolvers.set("itinerary_items", () => ({
+      data: createdItem,
+      error: null,
+    }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await addItineraryItem(
+      {
+        tripId: VALID_TRIP_ID,
+        title: "Rafting",
+        kind: "activity",
+        day: "2026-08-16",
+        // 2026-08-16T12:00:00Z = 2026-08-16 08:00 EDT (UTC-4)
+        startTime: "2026-08-16T12:00:00.000Z",
+        // 2026-08-18T16:00:00Z = 2026-08-18 12:00 EDT (UTC-4)
+        endTime: "2026-08-18T16:00:00.000Z",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, item: createdItem });
+    const payload = insertCalls[0]?.payload as Record<string, unknown>;
+    expect(payload.end_day).toBe("2026-08-18");
   });
 
   it("does not fetch the trip when neither startTime nor endTime is provided", async () => {
@@ -361,6 +399,8 @@ describe("addItineraryItem — datetime fields (Fix B)", () => {
     const payload = insertCalls[0]?.payload as Record<string, unknown>;
     expect(payload.start_time).toBeNull();
     expect(payload.end_time).toBeNull();
+    // #504: no endTime → no end date to persist.
+    expect(payload.end_day).toBeNull();
   });
 
   it("returns rls_denied when the trip can't be resolved for a timezone lookup", async () => {
@@ -602,6 +642,9 @@ describe("updateItineraryItem — datetime fields (W2b)", () => {
     >;
     expect(payload.start_time).toBe("23:00:00");
     expect(payload.end_time).toBe("01:00:00");
+    // #504: end_day rides along with every endTime update, derived in the
+    // trip's timezone (01:00 EDT falls on 2026-06-01).
+    expect(payload.end_day).toBe("2026-06-01");
   });
 
   it("accepts null startTime and endTime (clearing time fields) without a trip lookup", async () => {
@@ -627,6 +670,8 @@ describe("updateItineraryItem — datetime fields (W2b)", () => {
     >;
     expect(payload.start_time).toBeNull();
     expect(payload.end_time).toBeNull();
+    // #504: clearing endTime also clears the persisted end date.
+    expect(payload.end_day).toBeNull();
   });
 
   it("returns rls_denied when the item's trip can't be resolved for a timezone lookup", async () => {

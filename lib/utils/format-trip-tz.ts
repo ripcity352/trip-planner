@@ -142,6 +142,34 @@ export function isoToDbTime(
   }
 }
 
+// Postgres `date` literal format used by itinerary_items.day / end_day.
+const DB_DATE_FORMAT = "yyyy-MM-dd";
+
+/**
+ * #504 companion to isoToDbTime: derive the trip-local calendar date
+ * (YYYY-MM-DD) from a full UTC ISO-8601 instant. Used to persist
+ * `itinerary_items.end_day` so a multi-day item's end *date* is no longer
+ * discarded when the end instant is reduced to a bare `time` column.
+ *
+ * Returns `null` for null, undefined, or unparseable input so the server
+ * action can pass it straight through as a column NULL.
+ */
+export function isoToDbDate(
+  iso: string | null | undefined,
+  tripTimezone: string
+): string | null {
+  if (!iso) return null;
+
+  const date = parseISO(iso);
+  if (!isValid(date)) return null;
+
+  try {
+    return formatInTimeZone(date, tripTimezone, DB_DATE_FORMAT);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fix B hydration inverse: combine an item's `day` (YYYY-MM-DD) with the
  * stored `HH:mm:ss` wall-clock time — interpreted in the trip's
