@@ -5,6 +5,41 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-21 — #480: celebrant gap-day nudge is read-time, organizer-only, advisory
+
+**Decision:** when every item on an itinerary day is invisible to the
+celebrant (`hide_from_celebrant` / `organizers_only`), the organizer's
+day view shows a quiet amber note ("Looks wide open to {name}") under
+the day heading. Pure predicate in `lib/itinerary/celebrant-day-gap.ts`;
+guard is `isOrganizer && !isCelebrant`, enforced INSIDE `DaySection` —
+the one component that can render the note also decides who sees it, so
+no page-layer wiring can accidentally thread the flag to a celebrant
+viewer. A celebrant-who-is-also-organizer never sees the note (that
+would leak the existence of hidden content to the exact person the
+2026-05-20 decoy-item ADR's full-filter protects) — this is the
+load-bearing test of the PR.
+
+**Gap named:** the decoy-item ADR prescribes a workaround (organizer adds
+a `visibility=everyone` decoy) but nothing ever surfaced *which days need
+one* — the spec had no organizer-facing signal axis for celebrant-empty
+days, so gap days silently vanished from the celebrant's itinerary and
+they could double-book the slot.
+
+**Simplifications (documented, intentional):**
+- `custom` visibility counts as celebrant-visible without consulting
+  `content_visibility_grants` — a custom grant excluding the celebrant is
+  a known false negative. Fine: the nudge is advisory, never a gate
+  (house rule 11), so a miss costs nothing but the reminder.
+- An empty day (zero items) is NOT a gap — nothing renders for anyone,
+  nothing is being hidden.
+
+**Deferred to #508:** authoring-time prompt (nudge while adding an item
+that would make a day gap-only) and the multi-day "continues" marker.
+Ship the read-time signal first; escalate only if it doesn't close the
+gap in practice.
+
+---
+
 ## 2026-07-21 — #505: field-level-private column pattern (travel-leg confirmation_code)
 
 **Decision:** the travel-leg Confirmation # (PNR) is owner-only. RLS is

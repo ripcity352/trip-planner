@@ -11,6 +11,8 @@
 
 import { format, parseISO } from "date-fns";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import { isCelebrantGapDay } from "@/lib/itinerary/celebrant-day-gap";
+import { celebrantGapDayNote } from "@/lib/utils/celebrant-badge";
 import { ItemCard } from "./item-card";
 import type { ItineraryItem, ItineraryItemMemberFlag, ItineraryItemRsvpStatus, LodgingAssignment, TripMember } from "@/lib/db/types";
 
@@ -51,11 +53,29 @@ export function DaySection({
     .replace("{weekday}", format(date, "EEEE"))
     .replace("{date}", format(date, "MMM d"));
 
+  // #480 gap-day note. The `!isCelebrant` leg is LOAD-BEARING (2026-05-20
+  // decoy-item ADR): a celebrant who is also an organizer must never see
+  // it — the note's existence would leak that this day hides content from
+  // them. Guard lives here (not the page) so the one component that can
+  // render the note also enforces who may see it.
+  const showGapNote =
+    isOrganizer && !isCelebrant && isCelebrantGapDay(items);
+
   return (
     <section>
       <h2 className="text-muted-foreground mb-3 text-sm font-semibold uppercase tracking-wide">
         {heading}
       </h2>
+      {/* Organizer micro-affordance, same amber register as the per-item
+          "Hidden from {name}" badge — a heads-up, never a gate. */}
+      {showGapNote ? (
+        <p
+          data-testid="celebrant-gap-note"
+          className="-mt-2 mb-3 text-xs text-amber-700 dark:text-amber-300"
+        >
+          {celebrantGapDayNote(celebrantName)}
+        </p>
+      ) : null}
       <ol className="flex flex-col gap-3">
         {items.map((item) => (
           <li key={item.id}>

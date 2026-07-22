@@ -96,3 +96,85 @@ describe("DaySection", () => {
     expect(container.querySelectorAll("[data-testid='item-card']")).toHaveLength(0);
   });
 });
+
+describe("DaySection — celebrant gap-day note (#480)", () => {
+  const gapItems = [
+    makeItem({ id: "g1", title: "Secret dinner", visibility: "hide_from_celebrant" }),
+    makeItem({ id: "g2", title: "Planning huddle", visibility: "organizers_only" }),
+  ];
+
+  it("shows the note to an organizer who is not the celebrant on an all-hidden day", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={gapItems}
+        {...sharedProps}
+        isOrganizer
+        isCelebrant={false}
+        celebrantName="Mike"
+      />
+    );
+    const note = screen.getByTestId("celebrant-gap-note");
+    expect(note).toBeInTheDocument();
+    expect(note).toHaveTextContent(/wide open to Mike/i);
+  });
+
+  it("falls back to the generic celebrant noun when no name is threaded", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={gapItems}
+        {...sharedProps}
+        isOrganizer
+        isCelebrant={false}
+      />
+    );
+    expect(screen.getByTestId("celebrant-gap-note")).toHaveTextContent(
+      /wide open to the celebrant/i
+    );
+  });
+
+  // LOAD-BEARING (2026-05-20 decoy-item ADR): a celebrant who is ALSO an
+  // organizer must never see the note — it would leak the existence of
+  // hidden content to the exact person the visibility filter protects.
+  it("never shows the note to a celebrant, even one who is also an organizer", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={gapItems}
+        {...sharedProps}
+        isOrganizer
+        isCelebrant
+        celebrantName="Mike"
+      />
+    );
+    expect(screen.queryByTestId("celebrant-gap-note")).not.toBeInTheDocument();
+  });
+
+  it("does not show the note to a plain member", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={gapItems}
+        {...sharedProps}
+        isOrganizer={false}
+        isCelebrant={false}
+      />
+    );
+    expect(screen.queryByTestId("celebrant-gap-note")).not.toBeInTheDocument();
+  });
+
+  it("does not show the note on a day with at least one celebrant-visible item", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={[...gapItems, makeItem({ id: "v1", visibility: "everyone" })]}
+        {...sharedProps}
+        isOrganizer
+        isCelebrant={false}
+        celebrantName="Mike"
+      />
+    );
+    expect(screen.queryByTestId("celebrant-gap-note")).not.toBeInTheDocument();
+  });
+});

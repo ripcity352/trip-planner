@@ -250,6 +250,13 @@ export const M3_UI_STRINGS = {
   // the celebrant") without leaking the raw spec register into the common
   // (named) path. Shared by all three surfaces via hideFromCelebrantBadge().
   celebrant_generic_fallback: "the celebrant",
+  // #480 — organizer-only gap-day note. Shown under a day heading when
+  // every item that day is invisible to the celebrant (the day vanishes
+  // from their view — they could double-book the slot). Micro-affordance,
+  // not a gate: quiet heads-up in the organizer's read view. Same {name}
+  // template + generic fallback as the hide-celebrant badge, via
+  // celebrantGapDayNote().
+  itinerary_day_gap_celebrant_note_template: "Looks wide open to {name}",
   itinerary_item_kind_event: "Event",
   itinerary_item_kind_lodging: "Lodging",
   itinerary_item_kind_transport: "Transport",
