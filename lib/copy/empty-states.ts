@@ -296,9 +296,19 @@ export const M3_UI_STRINGS = {
   itineraryForm_cancel: "Cancel",
   itineraryForm_delete_confirm: "Delete this item? Can't undo.",
   itineraryForm_tags_placeholder: "beach, nightlife, adventure",
+  // #394: optional cost field. No asterisk (hard-banned) — the label
+  // itself carries "(optional)" like the dress-code field above it.
+  itineraryForm_cost_label: "Cost (optional)",
+  itineraryForm_cost_placeholder: "45",
   // Validation messages (zod schema errors — user-visible)
   itineraryForm_validation_title_required: "Title is required",
   itineraryForm_validation_day_format: "Must be YYYY-MM-DD",
+  itineraryForm_validation_cost_format: "Enter a dollar amount like 45 or 45.50",
+  // #394: cost display on the card. Whole-dollar amounts render without
+  // cents (formatCost); the per-head suffix only appears when 2+ people
+  // are going. "if {count} in" mirrors the itinerary_rsvp_going_chip
+  // voice ("I'm in") rather than "attending" or "confirmed."
+  itinerary_item_cost_per_head_template: "{amount} · ~{perHead}/head if {count} in",
   // Lodging assignments (#36, Wave 2)
   lodging_assignments_heading: "Who's in which room",
   lodging_room_label_placeholder: "Master, bunk room, the loft, …",

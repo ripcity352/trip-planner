@@ -16,6 +16,7 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { hideFromCelebrantBadge } from "@/lib/utils/celebrant-badge";
+import { formatCost } from "@/lib/utils/format-cost";
 import { MapsLink } from "./maps-link";
 import { ItemRsvpChip } from "./item-rsvp-chip";
 import { ItemFlagForm } from "./item-flag-form";
@@ -60,6 +61,8 @@ export interface ItemCardProps {
    * member's flags; under member RLS it is already scoped to the viewer's
    * own rows (the M4 owner-reads-own SELECT policy). */
   itemFlags: ItineraryItemMemberFlag[];
+  /** #394: trip-level "going" RSVP count — the per-head cost denominator. */
+  inCount: number;
 }
 
 export function ItemCard({
@@ -72,6 +75,7 @@ export function ItemCard({
   tripMembers,
   tripTimezone,
   itemFlags,
+  inCount,
 }: ItemCardProps) {
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
   // Non-default visibility badge for organizers_only / custom — parity with
@@ -103,6 +107,9 @@ export function ItemCard({
     item.end_time
   );
   const KindIcon = KIND_ICON[item.kind];
+  // #394: whole-dollar amounts render without cents; the per-head suffix
+  // only appears once 2+ people are going (see formatCost).
+  const costLabel = formatCost(item.cost_cents, item.currency, inCount);
 
   return (
     <article className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3">
@@ -117,6 +124,14 @@ export function ItemCard({
           <h3 className="text-sm font-semibold leading-snug">{item.title}</h3>
           {timeLabel ? (
             <p className="text-muted-foreground mt-0.5 text-xs">{timeLabel}</p>
+          ) : null}
+          {costLabel ? (
+            <p
+              data-testid="item-cost"
+              className="text-muted-foreground mt-0.5 text-xs"
+            >
+              {costLabel}
+            </p>
           ) : null}
         </div>
         {isOrganizer ? (
