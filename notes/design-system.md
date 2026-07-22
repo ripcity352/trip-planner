@@ -1180,6 +1180,16 @@ lands, it is a distinct data model + render, not a chip state.
 - **Shape is mandatory.** A color-only chip (no glyph) fails the contract
   — Smart Invert / colorblind users lose the state.
 
+### Roster chip register — pending RSVP (#503)
+
+The dashboard aggregate uses `{invited} invited` to count members who have
+joined the trip but haven't responded. The per-name roster renders this
+status as a quiet chip using the copy key `roster_chip_invited` ("No answer
+yet"). **This is purely factual state**: the member accepted the invite and
+joined (`trip_members` row exists); they just haven't answered RSVP. Not a
+membership axis (membership = row exists), just a response-state label. The
+anti-shame boundary is preserved — no nudge copy, no guilt-trip styling.
+
 ### Error-surface contract (#209)
 
 Errors render on a **calm surface, never a red flood** (§"State signals":

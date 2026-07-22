@@ -60,7 +60,7 @@ const mockLeg: TravelLeg = {
 describe("getTravelLegsByTrip", () => {
   it("returns travel legs ordered by arrive_at", async () => {
     const client = makeClient({
-      travel_legs: () => ({ data: [mockLeg], error: null }),
+      travel_legs_manifest: () => ({ data: [mockLeg], error: null }),
     });
     const result = await getTravelLegsByTrip(client, TRIP_ID);
     expect(result).toHaveLength(1);
@@ -71,7 +71,7 @@ describe("getTravelLegsByTrip", () => {
 
   it("returns empty array when no legs", async () => {
     const client = makeClient({
-      travel_legs: () => ({ data: [], error: null }),
+      travel_legs_manifest: () => ({ data: [], error: null }),
     });
     const result = await getTravelLegsByTrip(client, TRIP_ID);
     expect(result).toEqual([]);
@@ -79,7 +79,7 @@ describe("getTravelLegsByTrip", () => {
 
   it("returns empty array when data is null", async () => {
     const client = makeClient({
-      travel_legs: () => ({ data: null, error: null }),
+      travel_legs_manifest: () => ({ data: null, error: null }),
     });
     const result = await getTravelLegsByTrip(client, TRIP_ID);
     expect(result).toEqual([]);
@@ -87,7 +87,7 @@ describe("getTravelLegsByTrip", () => {
 
   it("throws on Supabase error", async () => {
     const client = makeClient({
-      travel_legs: () => ({
+      travel_legs_manifest: () => ({
         data: null,
         error: { message: "permission denied" },
       }),
@@ -100,10 +100,22 @@ describe("getTravelLegsByTrip", () => {
   it("returns legs with null arrive_at", async () => {
     const legNoArrival: TravelLeg = { ...mockLeg, arrive_at: null };
     const client = makeClient({
-      travel_legs: () => ({ data: [legNoArrival], error: null }),
+      travel_legs_manifest: () => ({ data: [legNoArrival], error: null }),
     });
     const result = await getTravelLegsByTrip(client, TRIP_ID);
     expect(result[0].arrive_at).toBeNull();
+  });
+
+  // #505: confirmation_code is field-level-private. The shared manifest
+  // read MUST target the redacting view, not the base table — reading
+  // travel_legs directly would hand every member everyone's PNR.
+  it("queries the travel_legs_manifest view, not the base table (#505)", async () => {
+    const client = makeClient({
+      travel_legs_manifest: () => ({ data: [], error: null }),
+    });
+    await getTravelLegsByTrip(client, TRIP_ID);
+    expect(client.from).toHaveBeenCalledWith("travel_legs_manifest");
+    expect(client.from).not.toHaveBeenCalledWith("travel_legs");
   });
 });
 

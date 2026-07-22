@@ -5,6 +5,45 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-21 — #505: field-level-private column pattern (travel-leg confirmation_code)
+
+**Decision:** the travel-leg Confirmation # (PNR) is owner-only. RLS is
+row-level and `travel_legs` rows are deliberately trip-wide-readable
+(arrivals manifest), so column privacy is enforced by a new
+**security-invoker view** `travel_legs_manifest`
+(`20260721210000_travel_legs_manifest_view.sql`) that CASE-nulls
+`confirmation_code` unless the row's `trip_member_id` maps to the
+caller's own `trip_members` row. `getTravelLegsByTrip` reads the view;
+writes and the owner's edit-prefill are untouched (the owner still gets
+their own code through the view). UI adds two thin layers on top: the
+card render is gated `isOwner && confirmation_code` (defense-in-depth),
+and the form input carries honest hint copy
+(`arrivals_leg_form_confirmation_hint`).
+
+**Gap named (per "name the gap"):** Rule 7 (visibility-first) covers
+*row*-level audiences; the spec had no axis for a **private field on a
+shared row**. This is the codebase's first field-level-private column —
+future cases (e.g. a personal cost memo) should reuse this exact shape:
+security_invoker view + CASE-null + explicit view grants (SELECT to
+authenticated + service_role only, nothing to anon — the #361
+default-ACL would otherwise hand anon SELECT on the new relation).
+
+**Rationale:** a PNR + last name can manage/cancel a real booking; "the
+crew sees your flight, not your booking creds" matches user expectation.
+The view mirrors the existing `trip_members_visible_rsvp` precedent
+(m1 #70), so there's one redaction idiom in the codebase, not two.
+
+**Alternatives considered:**
+- *Drop the column from the shared select only (app layer):* leaves the
+  base table readable by any future/direct read — RLS-is-source-of-truth
+  says enforce at the DB.
+- *Split read path (second owner-only query):* two round trips + a merge
+  in app code for one column; the CASE view is smaller.
+- *SECURITY DEFINER RPC:* needless privilege + anon-oracle surface; the
+  invoker view keeps base-table RLS running as the caller.
+
+---
+
 ## 2026-07-13 — Self-service profile editing: per-trip identity, no migration (#368 + name half of #262)
 
 **Decision:** display name + phone are edited on the member's OWN

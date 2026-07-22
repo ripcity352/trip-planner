@@ -3,12 +3,20 @@
  *
  * Server Component. Displays kind label + flight designator (airline_iata +
  * flight_number, falling back to free-text carrier — #396), depart/arrive
- * datetimes, confirmation code, notes. Owner sees an edit affordance
- * (TravelLegFormSheet); non-owners see read-only card.
+ * datetimes, confirmation code (owner-only — #505), notes. Owner sees an
+ * edit affordance (TravelLegFormSheet); non-owners see read-only card.
  *
  * Visibility rule: All trip members can read all legs (RLS allows trip-wide
  * SELECT). Edit is owner-only — the UI hides the affordance as a UX detail;
- * the server action enforces it as a security gate.
+ * the server action enforces it as a security gate. The confirmation code
+ * (PNR) is field-level-private: the travel_legs_manifest view nulls it for
+ * non-owners at the DB, and the isOwner render gate here is defense-in-depth
+ * on top of that (#505).
+ *
+ * #452: `onMutated` is threaded from ArrivalsManifest (the "use client"
+ * parent that owns router.refresh) into the per-card edit sheet so
+ * save/delete refresh the page — without it, stale legs sat on screen
+ * until a manual reload.
  *
  * Datetimes are rendered via `formatTripDateTime` (lib/utils/format-trip-tz)
  * which uses `formatInTimeZone` from date-fns-tz. This makes the output
@@ -51,6 +59,13 @@ export interface TravelLegCardProps {
    * `formatInTimeZone` — making output identical on SSR and CSR (#254).
    */
   tripTimezone: string;
+  /**
+   * Called after a successful save/delete in the edit sheet — threaded to
+   * TravelLegFormSheet so mutations refresh the page (#452). Passed from
+   * ArrivalsManifest; this component only forwards it (stays a Server
+   * Component — the callback crosses into the client boundary at the sheet).
+   */
+  onMutated?: () => void;
 }
 
 export function TravelLegCard({
@@ -58,6 +73,7 @@ export function TravelLegCard({
   myTripMemberId,
   ownerName,
   tripTimezone,
+  onMutated,
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
 
@@ -115,6 +131,7 @@ export function TravelLegCard({
             tripId={leg.trip_id}
             leg={leg}
             tripTimezone={tripTimezone}
+            onMutated={onMutated}
           />
         ) : null}
       </div>
@@ -145,8 +162,10 @@ export function TravelLegCard({
         </div>
       ) : null}
 
-      {/* Confirmation code */}
-      {leg.confirmation_code ? (
+      {/* Confirmation code — owner-only (#505). The manifest view already
+          nulls this for non-owners; the isOwner gate is defense-in-depth
+          in case a future read path bypasses the view. */}
+      {isOwner && leg.confirmation_code ? (
         <p className="font-mono text-sm">{leg.confirmation_code}</p>
       ) : null}
 

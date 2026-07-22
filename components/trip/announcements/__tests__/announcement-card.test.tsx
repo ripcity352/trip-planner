@@ -84,6 +84,25 @@ describe("AnnouncementCard", () => {
     expect(screen.getByText("Don't forget your passports.")).toBeInTheDocument();
   });
 
+  it("renders the actionsSlot when provided (#393)", () => {
+    render(
+      <AnnouncementCard
+        announcement={makeAnnouncement()}
+        actionsSlot={<button type="button">Post options</button>}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: "Post options" })
+    ).toBeInTheDocument();
+  });
+
+  it("does not render an actionsSlot affordance when omitted (non-organizer)", () => {
+    render(<AnnouncementCard announcement={makeAnnouncement()} />);
+    expect(
+      screen.queryByRole("button", { name: /post options/i })
+    ).not.toBeInTheDocument();
+  });
+
   it("renders hide_from_celebrant visibility badge correctly", () => {
     render(
       <AnnouncementCard

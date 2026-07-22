@@ -88,7 +88,7 @@ function roleLabel(role: TripRole, isCelebrant: boolean): string | null {
  * #387 chip label per visible RSVP state, or null for "render nothing"
  * (going, redacted-decline null, and callers that don't thread rsvp).
  */
-function rsvpChipLabel(rsvp: RsvpStatus | null | undefined): string | null {
+export function rsvpChipLabel(rsvp: RsvpStatus | null | undefined): string | null {
   if (rsvp === "maybe") {
     return M5_UI_STRINGS.roster_chip_maybe;
   }

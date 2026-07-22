@@ -97,6 +97,7 @@ export function AnnouncementsFeed({
       <AnnouncementList
         ref={listRef}
         tripId={tripId}
+        isOrganizer={isOrganizer}
         initialAnnouncements={initialAnnouncements}
         memberUserMap={memberUserMap}
         reactionsByAnnouncement={reactionsByAnnouncement}

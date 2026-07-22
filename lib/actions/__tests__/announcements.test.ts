@@ -322,3 +322,374 @@ describe("postAnnouncement", () => {
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// deleteAnnouncementAction (#393)
+// ---------------------------------------------------------------------------
+
+const VALID_ANNOUNCEMENT_ID = "77777777-7777-4777-8777-777777777777";
+
+describe("deleteAnnouncementAction", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on a non-uuid idempotency key", async () => {
+    primeAuth(VALID_USER_ID);
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      "bad-key"
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed on a non-uuid announcementId", async () => {
+    primeAuth(VALID_USER_ID);
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: "not-a-uuid" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns auth_failed when not authenticated", async () => {
+    primeAuth(null);
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+  });
+
+  it("returns rate_limit when the limiter throws", async () => {
+    primeAuth(VALID_USER_ID);
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("deleteAnnouncement", {
+        reset: Date.now() + 60000,
+        remaining: 0,
+      })
+    );
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+
+  it("returns ok:true on a successful delete", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 1,
+    }));
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  // Non-organizer: RLS silently filters the delete to zero rows rather
+  // than raising a Postgres error — same shape as a 42501.
+  it("returns rls_denied when the delete matches no row (non-organizer)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    }));
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns rls_denied on a coded 42501", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "42501", message: "rls" },
+      count: null,
+    }));
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns announcement_delete_failed on an unexpected error", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "XXXXX", message: "unexpected" },
+      count: null,
+    }));
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "announcement_delete_failed",
+    });
+  });
+
+  it("calls revalidatePath('/trips', 'layout') on success (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 1,
+    }));
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("does NOT call revalidatePath on failure (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    }));
+    const { deleteAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    await deleteAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pinAnnouncementAction (#393)
+// ---------------------------------------------------------------------------
+
+describe("pinAnnouncementAction", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on a non-uuid idempotency key", async () => {
+    primeAuth(VALID_USER_ID);
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      "bad-key"
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns auth_failed when not authenticated", async () => {
+    primeAuth(null);
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+  });
+
+  it("returns rate_limit when the limiter throws", async () => {
+    primeAuth(VALID_USER_ID);
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("pinAnnouncement", {
+        reset: Date.now() + 60000,
+        remaining: 0,
+      })
+    );
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+
+  it("returns ok:true with the desired pinned state on success", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 1,
+    }));
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, pinned: true });
+  });
+
+  // Idempotency replay: setting an already-pinned post to pinned again
+  // still matches the row (count: 1), so a double-tap converges instead
+  // of erroring — this is the "desired end state" contract.
+  it("succeeds again on a replayed call to the same desired state", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 1,
+    }));
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const first = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    const replay = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(first).toEqual({ ok: true, pinned: true });
+    expect(replay).toEqual({ ok: true, pinned: true });
+  });
+
+  it("returns rls_denied when the update matches no row (non-organizer)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    }));
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns rls_denied on a coded 42501", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "42501", message: "rls" },
+      count: null,
+    }));
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: false },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns announcement_pin_failed on an unexpected error", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "XXXXX", message: "unexpected" },
+      count: null,
+    }));
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "announcement_pin_failed",
+    });
+  });
+
+  it("calls revalidatePath('/trips', 'layout') on success (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 1,
+    }));
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("does NOT call revalidatePath on failure (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    }));
+    const { pinAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    await pinAnnouncementAction(
+      { announcementId: VALID_ANNOUNCEMENT_ID, pinned: true },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+});

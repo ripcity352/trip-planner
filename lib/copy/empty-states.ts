@@ -339,6 +339,13 @@ export const M3_UI_STRINGS = {
   announcements_pinned_banner_collapse_aria: "Hide the pinned post",
   announcements_pinned_banner_count_template: "{count} pinned posts",
   announcements_datePoll_link: "Dates are still up for a vote →",
+  // #393 — organizer overflow menu (delete + pin/unpin). Two-tap confirm
+  // in the dropdown itself, not a separate AlertDialog (see doge cut).
+  announcements_menu_aria: "Post options",
+  announcements_menu_pin: "Pin",
+  announcements_menu_unpin: "Unpin",
+  announcements_menu_delete: "Delete",
+  announcements_menu_delete_confirm: "Tap again to delete",
   // Travel legs / arrivals manifest (#37, Wave 4a)
   arrivals_pageTitle: "Arrivals",
   arrivals_heading: "Who's landing when",
@@ -352,6 +359,8 @@ export const M3_UI_STRINGS = {
   arrivals_leg_form_arrive_label: "Arrive",
   arrivals_leg_form_carrier_label: "Carrier",
   arrivals_leg_form_confirmation_label: "Confirmation #",
+  // #505 — PNR is owner-only; say so honestly at the point of entry.
+  arrivals_leg_form_confirmation_hint: "Just for you — the crew won't see this.",
   arrivals_leg_form_notes_label: "Notes",
   arrivals_leg_form_submit: "Save it",
   arrivals_leg_form_delete: "Delete travel",
@@ -574,10 +583,10 @@ export const M5_UI_STRINGS = {
   // #387 — quiet per-name RSVP chips on the roster. Factual state only —
   // the anti-shame boundary is BINDING: no lateness ordering, no nudge
   // copy, no counts of shame. "going" deliberately has NO chip string
-  // (the default row stays unmarked). "Invited" is the pending register
-  // already used by the dashboard count ("{invited} invited").
+  // (the default row stays unmarked). "No answer yet" for pending RSVP
+  // (#503 — member accepted invite but hasn't responded).
   roster_chip_maybe: "Maybe",
-  roster_chip_invited: "Invited",
+  roster_chip_invited: "No answer yet",
   // Matches the dashboard's organizer-only declined register
   // ("can't make it") — the view decides who gets to see it.
   roster_chip_declined: "Can't make it",
