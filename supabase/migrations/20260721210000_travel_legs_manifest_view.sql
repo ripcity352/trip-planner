@@ -63,9 +63,12 @@ comment on view public.travel_legs_manifest is
 -- Grant hygiene (#361 / anon-oracle memory): the restore-base-table-grants
 -- default ACL would hand anon SELECT on this new relation. The view holds
 -- private-ish coordination data behind auth — SELECT to authenticated
--- (+ service_role for admin scripts) ONLY, nothing to anon, and no DML
--- (the view is not a write path; mutations use travel_legs via server
--- actions). NOTE: any manual local grant-repair that blanket-grants must
+-- ONLY, nothing to anon, and no DML (the view is not a write path;
+-- mutations use travel_legs via server actions). No service_role grant
+-- either: under security_invoker auth.uid() is null for service_role, so
+-- the view would always mask confirmation_code — admin scripts that need
+-- the code must read travel_legs directly (service_role bypasses RLS
+-- there). NOTE: any manual local grant-repair that blanket-grants must
 -- be followed by re-applying these revokes.
 revoke all on public.travel_legs_manifest from public, anon, authenticated, service_role;
-grant select on public.travel_legs_manifest to authenticated, service_role;
+grant select on public.travel_legs_manifest to authenticated;
