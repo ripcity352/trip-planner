@@ -250,7 +250,10 @@ caps teams at 1 member, so the collaborator isn't on the Vercel team).
 - **Owner (`ripcity352`)**: `pnpm dlx vercel link` once, then
   `pnpm dlx vercel env pull .env.local` to sync.
 - **Collaborator**: owner sends the 3 Supabase vars (URL, anon key,
-  service-role key) over Signal or iMessage. Paste into `.env.local`.
+  service-role key) and the KV pair (`KV_REST_API_URL` + `KV_REST_API_TOKEN`,
+  or legacy `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`) over Signal
+  or iMessage. Paste into `.env.local`. The KV pair is required specifically
+  to QA invite minting locally (see `.env.example` § Upstash rate-limit).
   One-time setup; refresh manually when keys rotate. (Supabase org
   invites now require Pro — dashboard access isn't available.)
 
