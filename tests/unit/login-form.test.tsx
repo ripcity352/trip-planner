@@ -776,6 +776,85 @@ describe("<LoginForm /> — rejected server actions surface the network error", 
 });
 
 // ---------------------------------------------------------------------------
+// safeNext re-validation at the client sink (#438 — belt-and-braces).
+// safeNext already runs server-side wherever `next` is minted, but
+// window.location.href is the actual navigation sink, so the form
+// re-validates there too. A malicious `next` must never reach it raw.
+// ---------------------------------------------------------------------------
+
+describe("<LoginForm /> — safeNext re-validation before navigating", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function stubLocation() {
+    const location = { href: "" };
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: location,
+    });
+    return location;
+  }
+
+  it("does not pass a protocol-relative next through raw on sign-in", async () => {
+    const location = stubLocation();
+    signInWithPasswordActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    render(<LoginForm next="//evil.com" />);
+    await advanceToPasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "hunter2!" },
+    });
+    const signInBtn = screen.getByRole("button", { name: AUTH_COPY.signInButton });
+    await clickAndSettle(signInBtn);
+    expect(location.href).toBe("/trips");
+    expect(location.href).not.toContain("evil.com");
+  });
+
+  it("does not pass a backslash-smuggled next through raw on code verify", async () => {
+    const location = stubLocation();
+    requestEmailCodeMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    verifyEmailCodeActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    render(<LoginForm next={"/\\evil.com"} />);
+    await advanceToPasswordMode();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: AUTH_COPY.emailMeCodeLink }));
+    await screen.findByRole("button", { name: AUTH_COPY.verifyCodeButton });
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.codeFieldLabel), {
+      target: { value: "123456" },
+    });
+    const verifyBtn = screen.getByRole("button", { name: AUTH_COPY.verifyCodeButton });
+    await clickAndSettle(verifyBtn);
+    expect(location.href).toBe("/trips");
+    expect(location.href).not.toContain("evil.com");
+  });
+
+  it("passes a legitimate same-origin next through on create-account", async () => {
+    const location = stubLocation();
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    render(<LoginForm next="/invite/abc123" inviteSurface />);
+    await advanceToPasswordMode("nate@example.com");
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    const createBtn = screen.getByRole("button", { name: AUTH_COPY.signUpButton });
+    await clickAndSettle(createBtn);
+    expect(location.href).toBe("/invite/abc123");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Google OAuth button (PR5)
 // ---------------------------------------------------------------------------
 
