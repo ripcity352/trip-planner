@@ -7,6 +7,7 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ArrivalsManifest } from "../arrivals-manifest";
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { TravelLeg, TripMember } from "@/lib/db/types";
 
 // Mock next/navigation — ArrivalsManifest calls useRouter for refresh.
@@ -290,5 +291,113 @@ describe("ArrivalsManifest", () => {
         "No legs logged yet. Drop yours and we'll see the manifest."
       )
     ).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #477: two-section manifest — inbound grouped by day, quieter outbound
+// section, and the computed ride-share line (no matching engine).
+// ---------------------------------------------------------------------------
+
+describe("ArrivalsManifest — two sections (#477)", () => {
+  const member = (n: number): TripMember =>
+    makeMember({
+      id: `member-${n}`,
+      display_name: `Member ${n}`,
+    });
+
+  const legFor = (n: number, overrides: Partial<TravelLeg> = {}): TravelLeg =>
+    makeLeg({
+      id: `leg-${n}`,
+      trip_member_id: member(n).id,
+      ...overrides,
+    });
+
+  const renderManifest = (legs: TravelLeg[]) =>
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={legs}
+        myTripMemberId="member-1"
+        tripMembers={[member(1), member(2), member(3)]}
+        tripTimezone="UTC"
+      />
+    );
+
+  it("renders inbound legs under trip-local day headings", () => {
+    renderManifest([
+      legFor(1, { arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, { arrive_at: "2026-08-14T18:00:00Z" }),
+      legFor(3, { arrive_at: "2026-08-15T09:00:00Z" }),
+    ]);
+
+    expect(screen.getByText("Fri, Aug 14")).toBeInTheDocument();
+    expect(screen.getByText("Sat, Aug 15")).toBeInTheDocument();
+  });
+
+  it('renders the "Heading home" section only when outbound legs exist', () => {
+    renderManifest([legFor(1, { arrive_at: "2026-08-14T10:00:00Z" })]);
+    expect(
+      screen.queryByText(M3_UI_STRINGS.arrivals_section_outbound_heading)
+    ).not.toBeInTheDocument();
+  });
+
+  it("splits outbound legs into the 'Heading home' section", () => {
+    renderManifest([
+      legFor(1, { arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, {
+        direction: "outbound",
+        arrive_at: null,
+        depart_at: "2026-08-16T08:00:00Z",
+      }),
+    ]);
+
+    expect(
+      screen.getByText(M3_UI_STRINGS.arrivals_section_outbound_heading)
+    ).toBeInTheDocument();
+    const cards = screen.getAllByTestId("travel-leg-card");
+    expect(cards.map((c) => c.getAttribute("data-leg-id"))).toEqual(
+      expect.arrayContaining(["leg-1", "leg-2"])
+    );
+  });
+
+  it("renders the ride-share line when 2+ people land at the same airport within an hour", () => {
+    renderManifest([
+      legFor(1, { airport: "LAX", arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, { airport: "LAX", arrive_at: "2026-08-14T10:40:00Z" }),
+      legFor(3, { airport: "LAX", arrive_at: "2026-08-14T10:55:00Z" }),
+    ]);
+
+    expect(
+      screen.getByText("3 of you land at LAX within an hour — split a ride?")
+    ).toBeInTheDocument();
+  });
+
+  it("does not render a ride-share line across different airports", () => {
+    renderManifest([
+      legFor(1, { airport: "LAX", arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, { airport: "BUR", arrive_at: "2026-08-14T10:20:00Z" }),
+    ]);
+
+    expect(screen.queryByText(/split a ride/)).not.toBeInTheDocument();
+  });
+
+  it("does not render a ride-share line for outbound legs", () => {
+    renderManifest([
+      legFor(1, {
+        direction: "outbound",
+        airport: "LAX",
+        arrive_at: null,
+        depart_at: "2026-08-16T08:00:00Z",
+      }),
+      legFor(2, {
+        direction: "outbound",
+        airport: "LAX",
+        arrive_at: null,
+        depart_at: "2026-08-16T08:30:00Z",
+      }),
+    ]);
+
+    expect(screen.queryByText(/split a ride/)).not.toBeInTheDocument();
   });
 });
