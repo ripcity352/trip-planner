@@ -304,6 +304,10 @@ export const M3_UI_STRINGS = {
   itineraryForm_validation_title_required: "Title is required",
   itineraryForm_validation_day_format: "Must be YYYY-MM-DD",
   itineraryForm_validation_cost_format: "Enter a dollar amount like 45 or 45.50",
+  // #484: cross-field / trip-range checks — client-side only, mirrors the
+  // dinner-table voice of the cost/title messages above (non-scolding).
+  itineraryForm_validation_end_before_start: "That ends before it starts",
+  itineraryForm_validation_day_out_of_range: "That's outside the trip dates",
   // #394: cost display on the card. Whole-dollar amounts render without
   // cents (formatCost); the per-head suffix only appears when 2+ people
   // are going. "if {count} in" mirrors the itinerary_rsvp_going_chip

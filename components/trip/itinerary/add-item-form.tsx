@@ -41,7 +41,7 @@ const VISIBILITY_OPTIONS = [
   "hide_from_celebrant",
 ] as const;
 
-const formSchema = z.object({
+const baseFormSchema = z.object({
   title: z
     .string()
     .trim()
@@ -52,8 +52,8 @@ const formSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, M3_UI_STRINGS.itineraryForm_validation_day_format),
   // Fix B: startTime/endTime — UTC ISO-8601 strings from the datetime-local
-  // widget, mirroring EditItemForm's contract. Optional, no cross-field
-  // end-after-start validation (separately filed — not in scope here).
+  // widget, mirroring EditItemForm's contract. Optional; end-before-start
+  // is checked below in #484's superRefine.
   startTime: z.string().datetime({ offset: true }).nullable().optional(),
   endTime: z.string().datetime({ offset: true }).nullable().optional(),
   address: z.string().trim().max(500).optional(),
@@ -73,7 +73,48 @@ const formSchema = z.object({
     .or(z.literal("")),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+/**
+ * #484: two client-only checks layered on top of the field-level schema.
+ *
+ * - end-before-start: only fires when both times are set — compared as
+ *   instants (`Date`), not raw strings, since startTime/endTime carry a
+ *   UTC offset that a lexicographic string compare can't be trusted with.
+ * - day-out-of-range: only fires when BOTH trip dates are non-null (the
+ *   null-trip-dates gotcha — a trip with no dates set imposes no range).
+ *   `day` and the trip bounds are all `YYYY-MM-DD`, so a lexicographic
+ *   string compare is correct and avoids the UTC-shift bug class that a
+ *   `new Date("YYYY-MM-DD")` parse would introduce.
+ */
+function buildFormSchema(
+  tripStartsAt: string | null | undefined,
+  tripEndsAt: string | null | undefined
+) {
+  return baseFormSchema.superRefine((values, ctx) => {
+    if (values.startTime && values.endTime) {
+      const start = new Date(values.startTime).getTime();
+      const end = new Date(values.endTime).getTime();
+      if (end <= start) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["endTime"],
+          message: M3_UI_STRINGS.itineraryForm_validation_end_before_start,
+        });
+      }
+    }
+
+    if (tripStartsAt && tripEndsAt) {
+      if (values.day < tripStartsAt || values.day > tripEndsAt) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["day"],
+          message: M3_UI_STRINGS.itineraryForm_validation_day_out_of_range,
+        });
+      }
+    }
+  });
+}
+
+type FormValues = z.infer<typeof baseFormSchema>;
 
 const KIND_LABELS: Record<(typeof ITEM_KINDS)[number], string> = {
   event: M3_UI_STRINGS.itinerary_item_kind_event,
@@ -93,6 +134,11 @@ export interface AddItemFormProps {
   tripId: string;
   /** IANA timezone from `trips.timezone` — passed from the page level. */
   tripTimezone: string;
+  /** #484: trip date bounds (`trips.starts_at`/`ends_at`) — YYYY-MM-DD or
+   * null. The day-out-of-range check is skipped entirely unless both are
+   * set (null-trip-dates gotcha). */
+  tripStartsAt?: string | null;
+  tripEndsAt?: string | null;
   onSuccess: (item?: ItineraryItem) => void;
   onCancel: () => void;
 }
@@ -100,10 +146,17 @@ export interface AddItemFormProps {
 export function AddItemForm({
   tripId,
   tripTimezone,
+  tripStartsAt,
+  tripEndsAt,
   onSuccess,
   onCancel,
 }: AddItemFormProps) {
   const [serverErrorKey, setServerErrorKey] = React.useState<ErrorKey | null>(null);
+
+  const formSchema = React.useMemo(
+    () => buildFormSchema(tripStartsAt, tripEndsAt),
+    [tripStartsAt, tripEndsAt]
+  );
 
   const {
     register,

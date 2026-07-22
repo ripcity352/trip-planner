@@ -263,4 +263,190 @@ describe("AddItemForm", () => {
       expect(mockAdd.mock.calls.length).toBe(callsBefore);
     });
   });
+
+  // #484: end-before-start — direct instant comparison, not string compare,
+  // since startTime/endTime carry a UTC offset.
+  describe("end-before-start validation (#484)", () => {
+    const fillRequired = () => {
+      fireEvent.change(screen.getByLabelText(/what is it\?/i), {
+        target: { value: "Pool party" },
+      });
+      fireEvent.change(
+        screen.getByLabelText(/starts/i, { selector: "input[type='date']" }),
+        { target: { value: "2026-08-01" } }
+      );
+    };
+
+    const setTimes = (startLocal: string, endLocal: string) => {
+      const startInput = document.getElementById("edit-datetime") as HTMLInputElement;
+      const endInput = document.getElementById("add-endtime") as HTMLInputElement;
+      fireEvent.change(startInput, { target: { value: startLocal } });
+      fireEvent.change(endInput, { target: { value: endLocal } });
+    };
+
+    it("rejects end < start", async () => {
+      const callsBefore = mockAdd.mock.calls.length;
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      setTimes("2026-08-01T20:00", "2026-08-01T19:00");
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/ends before it starts/i)).toBeInTheDocument();
+      });
+      expect(mockAdd.mock.calls.length).toBe(callsBefore);
+    });
+
+    it("rejects end == start", async () => {
+      const callsBefore = mockAdd.mock.calls.length;
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      setTimes("2026-08-01T19:00", "2026-08-01T19:00");
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/ends before it starts/i)).toBeInTheDocument();
+      });
+      expect(mockAdd.mock.calls.length).toBe(callsBefore);
+    });
+
+    it("passes when end > start", async () => {
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      setTimes("2026-08-01T19:00", "2026-08-01T20:00");
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Pool party" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/ends before it starts/i)).not.toBeInTheDocument();
+    });
+
+    it("passes with only start time set", async () => {
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      const startInput = document.getElementById("edit-datetime") as HTMLInputElement;
+      fireEvent.change(startInput, { target: { value: "2026-08-01T19:00" } });
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Pool party" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/ends before it starts/i)).not.toBeInTheDocument();
+    });
+
+    it("passes with only end time set", async () => {
+      render(<AddItemForm {...defaultProps} />);
+      fillRequired();
+      const endInput = document.getElementById("add-endtime") as HTMLInputElement;
+      fireEvent.change(endInput, { target: { value: "2026-08-01T19:00" } });
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Pool party" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/ends before it starts/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // #484: day-out-of-range — only enforced when both trip dates are set.
+  describe("trip-range validation (#484)", () => {
+    const fillTitle = () => {
+      fireEvent.change(screen.getByLabelText(/what is it\?/i), {
+        target: { value: "Pool party" },
+      });
+    };
+
+    const setDay = (day: string) => {
+      fireEvent.change(
+        screen.getByLabelText(/starts/i, { selector: "input[type='date']" }),
+        { target: { value: day } }
+      );
+    };
+
+    it("rejects a day before the trip start", async () => {
+      const callsBefore = mockAdd.mock.calls.length;
+      render(
+        <AddItemForm
+          {...defaultProps}
+          tripStartsAt="2026-08-01"
+          tripEndsAt="2026-08-05"
+        />
+      );
+      fillTitle();
+      setDay("2026-07-31");
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/outside the trip dates/i)).toBeInTheDocument();
+      });
+      expect(mockAdd.mock.calls.length).toBe(callsBefore);
+    });
+
+    it("rejects a day after the trip end", async () => {
+      const callsBefore = mockAdd.mock.calls.length;
+      render(
+        <AddItemForm
+          {...defaultProps}
+          tripStartsAt="2026-08-01"
+          tripEndsAt="2026-08-05"
+        />
+      );
+      fillTitle();
+      setDay("2026-08-06");
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/outside the trip dates/i)).toBeInTheDocument();
+      });
+      expect(mockAdd.mock.calls.length).toBe(callsBefore);
+    });
+
+    it("passes on the trip start/end boundary days (inclusive)", async () => {
+      render(
+        <AddItemForm
+          {...defaultProps}
+          tripStartsAt="2026-08-01"
+          tripEndsAt="2026-08-05"
+        />
+      );
+      fillTitle();
+      setDay("2026-08-05");
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Pool party" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/outside the trip dates/i)).not.toBeInTheDocument();
+    });
+
+    it("skips the range check entirely when either trip date is null", async () => {
+      render(
+        <AddItemForm {...defaultProps} tripStartsAt={null} tripEndsAt="2026-08-05" />
+      );
+      fillTitle();
+      setDay("2020-01-01");
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ title: "Pool party" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/outside the trip dates/i)).not.toBeInTheDocument();
+    });
+  });
 });
