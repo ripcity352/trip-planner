@@ -23,6 +23,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getCelebrantName, getTripMembers } from "@/lib/db/trips";
 import { getItineraryByTrip, getMyItemRsvps, getLodgingAssignmentsByTrip, getItemFlagsForOrganizer } from "@/lib/db/itinerary";
+import { getRsvpCountsForTrip } from "@/lib/db/rsvp";
 import { M3_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
 import { DaySection } from "@/components/trip/itinerary/day-section";
 import { AddItemFormSheet } from "./add-item-form-sheet";
@@ -66,13 +67,16 @@ export default async function ItineraryPage({ params }: PageProps) {
   // #365: one flags fetch serves both roles — the SELECT policies stack
   // (organizers read all, owners read own), so organizers get the full
   // read surface and members get exactly their own flags for rehydration.
-  const [items, myRsvps, lodgingAssignmentsMap, tripMembers, allFlags] =
+  // #394: rsvpCounts.going feeds the per-item cost per-head estimate —
+  // one trip-level query shared by every card, not a per-item fetch.
+  const [items, myRsvps, lodgingAssignmentsMap, tripMembers, allFlags, rsvpCounts] =
     await Promise.all([
       getItineraryByTrip(supabase, trip.id),
       getMyItemRsvps(supabase, trip.id, viewer.id),
       getLodgingAssignmentsByTrip(supabase, trip.id),
       getTripMembers(supabase, trip.id),
       getItemFlagsForOrganizer(supabase, trip.id),
+      getRsvpCountsForTrip(supabase, trip.id),
     ]);
 
   // Group flags by item for DaySection → ItemCard threading
@@ -125,6 +129,7 @@ export default async function ItineraryPage({ params }: PageProps) {
               tripMembers={tripMembers}
               tripTimezone={trip.timezone}
               itemFlagsMap={itemFlagsMap}
+              inCount={rsvpCounts.going}
             />
           ))}
         </div>

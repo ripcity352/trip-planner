@@ -1817,3 +1817,32 @@ a status surface":
 When the deferred home refactor deletes the nav rows, these context
 lines fold into whatever replaces them (tab-bar badges are still banned;
 the facts move, the register stays).
+
+## Money display — itinerary item cost (#394)
+
+**Gap named:** `itinerary_items.cost_cents` + `currency` existed at the
+schema layer (M3) but had no client surface — organizers could not tell
+attendees what something costs without a separate group-chat message.
+This closes the display half only; expense splitting (#46) stays gated.
+
+- **Whole dollars, no cents, unless the price actually has cents.**
+  "$450" reads as a glance fact; "$450.00" reads as a receipt line. Only
+  a genuinely fractional price ("$89.99") keeps its decimals. Formatter:
+  `lib/utils/format-cost.ts`.
+- **Per-head is a heuristic, always rounded, never exact.** The "~" and
+  the whole-currency-unit rounding are both load-bearing — this is a
+  rough split estimate for planning purposes, not a bill. It only
+  appears once 2+ people are confirmed going (`inCount >= 2`); below
+  that a per-head split is either meaningless (0–1 people) or just
+  restates the total, so the suffix is omitted rather than shown as a
+  no-op.
+- **Denominator is the trip's "going" RSVP count**, not invited/maybe —
+  sourced once per page load (`getRsvpCountsForTrip`) and threaded down
+  through `DaySection` to every `ItemCard`, never refetched per item.
+- **Placement:** a muted `text-xs` line directly under the time label,
+  same register as the existing time/dress-code metadata lines — cost
+  is a fact about the plan, not a call to action, so it never becomes a
+  button or a badge.
+- **No asterisk.** The cost field is optional in both the add and edit
+  forms; per CLAUDE.md's hard ban on required-field asterisks, the label
+  itself says "(optional)" instead.

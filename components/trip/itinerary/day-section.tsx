@@ -32,6 +32,8 @@ export interface DaySectionProps {
   tripTimezone: string;
   /** #365: itemId → member flags (organizer: all members; member: own). */
   itemFlagsMap: Map<string, ItineraryItemMemberFlag[]>;
+  /** #394: trip-level "going" RSVP count — the per-head cost denominator. */
+  inCount: number;
 }
 
 export function DaySection({
@@ -45,6 +47,7 @@ export function DaySection({
   tripMembers,
   tripTimezone,
   itemFlagsMap,
+  inCount,
 }: DaySectionProps) {
   // parseISO treats the string as local midnight — keeps the weekday
   // consistent with what you'd expect for the trip date.
@@ -89,6 +92,7 @@ export function DaySection({
               tripMembers={tripMembers}
               tripTimezone={tripTimezone}
               itemFlags={itemFlagsMap.get(item.id) ?? []}
+              inCount={inCount}
             />
           </li>
         ))}
