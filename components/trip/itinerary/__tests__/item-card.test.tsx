@@ -135,6 +135,8 @@ const baseProps = {
   tripTimezone: "America/New_York",
   // #365: member flags for this item (organizer read surface / rehydrate)
   itemFlags: [] as ItineraryItemMemberFlag[],
+  // #394: trip-level "going" RSVP count — the per-head cost denominator.
+  inCount: 0,
 };
 
 const makeFlag = (
@@ -214,6 +216,39 @@ describe("ItemCard", () => {
   it("renders dress code when present", () => {
     render(<ItemCard item={makeItem()} {...baseProps} />);
     expect(screen.getByText(/smart casual/i)).toBeInTheDocument();
+  });
+
+  // #394: cost surface.
+  describe("cost", () => {
+    it("renders nothing when cost_cents is null", () => {
+      render(<ItemCard item={makeItem({ cost_cents: null })} {...baseProps} />);
+      expect(screen.queryByTestId("item-cost")).not.toBeInTheDocument();
+    });
+
+    it("renders the whole-dollar cost with no per-head suffix when inCount is below 2", () => {
+      render(
+        <ItemCard
+          item={makeItem({ cost_cents: 45000, currency: "USD" })}
+          {...baseProps}
+          inCount={1}
+        />
+      );
+      expect(screen.getByTestId("item-cost")).toHaveTextContent("$450");
+      expect(screen.getByTestId("item-cost")).not.toHaveTextContent("/head");
+    });
+
+    it("renders a per-head estimate when inCount is 2 or more", () => {
+      render(
+        <ItemCard
+          item={makeItem({ cost_cents: 45000, currency: "USD" })}
+          {...baseProps}
+          inCount={5}
+        />
+      );
+      expect(screen.getByTestId("item-cost")).toHaveTextContent(
+        "$450 · ~$90/head if 5 in"
+      );
+    });
   });
 
   it("renders activity tag chips", () => {

@@ -60,6 +60,18 @@ const formSchema = z.object({
   visibility: z.enum(VISIBILITY_OPTIONS),
   // W1b: chip picker emits string[]; server action takes string[] (#164).
   activityTags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  // #394: optional dollars-and-cents string. Empty string clears the cost
+  // (see onSubmit — costCents is ALWAYS passed to updateItineraryItem,
+  // never omitted, so a cleared cost doesn't silently no-op).
+  cost: z
+    .string()
+    .trim()
+    .regex(
+      /^\d+(\.\d{1,2})?$/,
+      M3_UI_STRINGS.itineraryForm_validation_cost_format
+    )
+    .optional()
+    .or(z.literal("")),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -127,12 +139,24 @@ export function EditItemForm({
       visibility:
         (item.visibility as (typeof VISIBILITY_OPTIONS)[number]) ?? "everyone",
       activityTags: item.activity_tag,
+      // #394: hydrate from cost_cents. A missing cost renders as "" so the
+      // input starts empty rather than "0.00" — an item with no price is
+      // not the same as a free item.
+      cost:
+        item.cost_cents != null ? (item.cost_cents / 100).toFixed(2) : "",
     },
   });
 
   const onSubmit = async (values: FormValues) => {
     setServerErrorKey(null);
     const idempotencyKey = crypto.randomUUID();
+
+    // #394 LOAD-BEARING: updateItineraryItem only writes cost_cents when
+    // `costCents !== undefined` (partial-update contract). costCents must
+    // therefore ALWAYS be a concrete value here — a number or explicit
+    // null — never omitted, or clearing a cost (cost: "" -> null) would
+    // silently no-op and leave the old price in place.
+    const costCents = values.cost ? Math.round(Number(values.cost) * 100) : null;
 
     // #431: rejected awaits resolve to the network envelope via callAction.
     const result = await callAction(() =>
@@ -150,6 +174,7 @@ export function EditItemForm({
           dressCode: values.dressCode || null,
           visibility: values.visibility,
           activityTag: values.activityTags ?? [],
+          costCents,
         },
         idempotencyKey
       )
@@ -278,6 +303,27 @@ export function EditItemForm({
         onChange={(v) => setValue("activityTags", v, { shouldValidate: true })}
         disabled={isBusy}
       />
+
+      {/* Cost — optional, no asterisk (hard-banned). Clearing this field
+          clears the item's cost (#394 — see the LOAD-BEARING note above
+          onSubmit's costCents computation). */}
+      <div>
+        <label htmlFor="edit-cost" className={labelClass}>
+          {M3_UI_STRINGS.itineraryForm_cost_label}
+        </label>
+        <input
+          id="edit-cost"
+          type="text"
+          inputMode="decimal"
+          {...register("cost")}
+          placeholder={M3_UI_STRINGS.itineraryForm_cost_placeholder}
+          disabled={isBusy}
+          className={inputClass}
+        />
+        {errors.cost ? (
+          <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.cost.message}</p>
+        ) : null}
+      </div>
 
       {/* Visibility */}
       <div>

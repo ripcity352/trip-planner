@@ -51,6 +51,8 @@ const sharedProps = {
   tripMembers: [],
   // W2b: tripTimezone required by DaySection → ItemCard → EditItemFormSheet
   tripTimezone: "America/New_York",
+  // #394: trip-level "going" RSVP count, forwarded to every ItemCard
+  inCount: 0,
 };
 
 describe("DaySection", () => {

@@ -60,6 +60,17 @@ const formSchema = z.object({
   dressCode: z.string().trim().max(200).optional(),
   visibility: z.enum(VISIBILITY_OPTIONS),
   activityTags: z.string().trim().optional(), // comma-separated → parsed on submit
+  // #394: optional dollars-and-cents string. Empty string is allowed (no
+  // cost set) — converted to costCents on submit, never sent as "".
+  cost: z
+    .string()
+    .trim()
+    .regex(
+      /^\d+(\.\d{1,2})?$/,
+      M3_UI_STRINGS.itineraryForm_validation_cost_format
+    )
+    .optional()
+    .or(z.literal("")),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -121,6 +132,12 @@ export function AddItemForm({
       : [];
 
     // #431: rejected awaits resolve to the network envelope via callAction.
+    // #394: "" (never set) and a valid decimal string both pass the zod
+    // regex above — only the latter converts to a cent integer.
+    const costCents = values.cost
+      ? Math.round(Number(values.cost) * 100)
+      : null;
+
     const result = await callAction(() =>
       addItineraryItem(
         {
@@ -134,6 +151,7 @@ export function AddItemForm({
           dressCode: values.dressCode || null,
           visibility: values.visibility,
           activityTag,
+          costCents,
         },
         idempotencyKey
       )
@@ -264,6 +282,25 @@ export function AddItemForm({
           disabled={isSubmitting}
           className={inputClass}
         />
+      </div>
+
+      {/* Cost — optional, no asterisk (hard-banned) */}
+      <div>
+        <label htmlFor="add-cost" className={labelClass}>
+          {M3_UI_STRINGS.itineraryForm_cost_label}
+        </label>
+        <input
+          id="add-cost"
+          type="text"
+          inputMode="decimal"
+          {...register("cost")}
+          placeholder={M3_UI_STRINGS.itineraryForm_cost_placeholder}
+          disabled={isSubmitting}
+          className={inputClass}
+        />
+        {errors.cost ? (
+          <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.cost.message}</p>
+        ) : null}
       </div>
 
       {/* Activity tags (comma-separated) */}
