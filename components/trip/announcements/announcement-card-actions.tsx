@@ -15,6 +15,17 @@
  * cut: no AlertDialog primitive) — first tap arms it (label swaps to
  * the confirm copy, menu stays open via `closeOnClick={false}`),
  * second tap commits and closes.
+ *
+ * Error display: `errorKey` is an optional *controlled* prop. Every
+ * optimistic update in `AnnouncementList` unmounts (delete) or moves
+ * (pin, between the regular feed and the collapsed pinned banner) the
+ * instance that triggered the mutation, so a purely-local error state
+ * set on failure lands on an already-unmounted component and is a
+ * silent no-op — exactly the drunk-user-on-bad-signal case the copy
+ * exists for. `AnnouncementList` hoists a per-announcement error map
+ * and passes it back down as `errorKey` so the alert survives the
+ * remount. When `errorKey` is omitted (e.g. these unit tests render
+ * the leaf standalone), the component falls back to internal state.
  */
 
 import * as React from "react";
@@ -37,16 +48,28 @@ export interface AnnouncementCardActionsProps {
   onPin: (pinned: boolean) => Promise<ErrorKey | null>;
   /** Returns the failure key, or null on success. */
   onDelete: () => Promise<ErrorKey | null>;
+  /**
+   * Controlled error display, hoisted by `AnnouncementList` so it
+   * survives the optimistic unmount/move this component undergoes on
+   * delete/pin. `undefined` (the default) falls back to internal
+   * state — used by the standalone unit tests below.
+   */
+  errorKey?: ErrorKey | null;
 }
 
 export function AnnouncementCardActions({
   pinned,
   onPin,
   onDelete,
+  errorKey: controlledErrorKey,
 }: AnnouncementCardActionsProps) {
   const [open, setOpen] = React.useState(false);
   const [deleteArmed, setDeleteArmed] = React.useState(false);
-  const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
+  const [localErrorKey, setLocalErrorKey] = React.useState<ErrorKey | null>(
+    null
+  );
+  const errorKey =
+    controlledErrorKey !== undefined ? controlledErrorKey : localErrorKey;
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -54,9 +77,9 @@ export function AnnouncementCardActions({
   };
 
   const handlePinClick = () => {
-    setErrorKey(null);
+    setLocalErrorKey(null);
     void onPin(!pinned).then((err) => {
-      if (err) setErrorKey(err);
+      if (err) setLocalErrorKey(err);
     });
   };
 
@@ -65,11 +88,11 @@ export function AnnouncementCardActions({
       setDeleteArmed(true);
       return;
     }
-    setErrorKey(null);
+    setLocalErrorKey(null);
     setDeleteArmed(false);
     setOpen(false);
     void onDelete().then((err) => {
-      if (err) setErrorKey(err);
+      if (err) setLocalErrorKey(err);
     });
   };
 

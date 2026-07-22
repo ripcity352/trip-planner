@@ -357,6 +357,34 @@ describe("AnnouncementList", () => {
       await act(async () => {});
 
       expect(await screen.findByText("Stays put.")).toBeInTheDocument();
+      // The rollback remounts the card — the failure must still be
+      // visible, not silently swallowed by the unmounted instance that
+      // originally called onDelete (regression guard for the finding
+      // that announcement_delete_failed was a dead string).
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+    });
+
+    it("surfaces the pin failure alert after a rollback moves the card", async () => {
+      pinAnnouncementActionMock.mockResolvedValue({
+        ok: false,
+        errorKey: "rls_denied",
+      });
+      const items = [makeAnnouncement({ id: "ann-1", body: "Pin me too." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Pin" }));
+
+      await act(async () => {});
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
     });
 
     it("moves a regular post into the pinned banner on a successful pin", async () => {

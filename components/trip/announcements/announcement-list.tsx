@@ -37,6 +37,15 @@
  * `lib/db/announcements.ts`), so a delete/pin by one organizer does not
  * live-update other connected viewers — they see it on next
  * fetch/revalidate. Not expanded to postgres_changes UPDATE/DELETE here.
+ *
+ * Error state for a failed delete/pin is *also* hoisted here
+ * (`errorByAnnouncement`), not left local to `AnnouncementCardActions`.
+ * The mutating card instance gets unmounted (delete) or moved between
+ * the regular feed and the collapsed pinned banner (pin) by the very
+ * optimistic update that's rolling back, so a card-local error state
+ * would be set on a component that's no longer on screen — a silent
+ * no-op. Keying the map by announcement id lets the remounted/moved
+ * card pick its error back up.
  */
 
 import {
@@ -135,6 +144,9 @@ export const AnnouncementList = forwardRef<
   const [announcements, setAnnouncements] = useState<Announcement[]>(
     () => sortAnnouncements(initialAnnouncements)
   );
+  const [errorByAnnouncement, setErrorByAnnouncement] = useState<
+    Record<string, ErrorKey | null>
+  >({});
 
   useImperativeHandle(
     ref,
@@ -160,6 +172,7 @@ export const AnnouncementList = forwardRef<
   const handleDelete = useCallback(
     async (announcementId: string): Promise<ErrorKey | null> => {
       const snapshot = announcements;
+      setErrorByAnnouncement((prev) => ({ ...prev, [announcementId]: null }));
       setAnnouncements((prev) => prev.filter((a) => a.id !== announcementId));
       const result = await callAction(() =>
         deleteAnnouncementAction(
@@ -169,6 +182,10 @@ export const AnnouncementList = forwardRef<
       );
       if (!result.ok) {
         setAnnouncements(snapshot);
+        setErrorByAnnouncement((prev) => ({
+          ...prev,
+          [announcementId]: result.errorKey,
+        }));
         return result.errorKey;
       }
       return null;
@@ -181,6 +198,7 @@ export const AnnouncementList = forwardRef<
   const handlePin = useCallback(
     async (announcementId: string, pinned: boolean): Promise<ErrorKey | null> => {
       const snapshot = announcements;
+      setErrorByAnnouncement((prev) => ({ ...prev, [announcementId]: null }));
       setAnnouncements((prev) =>
         sortAnnouncements(
           prev.map((a) => (a.id === announcementId ? { ...a, pinned } : a))
@@ -191,6 +209,10 @@ export const AnnouncementList = forwardRef<
       );
       if (!result.ok) {
         setAnnouncements(snapshot);
+        setErrorByAnnouncement((prev) => ({
+          ...prev,
+          [announcementId]: result.errorKey,
+        }));
         return result.errorKey;
       }
       return null;
@@ -263,6 +285,7 @@ export const AnnouncementList = forwardRef<
     return (
       <AnnouncementCardActions
         pinned={pinned}
+        errorKey={errorByAnnouncement[announcementId] ?? null}
         onPin={(next) => handlePin(announcementId, next)}
         onDelete={() => handleDelete(announcementId)}
       />
