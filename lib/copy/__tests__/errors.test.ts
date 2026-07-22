@@ -35,6 +35,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "announcement_post_failed",
   // #474 — same deterministic/transient split
   "announcement_post_rejected",
+  // #393 — organizer delete/pin
+  "announcement_delete_failed",
+  "announcement_pin_failed",
   "trip_notes_save_failed",
   "trip_update_failed",
   "travel_leg_save_failed",

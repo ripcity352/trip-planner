@@ -339,6 +339,13 @@ export const M3_UI_STRINGS = {
   announcements_pinned_banner_collapse_aria: "Hide the pinned post",
   announcements_pinned_banner_count_template: "{count} pinned posts",
   announcements_datePoll_link: "Dates are still up for a vote →",
+  // #393 — organizer overflow menu (delete + pin/unpin). Two-tap confirm
+  // in the dropdown itself, not a separate AlertDialog (see doge cut).
+  announcements_menu_aria: "Post options",
+  announcements_menu_pin: "Pin",
+  announcements_menu_unpin: "Unpin",
+  announcements_menu_delete: "Delete",
+  announcements_menu_delete_confirm: "Tap again to delete",
   // Travel legs / arrivals manifest (#37, Wave 4a)
   arrivals_pageTitle: "Arrivals",
   arrivals_heading: "Who's landing when",
