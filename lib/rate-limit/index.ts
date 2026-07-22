@@ -182,6 +182,13 @@ export const RATE_LIMIT_SCOPES = {
   // Default 30/60s; fail-OPEN on shim (trip metadata, not credential
   // minting) — same posture as UPDATE_TRIP_NOTES.
   UPDATE_TRIP: "updateTrip",
+  // #393 — organizer delete/pin on announcements. Own buckets (mirrors
+  // the UPDATE_EXPENSE/DELETE_EXPENSE precedent) so a burst on one
+  // doesn't starve POST_ANNOUNCEMENT or each other. Default 30/60s;
+  // fail-OPEN on shim (organizer trip-content moderation, not
+  // credential minting) — same posture as the other authed mutations.
+  DELETE_ANNOUNCEMENT: "deleteAnnouncement",
+  PIN_ANNOUNCEMENT: "pinAnnouncement",
 } as const;
 
 export type RateLimitScope =

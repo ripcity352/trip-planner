@@ -33,6 +33,13 @@ interface AnnouncementCardProps {
    * server-friendly and presentation-only.
    */
   reactionsSlot?: ReactNode;
+  /**
+   * Organizer-only overflow menu (#393 — delete/pin), rendered top-right
+   * next to the badge row. A slot (same pattern as `reactionsSlot`) so
+   * this leaf stays server-friendly — the caller decides whether the
+   * viewer is an organizer and only then supplies the client leaf.
+   */
+  actionsSlot?: ReactNode;
 }
 
 /**
@@ -49,6 +56,7 @@ export function AnnouncementCard({
   authorDisplayName,
   celebrantName,
   reactionsSlot,
+  actionsSlot,
 }: AnnouncementCardProps) {
   const relativeTime = formatDistanceToNow(new Date(announcement.created_at), {
     addSuffix: true,
@@ -63,22 +71,25 @@ export function AnnouncementCard({
 
   return (
     <article className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-3">
-      {/* Top row: pinned badge + visibility badge */}
-      {(announcement.pinned || visibilityLabel) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {announcement.pinned && (
-            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-              {M3_UI_STRINGS.announcements_badge_pinned}
-            </span>
-          )}
-          {visibilityLabel && (
-            <span
-              data-testid="visibility-badge"
-              className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
-            >
-              {visibilityLabel}
-            </span>
-          )}
+      {/* Top row: pinned badge + visibility badge (left), overflow menu (right) */}
+      {(announcement.pinned || visibilityLabel || actionsSlot) && (
+        <div className="flex items-start justify-between gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {announcement.pinned && (
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                {M3_UI_STRINGS.announcements_badge_pinned}
+              </span>
+            )}
+            {visibilityLabel && (
+              <span
+                data-testid="visibility-badge"
+                className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+              >
+                {visibilityLabel}
+              </span>
+            )}
+          </div>
+          {actionsSlot}
         </div>
       )}
 
