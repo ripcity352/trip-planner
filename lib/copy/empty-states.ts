@@ -581,10 +581,10 @@ export const M5_UI_STRINGS = {
   // #387 — quiet per-name RSVP chips on the roster. Factual state only —
   // the anti-shame boundary is BINDING: no lateness ordering, no nudge
   // copy, no counts of shame. "going" deliberately has NO chip string
-  // (the default row stays unmarked). "Invited" is the pending register
-  // already used by the dashboard count ("{invited} invited").
+  // (the default row stays unmarked). "No answer yet" for pending RSVP
+  // (#503 — member accepted invite but hasn't responded).
   roster_chip_maybe: "Maybe",
-  roster_chip_invited: "Invited",
+  roster_chip_invited: "No answer yet",
   // Matches the dashboard's organizer-only declined register
   // ("can't make it") — the view decides who gets to see it.
   roster_chip_declined: "Can't make it",

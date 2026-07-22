@@ -13,12 +13,19 @@
  * test boundary. The OAuth round-trip is the Supabase + callback handler
  * boundary, tested here end-to-end.
  *
- * CI note: this spec is marked `@skip` until the Supabase local OAuth mock
- * is wired (requires `supabase/config.toml` external provider config +
- * `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` env var in CI). Tracking: #225.
+ * Gated behind `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` — the same flag
+ * `lib/auth/oauth-config.ts` uses to render (or hide) the "Continue with
+ * Google" button (#370). The provider is parked (#232) and the flag is
+ * `false` everywhere today, so the whole spec skips at the module level
+ * until it's flipped on. Tracking: #225, #232.
  */
 
 import { test, expect } from "@playwright/test";
+
+test.skip(
+  process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED !== "true",
+  "Google OAuth gated off — #232/#370"
+);
 
 test.describe("Google OAuth sign-in", () => {
   test.beforeEach(async ({ page }) => {
