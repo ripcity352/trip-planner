@@ -36,7 +36,7 @@ const TRIP_ID = "party-2026";
 const EXPECTED_TABS = [
   { label: "home", href: `/trips/${TRIP_ID}` },
   { label: "plans", href: `/trips/${TRIP_ID}/itinerary` },
-  { label: "posts", href: `/trips/${TRIP_ID}/announcements` },
+  { label: "updates", href: `/trips/${TRIP_ID}/announcements` },
   { label: "crew", href: `/trips/${TRIP_ID}/roster` },
   { label: "me", href: `/trips/${TRIP_ID}/me` },
 ] as const;
@@ -113,11 +113,11 @@ describe("BottomTabBar", () => {
       expect(plansLink).toHaveAttribute("aria-current", "page");
     });
 
-    it("marks posts tab active on /announcements path", () => {
+    it("marks updates tab active on /announcements path", () => {
       renderBar(`/trips/${TRIP_ID}/announcements`);
 
-      const postsLink = screen.getByRole("link", { name: tabRegex("posts") });
-      expect(postsLink).toHaveAttribute("aria-current", "page");
+      const updatesLink = screen.getByRole("link", { name: tabRegex("updates") });
+      expect(updatesLink).toHaveAttribute("aria-current", "page");
     });
 
     it("marks crew tab active on /roster path", () => {
@@ -137,14 +137,14 @@ describe("BottomTabBar", () => {
     it("does not mark non-active tabs with aria-current", () => {
       renderBar(`/trips/${TRIP_ID}`);
 
-      // plans, posts, crew, me should NOT be aria-current
+      // plans, updates, crew, me should NOT be aria-current
       const plansLink = screen.getByRole("link", { name: tabRegex("plans") });
-      const postsLink = screen.getByRole("link", { name: tabRegex("posts") });
+      const updatesLink = screen.getByRole("link", { name: tabRegex("updates") });
       const crewLink = screen.getByRole("link", { name: tabRegex("crew") });
       const meLink = screen.getByRole("link", { name: tabRegex("me") });
 
       expect(plansLink).not.toHaveAttribute("aria-current", "page");
-      expect(postsLink).not.toHaveAttribute("aria-current", "page");
+      expect(updatesLink).not.toHaveAttribute("aria-current", "page");
       expect(crewLink).not.toHaveAttribute("aria-current", "page");
       expect(meLink).not.toHaveAttribute("aria-current", "page");
     });
