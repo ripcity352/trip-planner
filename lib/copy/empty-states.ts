@@ -343,6 +343,11 @@ export const M3_UI_STRINGS = {
   announcements_compose_submit: "Send it",
   announcements_compose_cancel: "Cancel",
   announcements_member_only_caption: "Only you can post these.",
+  // #389 reconcile — rule 11 affordance, not a gate: non-organizers see a
+  // quiet reader line where organizers see the compose trigger, instead
+  // of nothing at all.
+  announcements_reader_only_caption:
+    "Organizers drop updates here — an emoji back says you saw it.",
   // Announcement card badges (#79, Wave 3a fix-up — pulled from inline literals
   // per Override F after code-review HIGH finding)
   announcements_badge_pinned: "Pinned",

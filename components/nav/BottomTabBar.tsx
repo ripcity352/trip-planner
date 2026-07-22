@@ -63,7 +63,7 @@ function buildTabs(tripId: string): TabDef[] {
       match: "prefix",
     },
     {
-      label: "posts",
+      label: "updates",
       href: `/trips/${tripId}/announcements`,
       icon: MessageSquare,
       match: "prefix",

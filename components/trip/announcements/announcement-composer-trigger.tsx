@@ -36,8 +36,15 @@ export function AnnouncementComposerTrigger({
   const panelId = useId();
 
   // Non-organizers never see a composer, collapsed or expanded — same
-  // rule as AnnouncementComposer itself.
-  if (!isOrganizer) return null;
+  // rule as AnnouncementComposer itself. Rule 11: an affordance, not a
+  // gate — they get a quiet reader line in its place, not nothing.
+  if (!isOrganizer) {
+    return (
+      <p className="px-4 py-3 text-sm text-muted-foreground">
+        {M3_UI_STRINGS.announcements_reader_only_caption}
+      </p>
+    );
+  }
 
   if (!open) {
     return (
