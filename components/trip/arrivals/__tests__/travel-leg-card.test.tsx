@@ -53,7 +53,7 @@ describe("TravelLegCard", () => {
     expect(screen.getByText("Southwest")).toBeInTheDocument();
   });
 
-  it("renders the confirmation code", () => {
+  it("renders the confirmation code for the owner", () => {
     render(
       <TravelLegCard
         leg={makeLeg()}
@@ -220,6 +220,24 @@ describe("TravelLegCard", () => {
       />
     );
     expect(screen.queryByText("Southwest")).not.toBeInTheDocument();
+  });
+
+  // #505: PNR is field-level-private. The DB view already nulls it for
+  // non-owners; this belt-and-suspenders render gate must hold even if a
+  // future read path bypasses the view and hands the card a real code.
+  it("does not render confirmation code for a non-owner even when present (#505)", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({
+          trip_member_id: "member-1",
+          confirmation_code: "ABC123",
+        })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.queryByText("ABC123")).not.toBeInTheDocument();
   });
 
   it("does not render confirmation code when null", () => {

@@ -93,6 +93,28 @@ describe("TravelLegForm — add mode (inbound)", () => {
     expect(screen.getByRole("option", { name: "Other" })).toBeInTheDocument();
   });
 
+  // #505: the confirmation # is owner-only — the form says so at the point
+  // of entry, wired to the input for screen readers via aria-describedby.
+  it("renders the owner-only confirmation hint linked to the input (#505)", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const hint = screen.getByText("Just for you — the crew won't see this.");
+    expect(hint).toBeInTheDocument();
+    expect(hint).toHaveAttribute("id", "leg-confirmation-hint");
+    expect(screen.getByLabelText("Confirmation #")).toHaveAttribute(
+      "aria-describedby",
+      "leg-confirmation-hint"
+    );
+  });
+
   it("does not render the dead #382 tz caption", () => {
     render(
       <TravelLegForm

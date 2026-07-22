@@ -116,6 +116,9 @@ export function ArrivalsManifest({
       myTripMemberId={myTripMemberId}
       ownerName={resolveMemberName(memberNameMap, leg.trip_member_id)}
       tripTimezone={tripTimezone}
+      // #452: without this, the per-card edit sheet's save/delete left
+      // stale legs on screen until a manual reload.
+      onMutated={handleMutated}
     />
   );
 

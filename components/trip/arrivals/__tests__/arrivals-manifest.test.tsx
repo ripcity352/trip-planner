@@ -18,19 +18,28 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-// Mock TravelLegCard
+// Mock TravelLegCard — exposes onMutated on a button so tests can verify
+// the per-card edit path is wired to router.refresh (#452).
 vi.mock("../travel-leg-card", () => ({
   TravelLegCard: ({
     leg,
     ownerName,
+    onMutated,
   }: {
     leg: TravelLeg;
     myTripMemberId: string;
     ownerName: string;
     tripTimezone: string;
+    onMutated?: () => void;
   }) => (
     <div data-testid="travel-leg-card" data-leg-id={leg.id}>
       {ownerName}
+      <button
+        data-testid={`card-mutated-${leg.id}`}
+        onClick={() => onMutated?.()}
+      >
+        card mutated
+      </button>
     </div>
   ),
 }));
@@ -104,6 +113,24 @@ describe("ArrivalsManifest", () => {
       />
     );
     fireEvent.click(screen.getByTestId("add-leg-sheet"));
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  // #452: the per-card edit/delete sheet never refreshed the page — the
+  // card rendered TravelLegFormSheet without onMutated, so deleted/edited
+  // legs sat stale on screen until a manual reload. handleMutated must be
+  // threaded into every TravelLegCard.
+  it("threads router.refresh into each TravelLegCard via onMutated (#452)", () => {
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[makeLeg({ id: "leg-1" })]}
+        myTripMemberId="member-1"
+        tripMembers={[makeMember()]}
+        tripTimezone="UTC"
+      />
+    );
+    fireEvent.click(screen.getByTestId("card-mutated-leg-1"));
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
