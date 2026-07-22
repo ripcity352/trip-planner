@@ -25,3 +25,17 @@ export function hideFromCelebrantBadge(
     name,
   );
 }
+
+/**
+ * "Looks wide open to {name}" — organizer-only gap-day note (#480).
+ * Shown when a day's items are all invisible to the celebrant, so the
+ * day vanishes from their itinerary. Same name-threading + generic
+ * fallback contract as `hideFromCelebrantBadge` above.
+ */
+export function celebrantGapDayNote(celebrantName?: string | null): string {
+  const name = celebrantName?.trim() || M3_UI_STRINGS.celebrant_generic_fallback;
+  return M3_UI_STRINGS.itinerary_day_gap_celebrant_note_template.replace(
+    "{name}",
+    name,
+  );
+}
