@@ -8,14 +8,21 @@
  *      display_name, input immutability.
  *   3. `subscribeToAnnouncements` — channel is returned, correct event
  *      type and table filter, onInsert callback fires with the payload.
+ *   4. `deleteAnnouncement` / `setAnnouncementPinned` (#393) — exact-count
+ *      delete/update, ANNOUNCEMENT_NO_ROW on a zero-row match, error.code
+ *      preserved on failure (mirrors `deleteExpense`/`updateExpenseWithSplits`).
  */
 
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  ANNOUNCEMENT_NO_ROW,
+  AnnouncementDbError,
+  deleteAnnouncement,
   enrichAnnouncements,
   getAnnouncements,
+  setAnnouncementPinned,
   subscribeToAnnouncements,
 } from "../announcements";
 import type { Announcement } from "../types";
@@ -50,6 +57,34 @@ function makeClient(
   return {
     from: vi.fn((table: string) => buildProxy(table)),
   } as unknown as SupabaseClient;
+}
+
+/**
+ * Fluent-builder mock that also carries `count` — needed for the
+ * exact-count delete/update mutations (#393, mirrors expenses.test.ts).
+ */
+function makeSequencedBuilder(
+  responses: Array<{ data: unknown; error: unknown; count?: number | null }>
+) {
+  const calls: Array<{ method: string; args: unknown[] }> = [];
+  const queue = [...responses];
+
+  const handler: ProxyHandler<Record<string, unknown>> = {
+    get(_target, prop: string) {
+      if (prop === "then") {
+        const next = queue.shift() ?? { data: null, error: null };
+        const p = Promise.resolve(next);
+        return p.then.bind(p);
+      }
+      return (...args: unknown[]) => {
+        calls.push({ method: prop, args });
+        return proxy;
+      };
+    },
+  };
+  const proxy: Record<string, unknown> = new Proxy({}, handler);
+
+  return { calls, client: { from: vi.fn(() => proxy) } };
 }
 
 // ---------------------------------------------------------------------------
@@ -217,5 +252,124 @@ describe("subscribeToAnnouncements", () => {
         authorDisplayName: "Someone",
       })
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteAnnouncement (#393)
+// ---------------------------------------------------------------------------
+
+describe("deleteAnnouncement", () => {
+  it("deletes by id with an exact count", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+
+    await deleteAnnouncement(client as unknown as SupabaseClient, "ann-1");
+
+    expect(calls.find((c) => c.method === "delete")?.args[0]).toEqual({
+      count: "exact",
+    });
+    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
+      "id",
+      "ann-1",
+    ]);
+  });
+
+  it("throws ANNOUNCEMENT_NO_ROW when nothing matched (non-organizer / already-deleted)", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: null, count: 0 },
+    ]);
+
+    const err = await deleteAnnouncement(
+      client as unknown as SupabaseClient,
+      "ann-1"
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+    expect(err).toBeInstanceOf(AnnouncementDbError);
+    expect((err as AnnouncementDbError).code).toBe(ANNOUNCEMENT_NO_ROW);
+  });
+
+  it("preserves error.code on failure", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: { code: "42501", message: "rls" }, count: null },
+    ]);
+
+    const err = await deleteAnnouncement(
+      client as unknown as SupabaseClient,
+      "ann-1"
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+    expect(err).toBeInstanceOf(AnnouncementDbError);
+    expect((err as AnnouncementDbError).code).toBe("42501");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setAnnouncementPinned (#393)
+// ---------------------------------------------------------------------------
+
+describe("setAnnouncementPinned", () => {
+  it("updates pinned to the desired end state with an exact count", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+
+    await setAnnouncementPinned(
+      client as unknown as SupabaseClient,
+      "ann-1",
+      true
+    );
+
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      { pinned: true },
+      { count: "exact" },
+    ]);
+    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
+      "id",
+      "ann-1",
+    ]);
+  });
+
+  it("throws ANNOUNCEMENT_NO_ROW when nothing matched", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: null, count: 0 },
+    ]);
+
+    const err = await setAnnouncementPinned(
+      client as unknown as SupabaseClient,
+      "ann-1",
+      false
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+    expect(err).toBeInstanceOf(AnnouncementDbError);
+    expect((err as AnnouncementDbError).code).toBe(ANNOUNCEMENT_NO_ROW);
+  });
+
+  it("preserves error.code on failure", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: { code: "42501", message: "rls" }, count: null },
+    ]);
+
+    const err = await setAnnouncementPinned(
+      client as unknown as SupabaseClient,
+      "ann-1",
+      true
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+    expect(err).toBeInstanceOf(AnnouncementDbError);
+    expect((err as AnnouncementDbError).code).toBe("42501");
   });
 });

@@ -63,6 +63,11 @@ export type ErrorKey =
   | "announcement_post_failed"
   // #474 — same deterministic/transient split as itinerary_save_rejected.
   | "announcement_post_rejected"
+  // #393 — organizer delete/pin. Both transient-retry voice, matching the
+  // `<feature>_<verb>_failed` pattern (no coded-PG rejection branch is
+  // written for these, so no `_rejected` sibling — see doge cut).
+  | "announcement_delete_failed"
+  | "announcement_pin_failed"
   | "trip_notes_save_failed"
   // Trip name/location edit from the dashboard header. Same
   // `<feature>_<verb>_failed` pattern; retry-framed (transient).
@@ -250,6 +255,11 @@ export const ERRORS: Record<ErrorKey, string> = {
   // #474 — deterministic rejection, same split as itinerary_save_rejected.
   announcement_post_rejected:
     "That didn't go out — something's off on our end. Not your signal.",
+  // #393 — organizer delete/pin. Transient-retry voice, same register as
+  // itinerary_delete_failed / reaction_save_failed.
+  announcement_delete_failed:
+    "Couldn't take that one down. Try once more in a sec.",
+  announcement_pin_failed: "That didn't stick. Give it another tap.",
   trip_notes_save_failed: "Notes didn't save. Try once more in a sec.",
   trip_update_failed: "That didn't save. Give it another go in a sec.",
   travel_leg_save_failed:

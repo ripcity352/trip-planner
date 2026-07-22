@@ -1,11 +1,19 @@
 "use server";
 
 /**
- * Server actions for announcements (M3 #79).
+ * Server actions for announcements (M3 #79; #393 delete/pin).
  *
  * Surface contract:
  *   - `postAnnouncement(input, idempotencyKey)` validates, authenticates,
  *     rate-limits under POST_ANNOUNCEMENT, and inserts the row.
+ *   - `deleteAnnouncementAction(input, idempotencyKey)` — organizer-only
+ *     via RLS (DELETE policy). The key is accepted per rule 9 and
+ *     validated; deletes are idempotent by nature so it isn't persisted
+ *     (mirrors `deleteExpenseAction`'s exact shape).
+ *   - `pinAnnouncementAction(input, idempotencyKey)` — organizer-only via
+ *     RLS (UPDATE policy). Sets `pinned` to a DESIRED END STATE (mirrors
+ *     `toggleReactionAction`) rather than blindly flipping, so a
+ *     drunk-double-tap replay converges instead of toggling back off.
  *   - Organizer-only via RLS.
  *   - Idempotency key scope: (trip_id, idempotency_key) — organizer
  *     acting on behalf of the trip.
@@ -13,11 +21,23 @@
  *     (fresh insert AND idempotency replay) so the poster's own view
  *     never depends on the Realtime channel — see notes/decisions.md
  *     "F2 — the #110 mutation contract extends…".
+ *
+ * Non-goal (#393): the Realtime channel (`subscribeToAnnouncements`)
+ * only wires INSERT — see `lib/db/announcements.ts`. A delete or pin by
+ * one organizer does not live-update other connected viewers; they see
+ * it on their next fetch/revalidate. This matches the #470/#489
+ * INSERT-only precedent and is not expanded in this pass.
  */
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import {
+  AnnouncementDbError,
+  ANNOUNCEMENT_NO_ROW,
+  deleteAnnouncement,
+  setAnnouncementPinned,
+} from "@/lib/db/announcements";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -166,5 +186,129 @@ function announcementErrorKey(reason: AnnouncementErrorReason): ErrorKey {
       return "announcement_post_rejected";
     case "post_failed":
       return "announcement_post_failed";
+  }
+}
+
+const deleteAnnouncementSchema = z.object({
+  tripId: z.string().uuid(),
+  announcementId: z.string().uuid(),
+});
+
+const pinAnnouncementSchema = z.object({
+  announcementId: z.string().uuid(),
+  /** Desired end state: true = pinned, false = unpinned. */
+  pinned: z.boolean(),
+});
+
+export type DeleteAnnouncementInput = z.infer<typeof deleteAnnouncementSchema>;
+export type PinAnnouncementInput = z.infer<typeof pinAnnouncementSchema>;
+
+export type DeleteAnnouncementResult =
+  | { ok: true }
+  | { ok: false; errorKey: ErrorKey };
+
+export type PinAnnouncementResult =
+  | { ok: true; pinned: boolean }
+  | { ok: false; errorKey: ErrorKey };
+
+/** Maps an AnnouncementDbError to an ErrorKey — by `error.code`, never message text. */
+function mapAnnouncementDbError(err: unknown, fallback: ErrorKey): ErrorKey {
+  if (err instanceof RateLimitError) {
+    return "rate_limit";
+  }
+  if (err instanceof AnnouncementDbError) {
+    if (err.code === "42501" || err.code === ANNOUNCEMENT_NO_ROW) {
+      return "rls_denied";
+    }
+  }
+  return fallback;
+}
+
+/**
+ * Delete an announcement. Organizer-only via RLS (DELETE policy). The
+ * key is accepted per rule 9 and validated; deletes are idempotent by
+ * nature so it isn't persisted (mirrors `deleteExpenseAction`).
+ */
+export async function deleteAnnouncementAction(
+  input: DeleteAnnouncementInput,
+  idempotencyKey: string
+): Promise<DeleteAnnouncementResult> {
+  const parsed = deleteAnnouncementSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.DELETE_ANNOUNCEMENT, userId, () =>
+      deleteAnnouncement(supabase, parsed.data.announcementId)
+    );
+
+    // F2 / #110: revalidate on the success branch only.
+    revalidatePath("/trips", "layout");
+    return { ok: true };
+  } catch (err) {
+    const errorKey = mapAnnouncementDbError(err, "announcement_delete_failed");
+    if (errorKey === "announcement_delete_failed") {
+      console.error("[announcements] deleteAnnouncementAction unexpected:", err);
+    }
+    return { ok: false, errorKey };
+  }
+}
+
+/**
+ * Set an announcement's pinned state to a desired end state. Organizer-
+ * only via RLS (UPDATE policy). Idempotent in both directions — mirrors
+ * `toggleReactionAction` so a drunk-double-tap replay converges instead
+ * of toggling back off.
+ */
+export async function pinAnnouncementAction(
+  input: PinAnnouncementInput,
+  idempotencyKey: string
+): Promise<PinAnnouncementResult> {
+  const parsed = pinAnnouncementSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  const { announcementId, pinned } = parsed.data;
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.PIN_ANNOUNCEMENT, userId, () =>
+      setAnnouncementPinned(supabase, announcementId, pinned)
+    );
+
+    // F2 / #110: revalidate on the success branch only.
+    revalidatePath("/trips", "layout");
+    return { ok: true, pinned };
+  } catch (err) {
+    const errorKey = mapAnnouncementDbError(err, "announcement_pin_failed");
+    if (errorKey === "announcement_pin_failed") {
+      console.error("[announcements] pinAnnouncementAction unexpected:", err);
+    }
+    return { ok: false, errorKey };
   }
 }

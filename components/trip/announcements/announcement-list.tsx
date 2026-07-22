@@ -25,10 +25,23 @@
  * `postAnnouncement` succeeds — the actor's own view must not depend on
  * the Realtime channel landing the INSERT. See
  * `components/trip/announcements/announcements-feed.tsx`.
+ *
+ * #393: also owns the organizer delete/pin mutation + optimistic
+ * bookkeeping (both `handleDelete`/`handlePin` below) since this is the
+ * one place that holds the `announcements` array both the pinned banner
+ * and the regular feed derive from via `useMemo` — a card-local optimistic
+ * update would desync the two views. The imperative handle grows a
+ * `remove` method alongside `prepend` for symmetry, though delete today
+ * goes through `handleDelete`, not the ref (the card triggers it inline).
+ * Non-goal: the Realtime channel only wires INSERT (see
+ * `lib/db/announcements.ts`), so a delete/pin by one organizer does not
+ * live-update other connected viewers — they see it on next
+ * fetch/revalidate. Not expanded to postgres_changes UPDATE/DELETE here.
  */
 
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -39,7 +52,14 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/browser";
 import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
+import {
+  deleteAnnouncementAction,
+  pinAnnouncementAction,
+} from "@/lib/actions/announcements";
+import { callAction } from "@/lib/ui/call-action";
+import type { ErrorKey } from "@/lib/copy/errors";
 import { AnnouncementCard } from "./announcement-card";
+import { AnnouncementCardActions } from "./announcement-card-actions";
 import { ReactionRow } from "./reaction-row";
 import { PinnedAnnouncementBanner } from "./pinned-announcement-banner";
 import { EMPTY_STATES } from "@/lib/copy/empty-states";
@@ -50,6 +70,8 @@ import type {
 
 interface AnnouncementListProps {
   tripId: string;
+  /** #393 — gates the per-card overflow menu (delete + pin/unpin). */
+  isOrganizer: boolean;
   initialAnnouncements: Announcement[];
   /**
    * Map of user_id → display_name for all trip members. Used to resolve
@@ -82,6 +104,8 @@ interface AnnouncementListProps {
 export interface AnnouncementListHandle {
   /** Fold a locally-known announcement into the feed (F2). */
   prepend: (announcement: Announcement) => void;
+  /** Drop a locally-known announcement from the feed (#393). */
+  remove: (announcementId: string) => void;
 }
 
 /** Sort pinned first, then by created_at descending (newest first). */
@@ -98,6 +122,7 @@ export const AnnouncementList = forwardRef<
 >(function AnnouncementList(
   {
     tripId,
+    isOrganizer,
     initialAnnouncements,
     memberUserMap,
     reactionsByAnnouncement = {},
@@ -122,8 +147,55 @@ export const AnnouncementList = forwardRef<
             : sortAnnouncements([announcement, ...prev])
         );
       },
+      remove: (announcementId: string) => {
+        setAnnouncements((prev) => prev.filter((a) => a.id !== announcementId));
+      },
     }),
     []
+  );
+
+  // #393 — organizer delete: optimistic removal, rollback on failure.
+  // `announcements` is captured per-call so the rollback restores the
+  // exact pre-mutation snapshot even if other updates land in between.
+  const handleDelete = useCallback(
+    async (announcementId: string): Promise<ErrorKey | null> => {
+      const snapshot = announcements;
+      setAnnouncements((prev) => prev.filter((a) => a.id !== announcementId));
+      const result = await callAction(() =>
+        deleteAnnouncementAction(
+          { tripId, announcementId },
+          crypto.randomUUID()
+        )
+      );
+      if (!result.ok) {
+        setAnnouncements(snapshot);
+        return result.errorKey;
+      }
+      return null;
+    },
+    [announcements, tripId]
+  );
+
+  // #393 — organizer pin/unpin: desired-end-state action, optimistic
+  // flip + re-sort, rollback on failure.
+  const handlePin = useCallback(
+    async (announcementId: string, pinned: boolean): Promise<ErrorKey | null> => {
+      const snapshot = announcements;
+      setAnnouncements((prev) =>
+        sortAnnouncements(
+          prev.map((a) => (a.id === announcementId ? { ...a, pinned } : a))
+        )
+      );
+      const result = await callAction(() =>
+        pinAnnouncementAction({ announcementId, pinned }, crypto.randomUUID())
+      );
+      if (!result.ok) {
+        setAnnouncements(snapshot);
+        return result.errorKey;
+      }
+      return null;
+    },
+    [announcements]
   );
 
   useEffect(() => {
@@ -184,6 +256,19 @@ export const AnnouncementList = forwardRef<
     );
   };
 
+  // #393 — organizer-only; must cover BOTH the regular feed and the
+  // pinned banner's expanded cards (the exact bug the issue names).
+  const actionsSlotFor = (announcementId: string, pinned: boolean) => {
+    if (!isOrganizer) return null;
+    return (
+      <AnnouncementCardActions
+        pinned={pinned}
+        onPin={(next) => handlePin(announcementId, next)}
+        onDelete={() => handleDelete(announcementId)}
+      />
+    );
+  };
+
   if (announcements.length === 0) {
     // The polls row + date-poll link still render on an empty feed —
     // an unanswered poll is exactly why someone opens an empty page.
@@ -204,6 +289,7 @@ export const AnnouncementList = forwardRef<
         pinned={pinned}
         celebrantName={celebrantName}
         reactionsSlotFor={reactionsSlotFor}
+        actionsSlotFor={actionsSlotFor}
       />
 
       {pollsSlot}
@@ -223,6 +309,7 @@ export const AnnouncementList = forwardRef<
                 authorDisplayName={a.authorDisplayName}
                 celebrantName={celebrantName}
                 reactionsSlot={reactionsSlotFor(a.id)}
+                actionsSlot={actionsSlotFor(a.id, a.pinned)}
               />
             </li>
           ))}

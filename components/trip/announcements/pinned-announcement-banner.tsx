@@ -31,12 +31,20 @@ interface PinnedAnnouncementBannerProps {
   celebrantName?: string | null;
   /** Per-announcement reaction row, keyed by announcement id (#389). */
   reactionsSlotFor: (announcementId: string) => ReactNode;
+  /**
+   * #393 — organizer overflow menu, keyed by announcement id + its
+   * current pinned state. Organizer actions must reach pinned posts
+   * too, not just the regular feed — the whole reason this is threaded
+   * here rather than only into the regular-feed `.map`.
+   */
+  actionsSlotFor?: (announcementId: string, pinned: boolean) => ReactNode;
 }
 
 export function PinnedAnnouncementBanner({
   pinned,
   celebrantName,
   reactionsSlotFor,
+  actionsSlotFor,
 }: PinnedAnnouncementBannerProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -92,6 +100,7 @@ export function PinnedAnnouncementBanner({
               authorDisplayName={announcement.authorDisplayName}
               celebrantName={celebrantName}
               reactionsSlot={reactionsSlotFor(announcement.id)}
+              actionsSlot={actionsSlotFor?.(announcement.id, announcement.pinned)}
             />
           ))}
         </div>

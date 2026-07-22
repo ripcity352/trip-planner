@@ -36,6 +36,17 @@ vi.mock("@/lib/supabase/realtime-auth", () => ({
   ensureRealtimeAuth: vi.fn(async () => {}),
 }));
 
+// #393 — organizer delete/pin server actions, mocked so the overflow-menu
+// tests below control success/failure without a real network call.
+const deleteAnnouncementActionMock = vi.fn();
+const pinAnnouncementActionMock = vi.fn();
+vi.mock("@/lib/actions/announcements", () => ({
+  deleteAnnouncementAction: (...args: unknown[]) =>
+    deleteAnnouncementActionMock(...args),
+  pinAnnouncementAction: (...args: unknown[]) =>
+    pinAnnouncementActionMock(...args),
+}));
+
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import { createClient } from "@/lib/supabase/browser";
 import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
@@ -74,7 +85,7 @@ describe("AnnouncementList", () => {
   });
 
   it("renders the empty-state when no announcements", () => {
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
     // EMPTY_STATES.announcements = "All quiet. No news is probably good news."
     expect(screen.getByText(/all quiet/i)).toBeInTheDocument();
   });
@@ -84,7 +95,7 @@ describe("AnnouncementList", () => {
       makeAnnouncement({ id: "ann-1", body: "First update." }),
       makeAnnouncement({ id: "ann-2", body: "Second update." }),
     ];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
     expect(screen.getByText("First update.")).toBeInTheDocument();
     expect(screen.getByText("Second update.")).toBeInTheDocument();
   });
@@ -94,7 +105,7 @@ describe("AnnouncementList", () => {
       makeAnnouncement({ id: "ann-1", body: "Regular update.", pinned: false }),
       makeAnnouncement({ id: "ann-2", body: "Pinned update.", pinned: true }),
     ];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
 
     // The pinned banner shows the headline collapsed...
     expect(screen.getByTestId("pinned-banner-headline")).toHaveTextContent(
@@ -111,7 +122,7 @@ describe("AnnouncementList", () => {
     const items = [
       makeAnnouncement({ id: "ann-2", body: "Pinned update.", pinned: true }),
     ];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
 
     const trigger = screen.getByRole("button", { expanded: false });
     expect(trigger).toBeInTheDocument();
@@ -127,12 +138,12 @@ describe("AnnouncementList", () => {
 
   it("#470: renders no pinned banner when there are no pinned announcements", () => {
     const items = [makeAnnouncement({ body: "Regular update.", pinned: false })];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
     expect(screen.queryByTestId("pinned-banner-headline")).not.toBeInTheDocument();
   });
 
   it("calls subscribeToAnnouncements on mount with the correct tripId", async () => {
-    render(<AnnouncementList tripId="trip-42" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-42" isOrganizer={false} initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
     await flushSubscription();
     // W1c: subscribeToAnnouncements now takes 4 args (supabase, tripId, onInsert, memberUserMap)
     expect(subscribeToAnnouncements).toHaveBeenCalledWith(
@@ -149,7 +160,7 @@ describe("AnnouncementList", () => {
     // _handleTokenChanged), so an eager subscribe joins with anon claims
     // and RLS silently filters every postgres_changes frame. The list
     // must await ensureRealtimeAuth BEFORE opening the channel.
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
     await flushSubscription();
     expect(ensureRealtimeAuth).toHaveBeenCalledTimes(1);
     const authOrder =
@@ -160,7 +171,7 @@ describe("AnnouncementList", () => {
   });
 
   it("adds a new announcement to the list when the realtime callback fires", async () => {
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />);
     await flushSubscription();
 
     const newItem = makeAnnouncement({ id: "ann-realtime", body: "Live update!" });
@@ -174,7 +185,7 @@ describe("AnnouncementList", () => {
   it("prepends new realtime announcements before existing ones", async () => {
     const existing = makeAnnouncement({ id: "ann-existing", body: "Existing." });
     render(
-      <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
+      <AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
     );
     await flushSubscription();
 
@@ -195,7 +206,7 @@ describe("AnnouncementList", () => {
 
   it("calls removeChannel on unmount to clean up the subscription", async () => {
     const { unmount } = render(
-      <AnnouncementList tripId="trip-1" initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />
+      <AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={[]} memberUserMap={EMPTY_MAP} />
     );
     await flushSubscription();
     unmount();
@@ -205,7 +216,7 @@ describe("AnnouncementList", () => {
 
   it("does not render the empty state when there are announcements", () => {
     const items = [makeAnnouncement({ body: "Something happened." })];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
     expect(screen.queryByText(/all quiet/i)).not.toBeInTheDocument();
   });
 
@@ -217,7 +228,7 @@ describe("AnnouncementList", () => {
       created_at: "2026-05-20T09:00:00Z",
     });
     render(
-      <AnnouncementList tripId="trip-1" initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
+      <AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={[existing]} memberUserMap={EMPTY_MAP} />
     );
     await flushSubscription();
 
@@ -239,8 +250,162 @@ describe("AnnouncementList", () => {
 
   it("renders the feed with aria-live='polite' for screen-reader updates", () => {
     const items = [makeAnnouncement({ body: "Visible announcement." })];
-    render(<AnnouncementList tripId="trip-1" initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
+    render(<AnnouncementList tripId="trip-1" isOrganizer={false} initialAnnouncements={items} memberUserMap={EMPTY_MAP} />);
     const list = screen.getByRole("list");
     expect(list).toHaveAttribute("aria-live", "polite");
+  });
+
+  // #393 — organizer-only overflow menu. Must reach BOTH the regular feed
+  // AND the pinned banner's expanded cards (the exact bug the issue is
+  // about, one layer deeper than the RLS policy itself).
+  describe("organizer overflow menu (#393)", () => {
+    it("renders the overflow menu on a regular-feed card when isOrganizer=true", () => {
+      const items = [makeAnnouncement({ id: "ann-1", body: "Regular update." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+      expect(
+        screen.getByRole("button", { name: /post options/i })
+      ).toBeInTheDocument();
+    });
+
+    it("does not render the overflow menu when isOrganizer=false", () => {
+      const items = [makeAnnouncement({ id: "ann-1", body: "Regular update." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={false}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+      expect(
+        screen.queryByRole("button", { name: /post options/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders the overflow menu on an expanded pinned card too", () => {
+      const items = [
+        makeAnnouncement({ id: "ann-pinned", body: "Pinned update.", pinned: true }),
+      ];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+      // Expand the banner.
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+      expect(
+        screen.getByRole("button", { name: /post options/i })
+      ).toBeInTheDocument();
+    });
+
+    it("removes the item from the feed on a successful delete", async () => {
+      deleteAnnouncementActionMock.mockResolvedValue({ ok: true });
+      const items = [makeAnnouncement({ id: "ann-1", body: "Delete me." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      const deleteItem = await screen.findByTestId("confirm-delete");
+      fireEvent.click(deleteItem); // arm
+      fireEvent.click(screen.getByTestId("confirm-delete")); // commit
+
+      await act(async () => {});
+
+      expect(screen.queryByText("Delete me.")).not.toBeInTheDocument();
+      expect(deleteAnnouncementActionMock).toHaveBeenCalledWith(
+        { tripId: "trip-1", announcementId: "ann-1" },
+        expect.any(String)
+      );
+    });
+
+    it("rolls back the optimistic removal when delete fails", async () => {
+      deleteAnnouncementActionMock.mockResolvedValue({
+        ok: false,
+        errorKey: "rls_denied",
+      });
+      const items = [makeAnnouncement({ id: "ann-1", body: "Stays put." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      const deleteItem = await screen.findByTestId("confirm-delete");
+      fireEvent.click(deleteItem);
+      fireEvent.click(screen.getByTestId("confirm-delete"));
+
+      await act(async () => {});
+
+      expect(await screen.findByText("Stays put.")).toBeInTheDocument();
+    });
+
+    it("moves a regular post into the pinned banner on a successful pin", async () => {
+      pinAnnouncementActionMock.mockResolvedValue({ ok: true, pinned: true });
+      const items = [makeAnnouncement({ id: "ann-1", body: "Pin me." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Pin" }));
+
+      await act(async () => {});
+
+      expect(screen.getByTestId("pinned-banner-headline")).toHaveTextContent(
+        "Pin me."
+      );
+    });
+
+    it("moves a pinned post out of the banner and into the regular feed on unpin", async () => {
+      pinAnnouncementActionMock.mockResolvedValue({ ok: true, pinned: false });
+      const items = [
+        makeAnnouncement({ id: "ann-1", body: "Unpin me.", pinned: true }),
+      ];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      // Expand the banner to reach the pinned card's menu.
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Unpin" }));
+
+      await act(async () => {});
+
+      expect(
+        screen.queryByTestId("pinned-banner-headline")
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("Unpin me.")).toBeInTheDocument();
+    });
   });
 });

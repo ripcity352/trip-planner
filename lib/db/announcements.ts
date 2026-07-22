@@ -79,6 +79,78 @@ export async function getAnnouncements(
   return (data ?? []) as Announcement[];
 }
 
+/** Sentinel code for a write that matched no row (#393). */
+export const ANNOUNCEMENT_NO_ROW = "announcement_no_row";
+
+/** Carries the Postgres error code so actions can map without text-matching. */
+export class AnnouncementDbError extends Error {
+  readonly code: string | null;
+
+  constructor(message: string, code: string | null) {
+    super(message);
+    this.name = "AnnouncementDbError";
+    this.code = code;
+  }
+}
+
+/**
+ * Delete an announcement. Organizer-only via RLS (DELETE policy) — this
+ * function trusts the caller's action layer to have authenticated; the
+ * actual gate is the RLS policy itself (rule 5).
+ */
+export async function deleteAnnouncement(
+  supabase: SupabaseClient,
+  announcementId: string
+): Promise<void> {
+  const { error, count } = await supabase
+    .from("announcements")
+    .delete({ count: "exact" })
+    .eq("id", announcementId);
+
+  if (error) {
+    throw new AnnouncementDbError(
+      `deleteAnnouncement failed: ${error.message}`,
+      error.code ?? null
+    );
+  }
+  if (!count) {
+    throw new AnnouncementDbError(
+      "deleteAnnouncement matched no row",
+      ANNOUNCEMENT_NO_ROW
+    );
+  }
+}
+
+/**
+ * Set an announcement's `pinned` column to a desired end state.
+ * Organizer-only via RLS (UPDATE policy). Idempotent by construction —
+ * setting an already-pinned post to pinned again matches the same row
+ * and succeeds.
+ */
+export async function setAnnouncementPinned(
+  supabase: SupabaseClient,
+  announcementId: string,
+  pinned: boolean
+): Promise<void> {
+  const { error, count } = await supabase
+    .from("announcements")
+    .update({ pinned }, { count: "exact" })
+    .eq("id", announcementId);
+
+  if (error) {
+    throw new AnnouncementDbError(
+      `setAnnouncementPinned failed: ${error.message}`,
+      error.code ?? null
+    );
+  }
+  if (!count) {
+    throw new AnnouncementDbError(
+      "setAnnouncementPinned matched no row",
+      ANNOUNCEMENT_NO_ROW
+    );
+  }
+}
+
 /** Slim shape for the dashboard glance line — body + timestamp only. */
 export type LatestAnnouncement = Pick<Announcement, "body" | "created_at">;
 
