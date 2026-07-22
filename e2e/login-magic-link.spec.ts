@@ -27,9 +27,10 @@
 
 import { test, expect } from "@playwright/test";
 
+import { AUTH_COPY } from "../lib/copy/auth";
 import { TEST_USER_EMAIL } from "./_setup/seed-test-user";
 
-const SUCCESS_COPY = `Code's heading to ${TEST_USER_EMAIL}. Pop it in below.`;
+const SUCCESS_COPY = AUTH_COPY.codeSentHelper(TEST_USER_EMAIL);
 
 test.describe("login — email code request", () => {
   test.use({
