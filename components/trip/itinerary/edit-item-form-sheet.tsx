@@ -26,7 +26,11 @@ export interface EditItemFormSheetProps {
   className?: string;
 }
 
-export function EditItemFormSheet({ item, tripTimezone, className }: EditItemFormSheetProps) {
+export function EditItemFormSheet({
+  item,
+  tripTimezone,
+  className,
+}: EditItemFormSheetProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
 

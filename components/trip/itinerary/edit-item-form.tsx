@@ -39,7 +39,7 @@ const VISIBILITY_OPTIONS = [
   "hide_from_celebrant",
 ] as const;
 
-const formSchema = z.object({
+const baseFormSchema = z.object({
   title: z
     .string()
     .trim()
@@ -50,6 +50,7 @@ const formSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, M3_UI_STRINGS.itineraryForm_validation_day_format),
   // W2b: datetime fields — UTC ISO-8601 strings from the datetime-local widget.
+  // End-before-start is checked below in #484's superRefine.
   startTime: z.string().datetime({ offset: true }).nullable().optional(),
   endTime: z.string().datetime({ offset: true }).nullable().optional(),
   address: z.string().trim().max(500).optional(),
@@ -74,7 +75,32 @@ const formSchema = z.object({
     .or(z.literal("")),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+/**
+ * #484: end-before-start only. Deliberately NO day-out-of-range check here
+ * — unlike AddItemForm, EditItemForm has no editable `day` field (it's
+ * fixed from `item.day` via defaultValues below, never a registered
+ * input). Adding the range refine to this schema would mean: if an
+ * organizer narrows the trip's dates after an item already exists outside
+ * the new range, EVERY future save on that item — title, cost, anything —
+ * gets blocked by an error pointing at a field the user can't see or
+ * touch. The day-range check stays enforced where it's actionable: the
+ * add form (day is a real input there) and the server action.
+ */
+const formSchema = baseFormSchema.superRefine((values, ctx) => {
+  if (values.startTime && values.endTime) {
+    const start = new Date(values.startTime).getTime();
+    const end = new Date(values.endTime).getTime();
+    if (end <= start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: M3_UI_STRINGS.itineraryForm_validation_end_before_start,
+      });
+    }
+  }
+});
+
+type FormValues = z.infer<typeof baseFormSchema>;
 
 const KIND_LABELS: Record<(typeof ITEM_KINDS)[number], string> = {
   event: M3_UI_STRINGS.itinerary_item_kind_event,

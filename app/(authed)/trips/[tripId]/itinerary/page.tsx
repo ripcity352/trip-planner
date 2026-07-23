@@ -138,7 +138,12 @@ export default async function ItineraryPage({ params }: PageProps) {
       {/* Organizer add-item CTA (client shell) */}
       {isOrganizer ? (
         <div className="mt-8">
-          <AddItemFormSheet tripId={trip.id} tripTimezone={trip.timezone} />
+          <AddItemFormSheet
+            tripId={trip.id}
+            tripTimezone={trip.timezone}
+            tripStartsAt={trip.starts_at}
+            tripEndsAt={trip.ends_at}
+          />
         </div>
       ) : null}
     </section>

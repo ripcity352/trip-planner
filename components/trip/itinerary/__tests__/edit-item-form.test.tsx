@@ -308,4 +308,122 @@ describe("EditItemForm", () => {
       });
     });
   });
+
+  // #484: end-before-start — direct instant comparison, not string compare,
+  // since startTime/endTime carry a UTC offset.
+  describe("end-before-start validation (#484)", () => {
+    const setTimes = (startLocal: string, endLocal: string) => {
+      const startInput = document.getElementById("edit-datetime") as HTMLInputElement;
+      const endInput = document.getElementById("edit-endtime") as HTMLInputElement;
+      fireEvent.change(startInput, { target: { value: startLocal } });
+      fireEvent.change(endInput, { target: { value: endLocal } });
+    };
+
+    it("rejects end < start", async () => {
+      const callsBefore = mockUpdate.mock.calls.length;
+      render(<EditItemForm {...defaultProps} />);
+      setTimes("2026-08-01T20:00", "2026-08-01T19:00");
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/ends before it starts/i)).toBeInTheDocument();
+      });
+      expect(mockUpdate.mock.calls.length).toBe(callsBefore);
+    });
+
+    it("rejects end == start", async () => {
+      const callsBefore = mockUpdate.mock.calls.length;
+      render(<EditItemForm {...defaultProps} />);
+      setTimes("2026-08-01T19:00", "2026-08-01T19:00");
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/ends before it starts/i)).toBeInTheDocument();
+      });
+      expect(mockUpdate.mock.calls.length).toBe(callsBefore);
+    });
+
+    it("passes when end > start", async () => {
+      render(<EditItemForm {...defaultProps} />);
+      setTimes("2026-08-01T19:00", "2026-08-01T20:00");
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/ends before it starts/i)).not.toBeInTheDocument();
+    });
+
+    it("passes with only start time set", async () => {
+      render(
+        <EditItemForm
+          {...defaultProps}
+          item={{ ...baseItem, end_time: null, end_day: null }}
+        />
+      );
+      const endInput = document.getElementById("edit-endtime") as HTMLInputElement;
+      fireEvent.change(endInput, { target: { value: "" } });
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/ends before it starts/i)).not.toBeInTheDocument();
+    });
+
+    it("passes with only end time set", async () => {
+      render(
+        <EditItemForm
+          {...defaultProps}
+          item={{ ...baseItem, start_time: null }}
+        />
+      );
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/ends before it starts/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // #484: EditItemForm intentionally has NO day-range check — `day` isn't
+  // an editable field here (fixed via defaultValues from item.day), so
+  // enforcing the range on this schema would trap an item: if an organizer
+  // narrows the trip's dates after the item exists outside the new range,
+  // every future save (title, cost, anything) would get blocked by an
+  // error pointing at a field the user can't see or fix. This pins the
+  // anti-trap behavior — the add form and the server action are the real
+  // enforcement points for the range check.
+  describe("trip-range validation (#484) — intentionally absent here", () => {
+    it("still saves an item whose day falls outside the trip's (narrowed) date range", async () => {
+      render(
+        <EditItemForm
+          {...defaultProps}
+          item={{ ...baseItem, day: "2026-07-31" }}
+        />
+      );
+      fireEvent.change(screen.getByLabelText(/what is it\?/i), {
+        target: { value: "Updated title" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc", title: "Updated title" }),
+          expect.any(String)
+        );
+      });
+      expect(screen.queryByText(/outside the trip dates/i)).not.toBeInTheDocument();
+    });
+  });
 });

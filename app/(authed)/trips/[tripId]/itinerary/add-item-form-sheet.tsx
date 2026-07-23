@@ -22,9 +22,17 @@ export interface AddItemFormSheetProps {
   tripId: string;
   /** IANA timezone from `trips.timezone` — passed from the page level. */
   tripTimezone: string;
+  /** #484: trip date bounds — forwarded to AddItemForm's range check. */
+  tripStartsAt?: string | null;
+  tripEndsAt?: string | null;
 }
 
-export function AddItemFormSheet({ tripId, tripTimezone }: AddItemFormSheetProps) {
+export function AddItemFormSheet({
+  tripId,
+  tripTimezone,
+  tripStartsAt,
+  tripEndsAt,
+}: AddItemFormSheetProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
 
@@ -53,6 +61,8 @@ export function AddItemFormSheet({ tripId, tripTimezone }: AddItemFormSheetProps
           <AddItemForm
             tripId={tripId}
             tripTimezone={tripTimezone}
+            tripStartsAt={tripStartsAt}
+            tripEndsAt={tripEndsAt}
             onSuccess={handleSuccess}
             onCancel={() => setOpen(false)}
           />
