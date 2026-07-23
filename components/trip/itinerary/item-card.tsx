@@ -57,9 +57,6 @@ export interface ItemCardProps {
   tripMembers: TripMember[];
   /** IANA timezone from `trips.timezone` — forwarded to EditItemFormSheet. */
   tripTimezone: string;
-  /** #484: trip date bounds — forwarded to EditItemFormSheet's range check. */
-  tripStartsAt?: string | null;
-  tripEndsAt?: string | null;
   /** #365: member flags for this item. Under organizer RLS this is every
    * member's flags; under member RLS it is already scoped to the viewer's
    * own rows (the M4 owner-reads-own SELECT policy). */
@@ -77,8 +74,6 @@ export function ItemCard({
   lodgingAssignments,
   tripMembers,
   tripTimezone,
-  tripStartsAt,
-  tripEndsAt,
   itemFlags,
   inCount,
 }: ItemCardProps) {
@@ -140,12 +135,7 @@ export function ItemCard({
           ) : null}
         </div>
         {isOrganizer ? (
-          <EditItemFormSheet
-            item={item}
-            tripTimezone={tripTimezone}
-            tripStartsAt={tripStartsAt}
-            tripEndsAt={tripEndsAt}
-          />
+          <EditItemFormSheet item={item} tripTimezone={tripTimezone} />
         ) : null}
       </div>
 

@@ -83,7 +83,11 @@ const baseFormSchema = z.object({
  *   null-trip-dates gotcha — a trip with no dates set imposes no range).
  *   `day` and the trip bounds are all `YYYY-MM-DD`, so a lexicographic
  *   string compare is correct and avoids the UTC-shift bug class that a
- *   `new Date("YYYY-MM-DD")` parse would introduce.
+ *   `new Date("YYYY-MM-DD")` parse would introduce. This form has no
+ *   `endDay` field (multi-day items, #504/#509, are edit-only) — only the
+ *   start `day` is range-checked here. That's a deliberate scope cut for
+ *   this PR, not an oversight: a multi-day item's `end_day` running past
+ *   the trip's end is unvalidated by this refine.
  */
 function buildFormSchema(
   tripStartsAt: string | null | undefined,

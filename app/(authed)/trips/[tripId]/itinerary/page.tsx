@@ -128,8 +128,6 @@ export default async function ItineraryPage({ params }: PageProps) {
               lodgingAssignmentsMap={lodgingAssignmentsMap}
               tripMembers={tripMembers}
               tripTimezone={trip.timezone}
-              tripStartsAt={trip.starts_at}
-              tripEndsAt={trip.ends_at}
               itemFlagsMap={itemFlagsMap}
               inCount={rsvpCounts.going}
             />

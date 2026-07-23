@@ -23,17 +23,12 @@ export interface EditItemFormSheetProps {
   item: ItineraryItem;
   /** IANA timezone from `trips.timezone` — passed from the page level. */
   tripTimezone: string;
-  /** #484: trip date bounds — forwarded to EditItemForm's range check. */
-  tripStartsAt?: string | null;
-  tripEndsAt?: string | null;
   className?: string;
 }
 
 export function EditItemFormSheet({
   item,
   tripTimezone,
-  tripStartsAt,
-  tripEndsAt,
   className,
 }: EditItemFormSheetProps) {
   const router = useRouter();
@@ -55,8 +50,6 @@ export function EditItemFormSheet({
         <EditItemForm
           item={item}
           tripTimezone={tripTimezone}
-          tripStartsAt={tripStartsAt}
-          tripEndsAt={tripEndsAt}
           onSuccess={handleSuccess}
           onCancel={() => setOpen(false)}
           onDeleted={handleDeleted}

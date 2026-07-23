@@ -30,10 +30,6 @@ export interface DaySectionProps {
   tripMembers: TripMember[];
   /** IANA timezone from `trips.timezone` — forwarded to ItemCard → EditItemFormSheet. */
   tripTimezone: string;
-  /** #484: trip date bounds — forwarded to ItemCard → EditItemFormSheet's
-   * range check. */
-  tripStartsAt?: string | null;
-  tripEndsAt?: string | null;
   /** #365: itemId → member flags (organizer: all members; member: own). */
   itemFlagsMap: Map<string, ItineraryItemMemberFlag[]>;
   /** #394: trip-level "going" RSVP count — the per-head cost denominator. */
@@ -50,8 +46,6 @@ export function DaySection({
   lodgingAssignmentsMap,
   tripMembers,
   tripTimezone,
-  tripStartsAt,
-  tripEndsAt,
   itemFlagsMap,
   inCount,
 }: DaySectionProps) {
@@ -97,8 +91,6 @@ export function DaySection({
               lodgingAssignments={lodgingAssignmentsMap.get(item.id) ?? []}
               tripMembers={tripMembers}
               tripTimezone={tripTimezone}
-              tripStartsAt={tripStartsAt}
-              tripEndsAt={tripEndsAt}
               itemFlags={itemFlagsMap.get(item.id) ?? []}
               inCount={inCount}
             />

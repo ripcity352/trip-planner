@@ -76,38 +76,29 @@ const baseFormSchema = z.object({
 });
 
 /**
- * #484: same two client-only checks as AddItemForm — see that file's
- * buildFormSchema comment for the instant-vs-string / null-trip-dates
- * rationale.
+ * #484: end-before-start only. Deliberately NO day-out-of-range check here
+ * — unlike AddItemForm, EditItemForm has no editable `day` field (it's
+ * fixed from `item.day` via defaultValues below, never a registered
+ * input). Adding the range refine to this schema would mean: if an
+ * organizer narrows the trip's dates after an item already exists outside
+ * the new range, EVERY future save on that item — title, cost, anything —
+ * gets blocked by an error pointing at a field the user can't see or
+ * touch. The day-range check stays enforced where it's actionable: the
+ * add form (day is a real input there) and the server action.
  */
-function buildFormSchema(
-  tripStartsAt: string | null | undefined,
-  tripEndsAt: string | null | undefined
-) {
-  return baseFormSchema.superRefine((values, ctx) => {
-    if (values.startTime && values.endTime) {
-      const start = new Date(values.startTime).getTime();
-      const end = new Date(values.endTime).getTime();
-      if (end <= start) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["endTime"],
-          message: M3_UI_STRINGS.itineraryForm_validation_end_before_start,
-        });
-      }
+const formSchema = baseFormSchema.superRefine((values, ctx) => {
+  if (values.startTime && values.endTime) {
+    const start = new Date(values.startTime).getTime();
+    const end = new Date(values.endTime).getTime();
+    if (end <= start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: M3_UI_STRINGS.itineraryForm_validation_end_before_start,
+      });
     }
-
-    if (tripStartsAt && tripEndsAt) {
-      if (values.day < tripStartsAt || values.day > tripEndsAt) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["day"],
-          message: M3_UI_STRINGS.itineraryForm_validation_day_out_of_range,
-        });
-      }
-    }
-  });
-}
+  }
+});
 
 type FormValues = z.infer<typeof baseFormSchema>;
 
@@ -129,11 +120,6 @@ export interface EditItemFormProps {
   item: ItineraryItem;
   /** IANA timezone from `trips.timezone` — passed from the page level. */
   tripTimezone: string;
-  /** #484: trip date bounds (`trips.starts_at`/`ends_at`) — YYYY-MM-DD or
-   * null. The day-out-of-range check is skipped entirely unless both are
-   * set (null-trip-dates gotcha). */
-  tripStartsAt?: string | null;
-  tripEndsAt?: string | null;
   onSuccess: (item: ItineraryItem) => void;
   onCancel: () => void;
   onDeleted: () => void;
@@ -142,8 +128,6 @@ export interface EditItemFormProps {
 export function EditItemForm({
   item,
   tripTimezone,
-  tripStartsAt,
-  tripEndsAt,
   onSuccess,
   onCancel,
   onDeleted,
@@ -151,11 +135,6 @@ export function EditItemForm({
   const [serverErrorKey, setServerErrorKey] = React.useState<ErrorKey | null>(null);
   const [deleteConfirm, setDeleteConfirm] = React.useState(false);
   const [isDeleting, startDeleteTransition] = React.useTransition();
-
-  const formSchema = React.useMemo(
-    () => buildFormSchema(tripStartsAt, tripEndsAt),
-    [tripStartsAt, tripEndsAt]
-  );
 
   const {
     register,
@@ -300,16 +279,6 @@ export function EditItemForm({
           ))}
         </select>
       </div>
-
-      {/* #484: EditItemForm has no editable day field — `day` is fixed to
-          item.day (see defaultValues above). This surfaces only if the
-          trip's dates were narrowed after the item was created; the fix is
-          to widen the trip dates or delete the item, not to edit here. */}
-      {errors.day ? (
-        <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>
-          {errors.day.message}
-        </p>
-      ) : null}
 
       {/* Start time — datetime-local widget, rendered in trip TZ */}
       <DatetimeField
