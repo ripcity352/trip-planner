@@ -26,6 +26,8 @@ import { getItineraryByTrip, getMyItemRsvps, getLodgingAssignmentsByTrip, getIte
 import { getRsvpCountsForTrip } from "@/lib/db/rsvp";
 import { M3_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
 import { DaySection } from "@/components/trip/itinerary/day-section";
+import { continuingItemsForDay } from "@/lib/itinerary/continuing-items";
+import { nowNextItemIds } from "@/lib/utils/whats-happening-now";
 import { AddItemFormSheet } from "./add-item-form-sheet";
 import type { ItineraryItemRsvpStatus } from "@/lib/db/types";
 
@@ -101,6 +103,12 @@ export default async function ItineraryPage({ params }: PageProps) {
   }
   const days = Array.from(dayMap.keys()).sort();
 
+  // #484: now/next cue. Computed once at request time against browser-/
+  // server-local now (the #108 TZ limitation whatsHappeningNow already
+  // documents). Outside the trip window both ids come back null and no
+  // card is flagged.
+  const { nowItemId, nextItemId } = nowNextItemIds(items, new Date());
+
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-6">
@@ -130,6 +138,9 @@ export default async function ItineraryPage({ params }: PageProps) {
               tripTimezone={trip.timezone}
               itemFlagsMap={itemFlagsMap}
               inCount={rsvpCounts.going}
+              continuingItems={continuingItemsForDay(items, day)}
+              nowItemId={nowItemId}
+              nextItemId={nextItemId}
             />
           ))}
         </div>

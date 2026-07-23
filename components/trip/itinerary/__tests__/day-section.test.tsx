@@ -9,10 +9,26 @@ import { render, screen } from "@testing-library/react";
 import { DaySection } from "../day-section";
 import type { ItineraryItem } from "@/lib/db/types";
 
-// Mock ItemCard since we're testing DaySection in isolation
+// Mock ItemCard since we're testing DaySection in isolation. Surface the
+// now/next flags as data attributes so the threading can be asserted.
 vi.mock("../item-card", () => ({
-  ItemCard: ({ item }: { item: ItineraryItem }) => (
-    <div data-testid="item-card">{item.title}</div>
+  ItemCard: ({
+    item,
+    isNow,
+    isNext,
+  }: {
+    item: ItineraryItem;
+    isNow?: boolean;
+    isNext?: boolean;
+  }) => (
+    <div
+      data-testid="item-card"
+      data-item-id={item.id}
+      data-is-now={isNow ? "true" : "false"}
+      data-is-next={isNext ? "true" : "false"}
+    >
+      {item.title}
+    </div>
   ),
 }));
 
@@ -53,6 +69,11 @@ const sharedProps = {
   tripTimezone: "America/New_York",
   // #394: trip-level "going" RSVP count, forwarded to every ItemCard
   inCount: 0,
+  // #508: multi-day items passing through this day (default: none)
+  continuingItems: [] as ItineraryItem[],
+  // #484: now/next cue ids (default: nothing flagged)
+  nowItemId: null as string | null,
+  nextItemId: null as string | null,
 };
 
 describe("DaySection", () => {
@@ -178,5 +199,95 @@ describe("DaySection — celebrant gap-day note (#480)", () => {
       />
     );
     expect(screen.queryByTestId("celebrant-gap-note")).not.toBeInTheDocument();
+  });
+});
+
+describe("DaySection — multi-day continues marker (#508)", () => {
+  it("renders a continues line with title + through-date for a passing item", () => {
+    render(
+      <DaySection
+        day="2026-08-02"
+        items={[makeItem({ id: "own", title: "Breakfast" })]}
+        {...sharedProps}
+        continuingItems={[
+          makeItem({
+            id: "villa",
+            title: "Beach villa",
+            day: "2026-08-01",
+            end_day: "2026-08-04",
+          }),
+        ]}
+      />
+    );
+    const marker = screen.getByTestId("continues-marker");
+    expect(marker).toHaveTextContent(/beach villa continues/i);
+    expect(marker).toHaveTextContent(/through Aug 4/i);
+  });
+
+  it("renders one marker per continuing item", () => {
+    render(
+      <DaySection
+        day="2026-08-02"
+        items={[makeItem({ id: "own" })]}
+        {...sharedProps}
+        continuingItems={[
+          makeItem({ id: "a", title: "Villa", day: "2026-08-01", end_day: "2026-08-04" }),
+          makeItem({ id: "b", title: "Festival pass", day: "2026-08-01", end_day: "2026-08-03" }),
+        ]}
+      />
+    );
+    expect(screen.getAllByTestId("continues-marker")).toHaveLength(2);
+  });
+
+  it("renders no marker when nothing continues through the day", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={[makeItem()]}
+        {...sharedProps}
+        continuingItems={[]}
+      />
+    );
+    expect(screen.queryByTestId("continues-marker")).not.toBeInTheDocument();
+  });
+});
+
+describe("DaySection — now/next cue threading (#484)", () => {
+  it("flags the matching card as now / next and leaves others unflagged", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={[
+          makeItem({ id: "i1", title: "Now item" }),
+          makeItem({ id: "i2", title: "Next item" }),
+          makeItem({ id: "i3", title: "Later item" }),
+        ]}
+        {...sharedProps}
+        nowItemId="i1"
+        nextItemId="i2"
+      />
+    );
+    const [now, next, later] = screen.getAllByTestId("item-card");
+    expect(now).toHaveAttribute("data-is-now", "true");
+    expect(now).toHaveAttribute("data-is-next", "false");
+    expect(next).toHaveAttribute("data-is-next", "true");
+    expect(next).toHaveAttribute("data-is-now", "false");
+    expect(later).toHaveAttribute("data-is-now", "false");
+    expect(later).toHaveAttribute("data-is-next", "false");
+  });
+
+  it("flags nothing when both ids are null", () => {
+    render(
+      <DaySection
+        day="2026-08-01"
+        items={[makeItem({ id: "i1" })]}
+        {...sharedProps}
+        nowItemId={null}
+        nextItemId={null}
+      />
+    );
+    const [card] = screen.getAllByTestId("item-card");
+    expect(card).toHaveAttribute("data-is-now", "false");
+    expect(card).toHaveAttribute("data-is-next", "false");
   });
 });

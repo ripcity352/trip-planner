@@ -17,7 +17,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { whatsHappeningNow } from "@/lib/utils/whats-happening-now";
+import {
+  nowNextItemIds,
+  whatsHappeningNow,
+} from "@/lib/utils/whats-happening-now";
 import type { ItineraryItem } from "@/lib/db/types";
 
 // Minimal fixture helper — only the fields the pure function cares about.
@@ -208,5 +211,30 @@ describe("whatsHappeningNow", () => {
       new Date("2026-06-15T13:00:00")
     );
     expect(result.now).toBeNull();
+  });
+});
+
+describe("nowNextItemIds (#484)", () => {
+  it("projects the in-progress and next items down to their ids", () => {
+    const items = [
+      item("a", "2026-06-15", "08:00", "12:00"),
+      item("b", "2026-06-15", "14:00", "16:00"),
+    ];
+    // 10:00 → 'a' is in progress, 'b' is upcoming
+    const result = nowNextItemIds(items, new Date("2026-06-15T10:00:00"));
+    expect(result).toEqual({ nowItemId: "a", nextItemId: "b" });
+  });
+
+  it("returns null ids when nothing is in progress or upcoming (post-trip)", () => {
+    const items = [item("a", "2026-06-14", "08:00", "12:00")];
+    const result = nowNextItemIds(items, new Date("2026-06-20T10:00:00"));
+    expect(result).toEqual({ nowItemId: null, nextItemId: null });
+  });
+
+  it("returns null ids for an empty itinerary", () => {
+    expect(nowNextItemIds([], new Date("2026-06-15T10:00:00"))).toEqual({
+      nowItemId: null,
+      nextItemId: null,
+    });
   });
 });

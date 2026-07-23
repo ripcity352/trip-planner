@@ -34,6 +34,16 @@ export interface DaySectionProps {
   itemFlagsMap: Map<string, ItineraryItemMemberFlag[]>;
   /** #394: trip-level "going" RSVP count — the per-head cost denominator. */
   inCount: number;
+  /** #508: multi-day items that pass THROUGH this day (start day excluded,
+   * end day included). Already RLS-filtered upstream. Rendered as light
+   * "continues" markers under the heading — never as cards here. */
+  continuingItems: ItineraryItem[];
+  /** #484: id of the currently-in-progress item (or null) — flags the
+   * matching card's "Now" chip. */
+  nowItemId: string | null;
+  /** #484: id of the next upcoming item (or null) — flags the matching
+   * card's "Up next" chip. */
+  nextItemId: string | null;
 }
 
 export function DaySection({
@@ -48,6 +58,9 @@ export function DaySection({
   tripTimezone,
   itemFlagsMap,
   inCount,
+  continuingItems,
+  nowItemId,
+  nextItemId,
 }: DaySectionProps) {
   // parseISO treats the string as local midnight — keeps the weekday
   // consistent with what you'd expect for the trip date.
@@ -61,6 +74,13 @@ export function DaySection({
   // it — the note's existence would leak that this day hides content from
   // them. Guard lives here (not the page) so the one component that can
   // render the note also enforces who may see it.
+  //
+  // #508 interplay: this gap-day check reads only THIS day's own `items`,
+  // never `continuingItems`. That is intentional — a day whose own items
+  // are all hidden from the celebrant is still a gap for them even if a
+  // multi-day booking happens to pass through it. The continues marker is
+  // a display convenience, not a visibility-bearing item, so it must not
+  // rescue the day out of gap status.
   const showGapNote =
     isOrganizer && !isCelebrant && isCelebrantGapDay(items);
 
@@ -79,6 +99,30 @@ export function DaySection({
           {celebrantGapDayNote(celebrantName)}
         </p>
       ) : null}
+      {/* #508: multi-day items passing through this day. Light one-liner
+          each, above the cards — a heads-up that something spans this day
+          without duplicating the full card from its start day. */}
+      {continuingItems.length > 0 ? (
+        <ul className="-mt-1 mb-3 flex flex-col gap-0.5">
+          {continuingItems.map((item) => {
+            // end_day is non-null by construction (continuingItemsForDay
+            // filters nulls); this guard narrows the type without a
+            // non-null assertion.
+            if (item.end_day === null) return null;
+            return (
+              <li
+                key={item.id}
+                data-testid="continues-marker"
+                className="text-muted-foreground text-xs"
+              >
+                {M3_UI_STRINGS.itinerary_continues_marker_template
+                  .replace("{title}", item.title)
+                  .replace("{date}", formatEndDayLabel(item.end_day))}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
       <ol className="flex flex-col gap-3">
         {items.map((item) => (
           <li key={item.id}>
@@ -93,10 +137,24 @@ export function DaySection({
               tripTimezone={tripTimezone}
               itemFlags={itemFlagsMap.get(item.id) ?? []}
               inCount={inCount}
+              isNow={item.id === nowItemId}
+              isNext={item.id === nextItemId}
             />
           </li>
         ))}
       </ol>
     </section>
   );
+}
+
+/**
+ * Format a `YYYY-MM-DD` end-day string as `Mmm d`. Parses the parts
+ * manually and builds a *local* Date — `new Date("YYYY-MM-DD")` parses as
+ * UTC midnight and shifts a day in western timezones (same guard as
+ * item-card.tsx's cross-day range label). `end_day` is non-null for every
+ * item that reaches this helper (continuingItemsForDay filters nulls).
+ */
+function formatEndDayLabel(endDay: string): string {
+  const [y, mo, d] = endDay.split("-").map(Number);
+  return format(new Date(y, mo - 1, d), "MMM d");
 }
