@@ -449,3 +449,29 @@ describe("ItemCard — member flags (#365)", () => {
     );
   });
 });
+
+describe("ItemCard — now/next cue chip (#484)", () => {
+  it("renders the 'Now' chip when isNow is set", () => {
+    render(<ItemCard item={makeItem()} {...baseProps} isNow />);
+    const chip = screen.getByTestId("now-next-chip");
+    expect(chip).toBeInTheDocument();
+    expect(chip).toHaveTextContent("Now");
+  });
+
+  it("renders the 'Up next' chip when isNext is set", () => {
+    render(<ItemCard item={makeItem()} {...baseProps} isNext />);
+    const chip = screen.getByTestId("now-next-chip");
+    expect(chip).toBeInTheDocument();
+    expect(chip).toHaveTextContent("Up next");
+  });
+
+  it("prefers 'Now' over 'Up next' if both are somehow set", () => {
+    render(<ItemCard item={makeItem()} {...baseProps} isNow isNext />);
+    expect(screen.getByTestId("now-next-chip")).toHaveTextContent("Now");
+  });
+
+  it("renders no chip when neither flag is set (default)", () => {
+    render(<ItemCard item={makeItem()} {...baseProps} />);
+    expect(screen.queryByTestId("now-next-chip")).not.toBeInTheDocument();
+  });
+});

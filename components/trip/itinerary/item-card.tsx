@@ -63,6 +63,10 @@ export interface ItemCardProps {
   itemFlags: ItineraryItemMemberFlag[];
   /** #394: trip-level "going" RSVP count — the per-head cost denominator. */
   inCount: number;
+  /** #484: this item is currently in progress (per whatsHappeningNow). */
+  isNow?: boolean;
+  /** #484: this item is the next upcoming item (per whatsHappeningNow). */
+  isNext?: boolean;
 }
 
 export function ItemCard({
@@ -76,6 +80,8 @@ export function ItemCard({
   tripTimezone,
   itemFlags,
   inCount,
+  isNow = false,
+  isNext = false,
 }: ItemCardProps) {
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
   // Non-default visibility badge for organizers_only / custom — parity with
@@ -113,6 +119,19 @@ export function ItemCard({
 
   return (
     <article className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3">
+      {/* #484: now/next cue. `isNow` wins when both are somehow set (they
+          are mutually exclusive by construction). Muted-accent fill keeps
+          it a quiet status flag, not a loud pill. */}
+      {isNow || isNext ? (
+        <span
+          data-testid="now-next-chip"
+          className="inline-flex w-fit items-center rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground"
+        >
+          {isNow
+            ? M3_UI_STRINGS.itinerary_item_now_chip
+            : M3_UI_STRINGS.itinerary_item_next_chip}
+        </span>
+      ) : null}
       {/* Header row: kind icon + title + time + edit affordance (organizer) */}
       <div className="flex items-start gap-2">
         <KindIcon

@@ -257,6 +257,17 @@ export const M3_UI_STRINGS = {
   // template + generic fallback as the hide-celebrant badge, via
   // celebrantGapDayNote().
   itinerary_day_gap_celebrant_note_template: "Looks wide open to {name}",
+  // #508 — multi-day "continues" marker. Rendered on each intermediate
+  // day a multi-day item spans (after its start day, up to and including
+  // its end day), so a room booking or festival pass reads as ongoing
+  // rather than vanishing after day one. {date} is the item's end day
+  // (Mmm d). Dinner-table voice: a plain heads-up, not a status pill.
+  itinerary_continues_marker_template: "{title} continues (through {date})",
+  // #484 — now/next cue chips on the itinerary cards. Compact siblings of
+  // the dashboard now/next card's "Right now"/"Up next" labels — shorter
+  // because they sit inline on a card, not as a section kicker.
+  itinerary_item_now_chip: "Now",
+  itinerary_item_next_chip: "Up next",
   itinerary_item_kind_event: "Event",
   itinerary_item_kind_lodging: "Lodging",
   itinerary_item_kind_transport: "Transport",

@@ -126,3 +126,27 @@ export function whatsHappeningNow(
 
   return { now: inProgress, next };
 }
+
+export interface NowNextIds {
+  nowItemId: string | null;
+  nextItemId: string | null;
+}
+
+/**
+ * Thin id-only projection of `whatsHappeningNow`, for the itinerary
+ * page (#484): the server component needs just the two item ids to flag
+ * the matching cards' now/next chips, not the full item objects. Kept
+ * pure and separately exported so the page's selection logic is unit
+ * testable without rendering. Nulls pass straight through — outside the
+ * trip window the helper returns nulls and no card is flagged.
+ */
+export function nowNextItemIds(
+  items: ItineraryItem[],
+  now: Date
+): NowNextIds {
+  const { now: current, next } = whatsHappeningNow(items, now);
+  return {
+    nowItemId: current?.id ?? null,
+    nextItemId: next?.id ?? null,
+  };
+}
