@@ -447,7 +447,7 @@ test.describe("M4 golden path — celebrant perspective", () => {
     const tabBar = page
       .locator('[role="navigation"][aria-label*="tab"]')
       .or(page.locator('[data-testid="bottom-tab-bar"]'))
-      .or(page.locator("nav").filter({ hasText: /home|plans|posts|crew|me/i }));
+      .or(page.locator("nav").filter({ hasText: /home|plans|updates|crew|me/i }));
 
     const tabBarVisible = await tabBar
       .first()
@@ -463,8 +463,8 @@ test.describe("M4 golden path — celebrant perspective", () => {
       return;
     }
 
-    // Navigate through the 5 tabs: home / plans / posts / crew / me
-    const tabLabels = ["home", "plans", "posts", "crew", "me"];
+    // Navigate through the 5 tabs: home / plans / updates / crew / me
+    const tabLabels = ["home", "plans", "updates", "crew", "me"];
 
     for (const label of tabLabels) {
       const tab = page.getByRole("link", { name: new RegExp(label, "i") }).or(

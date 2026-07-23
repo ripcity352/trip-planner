@@ -43,6 +43,14 @@ export type NetworkFailure = {
   errorKey: Extract<ErrorKey, "network">;
 };
 
+/**
+ * WARNING (#438): never wrap a server action that calls `redirect()`.
+ * Next's `redirect()` works by throwing a special `NEXT_REDIRECT` value —
+ * the try/catch here can't tell that apart from a real rejection, so it
+ * swallows the redirect and reports it back to the caller as `{ ok: false,
+ * errorKey: "network" }`. Only wrap actions that resolve to the
+ * `ActionResult` envelope on every path.
+ */
 export async function callAction<T extends ActionResult>(
   fn: () => Promise<T>
 ): Promise<T | NetworkFailure> {

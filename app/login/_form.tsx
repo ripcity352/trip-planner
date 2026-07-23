@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AUTH_COPY } from "@/lib/copy/auth";
 import { isGoogleOAuthEnabled } from "@/lib/auth/oauth-config";
+import { safeNext } from "@/lib/auth/safe-next";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import {
   signInWithPasswordAction,
@@ -171,7 +172,11 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
         })
       );
       if (result.ok) {
-        window.location.href = next ?? "/trips";
+        // Re-validated client-side (belt-and-braces, #438): `next` already
+        // passed through safeNext server-side wherever it was minted, but
+        // this is the actual navigation sink — same guard the server uses,
+        // applied again at the point of use.
+        window.location.href = safeNext(next ?? null);
         return;
       }
       setServerError(result.errorKey);
@@ -216,7 +221,11 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
         })
       );
       if (result.ok) {
-        window.location.href = next ?? "/trips";
+        // Re-validated client-side (belt-and-braces, #438): `next` already
+        // passed through safeNext server-side wherever it was minted, but
+        // this is the actual navigation sink — same guard the server uses,
+        // applied again at the point of use.
+        window.location.href = safeNext(next ?? null);
         return;
       }
       setServerError(result.errorKey);
@@ -240,7 +249,11 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
         })
       );
       if (result.ok) {
-        window.location.href = next ?? "/trips";
+        // Re-validated client-side (belt-and-braces, #438): `next` already
+        // passed through safeNext server-side wherever it was minted, but
+        // this is the actual navigation sink — same guard the server uses,
+        // applied again at the point of use.
+        window.location.href = safeNext(next ?? null);
         return;
       }
       setServerError(result.errorKey);

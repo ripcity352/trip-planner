@@ -432,6 +432,12 @@ export async function requestEmailCode(
         name: error.name,
       });
     }
+    // "auth_wrong_password" here is a borrowed, inert parameter (#438):
+    // mapAuthErrorToKey's invalidCredentialsKey only fires on the
+    // `invalid_credentials` branch, which is a signInWithPassword-only
+    // GoTrue shape. signInWithOtp never yields it, so this key is never
+    // actually returned on the OTP path — it's along for the ride because
+    // the mapper is shared (#432).
     const mapped = mapAuthErrorToKey(error, "auth_wrong_password");
     if (mapped) {
       return { ok: false, errorKey: mapped };

@@ -57,11 +57,13 @@ describe("AnnouncementComposerTrigger", () => {
     vi.clearAllMocks();
   });
 
-  it("renders nothing for non-organizers", () => {
-    const { container } = render(
-      <AnnouncementComposerTrigger {...defaultProps} isOrganizer={false} />
-    );
-    expect(container.firstChild).toBeNull();
+  it("renders a quiet reader line for non-organizers, not the compose trigger", () => {
+    render(<AnnouncementComposerTrigger {...defaultProps} isOrganizer={false} />);
+    // Copy sourced from M3_UI_STRINGS.announcements_reader_only_caption.
+    expect(
+      screen.getByText(/organizers drop updates here/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("renders a collapsed one-line trigger by default", () => {

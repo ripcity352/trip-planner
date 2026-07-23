@@ -5,6 +5,13 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+**2026-07-22 note (#438 hardening pass):** reaffirmed, no behavior change —
+GoTrue's `invalid_grant` code stays mapped to `network`, not a credentials
+key, in `lib/auth/auth-error-map.ts` (modern managed Supabase emits
+`invalid_credentials` for a rejected email+password; `invalid_grant` reads
+as the legacy OAuth2 stale/invalid-grant shape). See that file's comment
+for the full rationale.
+
 ## 2026-07-21 — #480: celebrant gap-day nudge is read-time, organizer-only, advisory
 
 **Decision:** when every item on an itinerary day is invisible to the
