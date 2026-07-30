@@ -689,9 +689,8 @@ export const MEMBER_DAYS_UI_STRINGS = {
   // Screen-reader expansion of the mono "thu 8 · fri 12" line — the
   // compact register is ambiguous read aloud ("thu 8" could be a date).
   memberDays_headcount_day_aria_template: "{count} in on {day}",
-  // #524 — day token tap target ("see who" affordance) + expanded panel.
+  // #524 — day tokens expand to names; empty state replaces null.
   memberDays_headcount_empty: "No one's marked their days yet.",
-  memberDays_day_expand_aria_template: "See who's around {day}",
   // Leg annotations on the expanded names — trip-local times.
   memberDays_leg_lands_template: "lands {time}",
   memberDays_leg_leaves_template: "leaves {time}",

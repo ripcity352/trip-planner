@@ -55,10 +55,11 @@ export function DayHeadcountList({
               type="button"
               aria-expanded={isOpen}
               aria-controls={isOpen ? "whos-around-panel" : undefined}
-              aria-label={MEMBER_DAYS_UI_STRINGS.memberDays_day_expand_aria_template.replace(
-                "{day}",
-                d.weekday
-              )}
+              // Announces the count the visible "fri 4" token carries —
+              // aria-expanded already signals the toggle affordance.
+              aria-label={MEMBER_DAYS_UI_STRINGS.memberDays_headcount_day_aria_template
+                .replace("{count}", String(d.count))
+                .replace("{day}", d.weekday)}
               onClick={() => setOpenIso(isOpen ? null : d.iso)}
               className={cn(
                 "focus-visible:ring-ring relative inline-flex h-9 items-center rounded-xs border px-3 font-mono text-sm transition-colors after:absolute after:-inset-y-1 after:content-[''] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",

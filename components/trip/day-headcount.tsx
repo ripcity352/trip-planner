@@ -31,7 +31,7 @@ import { getTripMembers } from "@/lib/db/trips";
 import { getTravelLegsByTrip } from "@/lib/db/travel-legs";
 import { MEMBER_DAYS_UI_STRINGS } from "@/lib/copy/empty-states";
 import { parseDateOnly } from "@/lib/utils/date-only";
-import { isoToDbDate, formatTripTime } from "@/lib/utils/format-trip-tz";
+import { legNoteForDay } from "@/lib/utils/leg-day-note";
 import { resolveMemberName } from "@/lib/utils/member-display";
 import {
   DayHeadcountList,
@@ -49,43 +49,6 @@ export interface DayHeadcountProps {
   endsAt: string | null;
   /** IANA timezone from trips.timezone — leg times render trip-local. */
   timezone: string;
-}
-
-/** "lands 10:30 am" / "leaves 3:00 pm" for legs touching this day. */
-function legNoteForDay(
-  legs: ReadonlyArray<TravelLeg>,
-  iso: string,
-  timezone: string
-): string | null {
-  const notes = legs.flatMap((leg) => {
-    if (
-      leg.direction === "inbound" &&
-      leg.arrive_at &&
-      isoToDbDate(leg.arrive_at, timezone) === iso
-    ) {
-      return [
-        MEMBER_DAYS_UI_STRINGS.memberDays_leg_lands_template.replace(
-          "{time}",
-          formatTripTime(leg.arrive_at, timezone)
-        ),
-      ];
-    }
-    if (
-      leg.direction === "outbound" &&
-      leg.depart_at &&
-      isoToDbDate(leg.depart_at, timezone) === iso
-    ) {
-      return [
-        MEMBER_DAYS_UI_STRINGS.memberDays_leg_leaves_template.replace(
-          "{time}",
-          formatTripTime(leg.depart_at, timezone)
-        ),
-      ];
-    }
-    return [];
-  });
-
-  return notes.length > 0 ? notes.join(" · ") : null;
 }
 
 export async function DayHeadcount({
@@ -156,16 +119,6 @@ export async function DayHeadcount({
 
   const nothingSeeded = dayRows.length === 0;
 
-  // Screen-reader expansion — the compact "thu 8 · fri 12" register is
-  // ambiguous read aloud (a bare number could be a date).
-  const spoken = days
-    .map((d) =>
-      MEMBER_DAYS_UI_STRINGS.memberDays_headcount_day_aria_template
-        .replace("{count}", String(d.count))
-        .replace("{day}", d.weekday)
-    )
-    .join(", ");
-
   return (
     <div
       id="whos-around"
@@ -179,10 +132,10 @@ export async function DayHeadcount({
           {MEMBER_DAYS_UI_STRINGS.memberDays_headcount_empty}
         </p>
       ) : (
-        <>
-          <p className="sr-only">{spoken}</p>
-          <DayHeadcountList days={days} />
-        </>
+        // No separate sr-only counts line: each day token is a button
+        // whose aria-label carries "{count} in on {day}" (the compact
+        // "fri 4" register is ambiguous read aloud).
+        <DayHeadcountList days={days} />
       )}
       {/* Reciprocal wayfinding to the /me day-chips editor these
           statuses are fed by. */}
