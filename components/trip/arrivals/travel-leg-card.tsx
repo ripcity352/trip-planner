@@ -207,13 +207,16 @@ export function TravelLegCard({
         <p className="text-muted-foreground text-xs">{leg.notes}</p>
       ) : null}
 
-      {/* #526 — own-card conflict cue (first conflict only; a cue,
-          not a report). */}
-      {ownConflicts.length > 0 ? (
-        <p className="text-muted-foreground text-sm">
-          {legDayConflictLine(ownConflicts[0])}
+      {/* #526 — own-card conflict cues (an outbound leg can carry two:
+          leaves-not-around + still-marked-after). */}
+      {ownConflicts.map((conflict) => (
+        <p
+          key={conflict.kind}
+          className="text-muted-foreground text-sm"
+        >
+          {legDayConflictLine(conflict)}
         </p>
-      ) : null}
+      ))}
     </article>
   );
 }
