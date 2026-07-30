@@ -5,6 +5,42 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-07-30 — #524: per-day names for all members — deliberate walk-back of "aggregate-only, organizer-only"
+
+**Decision:** the roster "Who's around when" block (`day-headcount.tsx`)
+now renders for **every member**, always (empty state instead of `null`
+when the trip has dates), with tappable day tokens that expand to the
+names around that day — greyed rows for who isn't — annotated with that
+day's travel-leg time ("Carl — lands 10:30 am"). The /me "See who's
+around when" link is un-gated and anchors to `#whos-around`. Data layer:
+`getMemberDaysByTrip` (per-member rows) replaces `getPerDayGoingCounts`
+(aggregate) — counts derive from the same rows, keeping the #475
+trip-level-decliner exclusion in one query shape.
+
+**Gap named:** the #388 block shipped organizer-only and aggregate-only,
+citing persona-edge-attendees §4 ("no public attendance forensics") —
+but the M1 RLS SELECT policy comment and the original decision record
+both name per-member × per-day presence ("who's around on Saturday
+night") as the load-bearing use case. The §4 reading was over-applied:
+it targets *attendance shaming* (leaderboards, "Sam skipped Thursday"
+callouts, speed-to-RSVP), not neutral coordination data everyone volunteered
+via their own chips. Result was a compound dead end: a label promising a
+view that was never built, a link with no anchor, a target that renders
+null for most viewers.
+
+**Boundaries that stay:** no per-day timestamps or edit history, no
+"X hasn't marked days" nudge, greyed = "not that night" with no styling
+beyond mute, trip-level decliners excluded entirely (never rendered as
+a wall of grey), and the block still renders nothing for date-less trips.
+
+**Alternatives considered:**
+- *Keep aggregate, just fix the anchor/gate:* leaves the label
+  over-promise ("see WHO's around") and the documented use case unbuilt.
+- *New standalone availability page:* more surface for the same data;
+  the roster block is where presence already lives.
+
+---
+
 **2026-07-22 note (#438 hardening pass):** reaffirmed, no behavior change —
 GoTrue's `invalid_grant` code stays mapped to `network`, not a credentials
 key, in `lib/auth/auth-error-map.ts` (modern managed Supabase emits

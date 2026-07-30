@@ -88,6 +88,38 @@ export function formatTripDateTime(iso: string, tripTimezone: string): string {
 }
 
 /**
+ * Time-only sibling of `formatTripDateTime` — `"h:mm aaa"`, e.g.
+ * `"10:30 am"` (lowercase am/pm per the date/time register). Used where
+ * the surrounding UI already names the day (#524 "lands 10:30 am"
+ * annotations on the per-day names list).
+ *
+ * Same error posture as formatTripDateTime: log + return the raw iso so
+ * one malformed timestamp never blows up the render.
+ */
+export function formatTripTime(iso: string, tripTimezone: string): string {
+  const date = parseISO(iso);
+  if (!isValid(date)) {
+    console.error("[format-trip-tz] formatTripTime failed:", {
+      iso,
+      tripTimezone,
+      err: new Error("invalid ISO string"),
+    });
+    return iso;
+  }
+
+  try {
+    return formatInTimeZone(date, tripTimezone, "h:mm aaa");
+  } catch (err) {
+    console.error("[format-trip-tz] formatTripTime failed:", {
+      iso,
+      tripTimezone,
+      err,
+    });
+    return iso;
+  }
+}
+
+/**
  * Parse the YYYY-MM-DDTHH:mm value from `<input type="datetime-local">` —
  * which is a wall-clock time in the trip's timezone — and return an
  * ISO-8601 UTC string.

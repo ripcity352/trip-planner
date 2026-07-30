@@ -144,18 +144,16 @@ export default async function MePage({ params }: PageProps) {
               {MEMBER_DAYS_UI_STRINGS.memberDays_subhead}
             </p>
             <DayAttendanceChips tripId={trip.id} days={dayChips} />
-            {/* Glanceability sweep: reciprocal wayfinding to the roster's
-                organizer-only DayHeadcount block these chips feed.
-                Organizer-gated so the link never promises a block the
-                viewer's roster won't render (rule 11 — no dead ends). */}
-            {member.role === "organizer" || member.role === "co_organizer" ? (
-              <Link
-                href={`/trips/${tripId}/roster`}
-                className="text-primary mt-3 inline-block text-sm underline-offset-4 hover:underline"
-              >
-                {MEMBER_DAYS_UI_STRINGS.memberDays_link_to_headcount}
-              </Link>
-            ) : null}
+            {/* #524 — reciprocal wayfinding to the roster's "Who's
+                around when" block these chips feed. Un-gated: the block
+                now renders for every member (empty state included), so
+                the link always lands on something. */}
+            <Link
+              href={`/trips/${tripId}/roster#whos-around`}
+              className="text-primary mt-3 inline-block text-sm underline-offset-4 hover:underline"
+            >
+              {MEMBER_DAYS_UI_STRINGS.memberDays_link_to_headcount}
+            </Link>
           </div>
         ) : null}
 

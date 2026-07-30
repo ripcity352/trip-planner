@@ -75,13 +75,14 @@ export default async function RosterPage({ params }: PageProps) {
         <p className="text-muted-foreground mt-1 text-sm">{trip.name}</p>
       </header>
 
-      {/* #388 — organizer-only per-day headcount (self-contained; single mount) */}
+      {/* #388/#524 — per-day "Who's around when" block, all members
+          (self-contained; single mount) */}
       <DayHeadcount
         tripId={trip.id}
         tripSlug={slug}
-        viewerRole={viewer.role}
         startsAt={trip.starts_at}
         endsAt={trip.ends_at}
+        timezone={trip.timezone}
       />
 
       <RosterList

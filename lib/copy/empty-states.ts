@@ -683,11 +683,18 @@ export const MEMBER_DAYS_UI_STRINGS = {
   // Screen-reader label for the chip group (the visible heading is the
   // section h2; the group repeats it for AT users who land on the group).
   memberDays_group_aria: "Which days are you around?",
-  // Roster — organizer-only per-day headcount line
+  // Roster — per-day presence block (#524: visible to all members, day
+  // tokens expand to names).
   memberDays_headcount_heading: "Who's around when",
   // Screen-reader expansion of the mono "thu 8 · fri 12" line — the
   // compact register is ambiguous read aloud ("thu 8" could be a date).
   memberDays_headcount_day_aria_template: "{count} in on {day}",
+  // #524 — day token tap target ("see who" affordance) + expanded panel.
+  memberDays_headcount_empty: "No one's marked their days yet.",
+  memberDays_day_expand_aria_template: "See who's around {day}",
+  // Leg annotations on the expanded names — trip-local times.
+  memberDays_leg_lands_template: "lands {time}",
+  memberDays_leg_leaves_template: "leaves {time}",
   // Glanceability sweep — reciprocal one-line text links between the
   // /me day-chips editor and the roster DayHeadcount block. Plain
   // wayfinding, no nudge: neither line implies you're behind on anything.
