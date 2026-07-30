@@ -115,7 +115,11 @@ export interface TravelLegFormProps {
    * timezone — never the device's (#382).
    */
   tripTimezone: string;
-  onSuccess: () => void;
+  /**
+   * Save passes the persisted leg (#525 — the sheet derives day-chip
+   * suggestions from it); delete passes nothing.
+   */
+  onSuccess: (savedLeg?: TravelLeg) => void;
   onCancel: () => void;
 }
 
@@ -210,7 +214,7 @@ export function TravelLegForm({
       return;
     }
 
-    onSuccess();
+    onSuccess(result.leg);
   };
 
   const handleDelete = async () => {

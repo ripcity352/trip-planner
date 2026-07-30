@@ -31,6 +31,7 @@ import { resolveMemberName } from "@/lib/utils/member-display";
 import { computeRideShareClusters } from "@/lib/utils/ride-share";
 import { TravelLegCard } from "./travel-leg-card";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
+import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TripMember } from "@/lib/db/types";
 
 export interface ArrivalsManifestProps {
@@ -40,6 +41,11 @@ export interface ArrivalsManifestProps {
   tripMembers: TripMember[];
   /** IANA timezone string for the trip (e.g. `"America/New_York"`). */
   tripTimezone: string;
+  /** #525 — the viewer's own day rows + trip range for the post-save
+   *  suggestion prompt (suggest, don't write). */
+  myDays: MemberDay[];
+  tripStartsAt: string | null;
+  tripEndsAt: string | null;
 }
 
 interface DayGroup {
@@ -87,6 +93,9 @@ export function ArrivalsManifest({
   myTripMemberId,
   tripMembers,
   tripTimezone,
+  myDays,
+  tripStartsAt,
+  tripEndsAt,
 }: ArrivalsManifestProps) {
   const router = useRouter();
 
@@ -119,6 +128,12 @@ export function ArrivalsManifest({
       // #452: without this, the per-card edit sheet's save/delete left
       // stale legs on screen until a manual reload.
       onMutated={handleMutated}
+      // #525 — only the viewer's own card can open the edit sheet, so
+      // the suggestion inputs are only meaningful there; forwarding to
+      // every card is harmless (non-owners never mount the sheet).
+      myDays={myDays}
+      tripStartsAt={tripStartsAt}
+      tripEndsAt={tripEndsAt}
     />
   );
 
@@ -170,6 +185,9 @@ export function ArrivalsManifest({
         tripId={tripId}
         tripTimezone={tripTimezone}
         onMutated={handleMutated}
+        myDays={myDays}
+        tripStartsAt={tripStartsAt}
+        tripEndsAt={tripEndsAt}
       />
     </div>
   );

@@ -29,6 +29,7 @@ import type { LucideIcon } from "lucide-react";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { formatTripDateTime } from "@/lib/utils/format-trip-tz";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
+import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TravelLegKind } from "@/lib/db/types";
 
 const KIND_LABELS: Record<TravelLegKind, string> = {
@@ -66,6 +67,14 @@ export interface TravelLegCardProps {
    * Component — the callback crosses into the client boundary at the sheet).
    */
   onMutated?: () => void;
+  /**
+   * #525 — the VIEWER's own day rows + trip range, threaded to the
+   * owner's edit sheet for the post-save suggestion prompt. Optional;
+   * only ever forwarded on the viewer's own card.
+   */
+  myDays?: ReadonlyArray<MemberDay>;
+  tripStartsAt?: string | null;
+  tripEndsAt?: string | null;
 }
 
 export function TravelLegCard({
@@ -74,6 +83,9 @@ export function TravelLegCard({
   ownerName,
   tripTimezone,
   onMutated,
+  myDays,
+  tripStartsAt,
+  tripEndsAt,
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
 
@@ -132,6 +144,9 @@ export function TravelLegCard({
             leg={leg}
             tripTimezone={tripTimezone}
             onMutated={onMutated}
+            myDays={myDays}
+            tripStartsAt={tripStartsAt}
+            tripEndsAt={tripEndsAt}
           />
         ) : null}
       </div>
