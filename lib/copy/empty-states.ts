@@ -723,6 +723,23 @@ export type LegDaySuggestUIStringKey =
   keyof typeof LEG_DAY_SUGGEST_UI_STRINGS;
 
 /**
+ * #526 — quiet inline cue when your day chips contradict your own
+ * travel legs. Chips win; the cue never nags, never names anyone else.
+ * {day} arrives pre-formatted in the day-header register ("fri 14").
+ */
+export const LEG_DAY_CONFLICT_UI_STRINGS = {
+  legDayConflict_lands_template:
+    "heads up — you land {day} but aren't marked around",
+  legDayConflict_leaves_template:
+    "heads up — you leave {day} but aren't marked around",
+  legDayConflict_after_template:
+    "heads up — you leave {day} but you're still marked around after",
+} as const;
+
+export type LegDayConflictUIStringKey =
+  keyof typeof LEG_DAY_CONFLICT_UI_STRINGS;
+
+/**
  * Dashboard-header trip edit (name + location + — as of #476 — dates,
  * but ONLY once a trip already has dates). Rule 11: the trigger is an
  * organizer micro-affordance — non-organizers never see it, so there is

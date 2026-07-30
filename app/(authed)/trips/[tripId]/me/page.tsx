@@ -23,6 +23,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug } from "@/lib/db/trips";
 import { getViewerMember } from "@/lib/db/trips";
 import { getMemberDays } from "@/lib/db/trip-member-days";
+import { getMemberLegInstants } from "@/lib/db/travel-legs";
+import {
+  deriveLegDayConflicts,
+  legDayConflictLine,
+} from "@/lib/utils/leg-day-conflicts";
 import { signOut } from "@/lib/actions/auth";
 import {
   M4_UI_STRINGS,
@@ -75,8 +80,14 @@ export default async function MePage({ params }: PageProps) {
   // e.g. rsvp maybe/pending — the chips upsert from empty). Date-less
   // trips skip the section entirely.
   let dayChips: DayChip[] = [];
+  // #526 — quiet cue when the chips contradict the member's own travel
+  // legs. Chips win; first conflict only (a cue, not a report).
+  let conflictLine: string | null = null;
   if (trip.starts_at !== null && trip.ends_at !== null) {
-    const rows = await getMemberDays(supabase, member.id);
+    const [rows, ownLegs] = await Promise.all([
+      getMemberDays(supabase, member.id),
+      getMemberLegInstants(supabase, trip.id, member.id),
+    ]);
     const statusByDate = new Map(rows.map((r) => [r.date, r.status]));
     dayChips = eachDayOfInterval({
       start: parseDateOnly(trip.starts_at),
@@ -85,6 +96,14 @@ export default async function MePage({ params }: PageProps) {
       const iso = format(d, "yyyy-MM-dd");
       return { date: iso, status: statusByDate.get(iso) ?? null };
     });
+    const conflicts = deriveLegDayConflicts({
+      legs: ownLegs,
+      memberDays: rows,
+      tripStartsAt: trip.starts_at,
+      tripEndsAt: trip.ends_at,
+      timezone: trip.timezone,
+    });
+    conflictLine = conflicts.length > 0 ? legDayConflictLine(conflicts[0]) : null;
   }
 
   return (
@@ -144,6 +163,18 @@ export default async function MePage({ params }: PageProps) {
               {MEMBER_DAYS_UI_STRINGS.memberDays_subhead}
             </p>
             <DayAttendanceChips tripId={trip.id} days={dayChips} />
+            {/* #526 — inline conflict cue, linking to the travel page
+                where the leg lives. Muted fact, not an alert. */}
+            {conflictLine ? (
+              <p className="text-muted-foreground mt-2 text-sm">
+                <Link
+                  href={`/trips/${tripId}/arrivals`}
+                  className="underline-offset-4 hover:underline"
+                >
+                  {conflictLine}
+                </Link>
+              </p>
+            ) : null}
             {/* #524 — reciprocal wayfinding to the roster's "Who's
                 around when" block these chips feed. Un-gated: the block
                 now renders for every member (empty state included), so

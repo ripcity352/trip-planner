@@ -28,6 +28,10 @@ import { Plane, Train, Car, Luggage } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { formatTripDateTime } from "@/lib/utils/format-trip-tz";
+import {
+  deriveLegDayConflicts,
+  legDayConflictLine,
+} from "@/lib/utils/leg-day-conflicts";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TravelLegKind } from "@/lib/db/types";
@@ -88,6 +92,20 @@ export function TravelLegCard({
   tripEndsAt,
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
+
+  // #526 — conflict cue on the viewer's OWN card only (never on
+  // others' — no calling people out). Derived per-leg from the same
+  // helper the /me chips card uses; chips win, this never writes.
+  const ownConflicts =
+    isOwner && myDays
+      ? deriveLegDayConflicts({
+          legs: [leg],
+          memberDays: myDays,
+          tripStartsAt: tripStartsAt ?? null,
+          tripEndsAt: tripEndsAt ?? null,
+          timezone: tripTimezone,
+        })
+      : [];
 
   // #396: the M4 airline picker stores airline_iata + flight_number and
   // leaves free-text carrier null — prefer the structured pair ("UA 415"),
@@ -187,6 +205,14 @@ export function TravelLegCard({
       {/* Notes */}
       {leg.notes ? (
         <p className="text-muted-foreground text-xs">{leg.notes}</p>
+      ) : null}
+
+      {/* #526 — own-card conflict cue (first conflict only; a cue,
+          not a report). */}
+      {ownConflicts.length > 0 ? (
+        <p className="text-muted-foreground text-sm">
+          {legDayConflictLine(ownConflicts[0])}
+        </p>
       ) : null}
     </article>
   );

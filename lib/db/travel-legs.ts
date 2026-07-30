@@ -81,3 +81,36 @@ export async function getArrivalTimesByTrip(
 
   return (data ?? []) as ArrivalInstant[];
 }
+
+/** Slim shape for the #526 conflict cue — instants only. */
+export interface MemberLegInstants {
+  direction: "inbound" | "outbound";
+  arrive_at: string | null;
+  depart_at: string | null;
+}
+
+/**
+ * The caller's OWN legs' instants for one trip (#526 — /me conflict
+ * cue). Reads the base table (no confirmation_code selected, so the
+ * #505 view redaction is moot); RLS limits rows to trips the caller
+ * belongs to, and the explicit member filter keeps it self-only.
+ */
+export async function getMemberLegInstants(
+  supabase: SupabaseClient,
+  tripId: string,
+  tripMemberId: string
+): Promise<MemberLegInstants[]> {
+  const { data, error } = await supabase
+    .from("travel_legs")
+    .select("direction, arrive_at, depart_at")
+    .eq("trip_id", tripId)
+    .eq("trip_member_id", tripMemberId)
+    // Stable order so "first conflict" downstream is deterministic.
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`getMemberLegInstants failed: ${error.message}`);
+  }
+
+  return (data ?? []) as MemberLegInstants[];
+}

@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getTravelLegsByTrip, getArrivalTimesByTrip } from "../travel-legs";
+import { getTravelLegsByTrip, getArrivalTimesByTrip, getMemberLegInstants } from "../travel-legs";
 import type { TravelLeg } from "../types";
 
 function makeClient(
@@ -225,5 +225,73 @@ describe("getArrivalTimesByTrip — inbound only (#477)", () => {
     await getArrivalTimesByTrip(client, TRIP_ID);
 
     expect(capture.eqCalls).toContainEqual(["direction", "inbound"]);
+  });
+});
+
+describe("getMemberLegInstants — #526 own-legs slim read", () => {
+  function makeCapturingClient(capture: {
+    from?: string;
+    select?: string;
+    eqCalls: [string, unknown][];
+  }) {
+    const buildProxy = () => {
+      const handler: ProxyHandler<Record<string, unknown>> = {
+        get(_target, prop: string) {
+          if (prop === "then") {
+            const thenable = Promise.resolve({ data: [], error: null });
+            return thenable.then.bind(thenable);
+          }
+          return (...args: unknown[]) => {
+            if (prop === "select") capture.select = String(args[0]);
+            if (prop === "eq")
+              capture.eqCalls.push([String(args[0]), args[1]]);
+            return proxy;
+          };
+        },
+      };
+      const proxy: Record<string, unknown> = new Proxy({}, handler);
+      return proxy;
+    };
+    return {
+      from: vi.fn((table: string) => {
+        capture.from = table;
+        return buildProxy();
+      }),
+    } as unknown as SupabaseClient;
+  }
+
+  it("scopes by trip AND member (self-only), instants columns only", async () => {
+    const capture = { eqCalls: [] as [string, unknown][] } as {
+      from?: string;
+      select?: string;
+      eqCalls: [string, unknown][];
+    };
+    const client = makeCapturingClient(capture);
+
+    await getMemberLegInstants(client, "trip-1", "tm-1");
+
+    expect(capture.from).toBe("travel_legs");
+    expect(capture.select).toBe("direction, arrive_at, depart_at");
+    expect(capture.eqCalls).toContainEqual(["trip_id", "trip-1"]);
+    expect(capture.eqCalls).toContainEqual(["trip_member_id", "tm-1"]);
+  });
+
+  it("throws when Supabase reports an error", async () => {
+    const failing = {
+      from: vi.fn(() => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () =>
+                Promise.resolve({ data: null, error: { message: "boom" } }),
+            }),
+          }),
+        }),
+      })),
+    } as unknown as SupabaseClient;
+
+    await expect(
+      getMemberLegInstants(failing, "trip-1", "tm-1")
+    ).rejects.toThrow(/getMemberLegInstants/);
   });
 });
