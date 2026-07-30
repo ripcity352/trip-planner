@@ -14,6 +14,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
 import { getTravelLegsByTrip } from "@/lib/db/travel-legs";
+import { getMemberDays } from "@/lib/db/trip-member-days";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ArrivalsManifest } from "@/components/trip/arrivals/arrivals-manifest";
 
@@ -42,10 +43,12 @@ export default async function ArrivalsPage({ params }: PageProps) {
     notFound();
   }
 
-  // Fan out: legs + all trip members in parallel
-  const [legs, tripMembers] = await Promise.all([
+  // Fan out: legs + all trip members + the viewer's own day rows
+  // (#525 — post-save suggestion prompt inputs) in parallel.
+  const [legs, tripMembers, myDays] = await Promise.all([
     getTravelLegsByTrip(supabase, trip.id),
     getTripMembers(supabase, trip.id),
+    getMemberDays(supabase, viewer.id),
   ]);
 
   return (
@@ -63,6 +66,9 @@ export default async function ArrivalsPage({ params }: PageProps) {
         myTripMemberId={viewer.id}
         tripMembers={tripMembers}
         tripTimezone={trip.timezone}
+        myDays={myDays}
+        tripStartsAt={trip.starts_at}
+        tripEndsAt={trip.ends_at}
       />
     </section>
   );

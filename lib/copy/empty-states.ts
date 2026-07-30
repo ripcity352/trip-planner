@@ -704,6 +704,25 @@ export const MEMBER_DAYS_UI_STRINGS = {
 export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;
 
 /**
+ * #525 — post-save leg→day-chip suggestion prompt ("suggest, don't
+ * write"). One quiet question after a travel leg saves; one tap
+ * applies, "Leave it" means never ask again for this leg version.
+ * Register: {day}/{range} arrive pre-formatted in the day-header
+ * register ("fri 14", "fri 14 – tue 18").
+ */
+export const LEG_DAY_SUGGEST_UI_STRINGS = {
+  legDaySuggest_inbound_template: "You land {day} — mark {range} as around?",
+  legDaySuggest_outbound_template:
+    "You head out {day} — clear the days after?",
+  legDaySuggest_apply_inbound: "Mark it",
+  legDaySuggest_apply_outbound: "Clear them",
+  legDaySuggest_dismiss: "Leave it",
+} as const;
+
+export type LegDaySuggestUIStringKey =
+  keyof typeof LEG_DAY_SUGGEST_UI_STRINGS;
+
+/**
  * Dashboard-header trip edit (name + location + — as of #476 — dates,
  * but ONLY once a trip already has dates). Rule 11: the trigger is an
  * organizer micro-affordance — non-organizers never see it, so there is

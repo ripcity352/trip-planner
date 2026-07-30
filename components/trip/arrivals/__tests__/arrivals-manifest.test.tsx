@@ -111,6 +111,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
     fireEvent.click(screen.getByTestId("add-leg-sheet"));
@@ -129,6 +132,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
     fireEvent.click(screen.getByTestId("card-mutated-leg-1"));
@@ -143,6 +149,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
     expect(
@@ -169,6 +178,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={members}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
 
@@ -184,6 +196,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
     expect(screen.getByTestId("add-leg-sheet")).toBeInTheDocument();
@@ -200,6 +215,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={members}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
 
@@ -225,6 +243,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={members}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
 
@@ -248,6 +269,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={members}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
 
@@ -267,6 +291,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={members}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
 
@@ -283,6 +310,9 @@ describe("ArrivalsManifest", () => {
         myTripMemberId="member-1"
         tripMembers={[makeMember()]}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
 
@@ -321,6 +351,9 @@ describe("ArrivalsManifest — two sections (#477)", () => {
         myTripMemberId="member-1"
         tripMembers={[member(1), member(2), member(3)]}
         tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
       />
     );
 
