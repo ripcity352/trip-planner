@@ -1,0 +1,22 @@
+import { chromium } from "@playwright/test";
+const shots = "/private/tmp/claude-501/-Users-carlchang-Projects-Party-Trip/91986cf3-5e48-47b7-b29c-3361012fd81f/scratchpad/shots";
+const vp = { width: 375, height: 812 };
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ storageState: "playwright/.auth/persona-sweep-founder.json", viewport: vp });
+const page = await ctx.newPage();
+await page.goto("http://localhost:3000/trips/sweep-trip-a/expenses");
+await page.waitForSelector("h1", { timeout: 15000 });
+await page.waitForTimeout(1000);
+const body = await page.innerText("body");
+console.log("--- EXPENSES PAGE TEXT (founder) ---");
+console.log(body.slice(0, 3000));
+console.log("HAS 'owe':", /owe/i.test(body), "| HAS 'settle':", /settle/i.test(body), "| HAS 'You're up':", body.includes("You're up"), "| HAS 'You're down':", body.includes("You're down"));
+await page.screenshot({ path: shots + "/verify-bal-expenses-founder.png", fullPage: true });
+// dashboard glance
+await page.goto("http://localhost:3000/trips/sweep-trip-a");
+await page.waitForTimeout(2000);
+const dash = await page.innerText("body");
+const m = dash.match(/(You're up [^\n]*|You're down [^\n]*|All square[^\n]*)/);
+console.log("--- DASHBOARD glance expenses line:", m ? m[0] : "NOT FOUND");
+await page.screenshot({ path: shots + "/verify-bal-dashboard-founder.png", fullPage: true });
+await browser.close();
