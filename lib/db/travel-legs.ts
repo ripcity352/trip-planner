@@ -104,7 +104,9 @@ export async function getMemberLegInstants(
     .from("travel_legs")
     .select("direction, arrive_at, depart_at")
     .eq("trip_id", tripId)
-    .eq("trip_member_id", tripMemberId);
+    .eq("trip_member_id", tripMemberId)
+    // Stable order so "first conflict" downstream is deterministic.
+    .order("created_at", { ascending: true });
 
   if (error) {
     throw new Error(`getMemberLegInstants failed: ${error.message}`);

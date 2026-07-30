@@ -281,8 +281,10 @@ describe("getMemberLegInstants — #526 own-legs slim read", () => {
       from: vi.fn(() => ({
         select: () => ({
           eq: () => ({
-            eq: () =>
-              Promise.resolve({ data: null, error: { message: "boom" } }),
+            eq: () => ({
+              order: () =>
+                Promise.resolve({ data: null, error: { message: "boom" } }),
+            }),
           }),
         }),
       })),
