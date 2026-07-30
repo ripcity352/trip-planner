@@ -97,12 +97,20 @@ export async function DayHeadcount({
   }).map((d) => {
     const iso = format(d, "yyyy-MM-dd");
     const goingSet = goingByDate.get(iso) ?? new Set<string>();
-    const dayMembers: DayPresenceMember[] = visibleMembers.map((m) => ({
-      id: m.id,
-      name: resolveMemberName(memberMap, m.id),
-      around: goingSet.has(m.id),
-      legNote: legNoteForDay(legsByMember.get(m.id) ?? [], iso, timezone),
-    }));
+    const dayMembers: DayPresenceMember[] = visibleMembers.map((m) => {
+      const around = goingSet.has(m.id);
+      return {
+        id: m.id,
+        name: resolveMemberName(memberMap, m.id),
+        around,
+        // Around rows only: a leg time on a greyed row would publicly
+        // surface the member's leg↔chip contradiction — that cue is
+        // self-only by design (#526 "no calling people out").
+        legNote: around
+          ? legNoteForDay(legsByMember.get(m.id) ?? [], iso, timezone)
+          : null,
+      };
+    });
     // Around first, greyed rest after — both keep roster (joined_at) order.
     const ordered = [
       ...dayMembers.filter((m) => m.around),

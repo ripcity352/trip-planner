@@ -53,11 +53,13 @@ export interface TravelLegFormSheetProps {
 }
 
 /**
- * "Same leg version" key (#525): id + the two instants. A dismissed
- * prompt stays dismissed until one of the times actually changes.
+ * "Same leg version" key (#525): id + direction + the two instants. A
+ * dismissed prompt stays dismissed until the direction or a time
+ * actually changes (a direction flip inverts the suggestion, so it
+ * must re-ask).
  */
 function suggestStorageKey(leg: TravelLeg): string {
-  return `pt:legDaySuggest:${leg.id}:${leg.arrive_at ?? ""}:${leg.depart_at ?? ""}`;
+  return `pt:legDaySuggest:${leg.id}:${leg.direction}:${leg.arrive_at ?? ""}:${leg.depart_at ?? ""}`;
 }
 
 function wasResolved(leg: TravelLeg): boolean {
