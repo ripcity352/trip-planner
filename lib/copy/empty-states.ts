@@ -433,7 +433,11 @@ export const M3_UI_STRINGS = {
   arrivals_card_from_template: "from {origin}",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
-  roster_heading: "Who's coming",
+  // #533 — the roster deliberately lists ALL members (including "Can't
+  // make it" rows), so the heading is the neutral directory register,
+  // not an RSVP claim. Presence word register: in = RSVP, landed =
+  // arrivals, around = day-level presence (notes/design-system.md).
+  roster_heading: "The crew",
   roster_vcard_cta: "Download contacts",
   roster_copy_numbers_cta: "Copy all numbers",
   roster_copy_numbers_done: "Copied — paste into iMessage.",
@@ -790,7 +794,11 @@ export const DASHBOARD_GLANCE_STRINGS = {
   glance_itinerary_wrapped: "That's a wrap — nothing left on the plan.",
   // Arrivals card. {when} is "Sat 2:00 pm" (trip-tz, lowercase am/pm).
   glance_arrivals_landed_next_template: "{landed} landed · next {when}",
-  glance_arrivals_all_landed_template: "{landed} landed — everyone's in",
+  // #533 — the claim is scoped to LOGGED travel only: the universe is
+  // inbound legs with an arrive_at, not the roster. "everyone's in" was
+  // false whenever some of the crew never logged a flight.
+  glance_arrivals_all_landed_template:
+    "{landed} landed — all logged travel is in",
   glance_arrivals_first_template: "First one lands {when}",
   // Expenses card — the viewer's OWN net position only. A who-owes-who
   // list is killed scope (notes/killed-and-deferred.md); never widen this.

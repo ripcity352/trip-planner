@@ -1846,3 +1846,27 @@ This closes the display half only; expense splitting (#46) stays gated.
 - **No asterisk.** The cost field is optional in both the add and edit
   forms; per CLAUDE.md's hard ban on required-field asterisks, the label
   itself says "(optional)" instead.
+
+## Presence word register (#533)
+
+**Gap named:** three adjacent surfaces used "in"/"coming"/"around" with
+colliding meanings — the dashboard RSVP card said "Who's in" (RSVP-yes)
+while the arrivals glance line said "everyone's in" (physically landed)
+on the same screen, and the roster heading "Who's coming" sat over rows
+chipped "Can't make it" (the roster deliberately lists ALL members).
+No single spec pinned which word means which presence axis.
+
+The register, now binding for all copy:
+
+- **in** = trip-level RSVP ("Who's in", "3 in")
+- **landed** = arrivals — a logged inbound leg whose arrive_at is past
+- **around** = day-level presence ("Who's around when", day chips)
+
+Corollaries:
+
+- Aggregate arrival claims scope to what the data knows: the arrivals
+  universe is *logged* inbound legs only, so the all-landed glance line
+  says "all logged travel is in", never "everyone's in" — "everyone"
+  would claim roster coverage the data doesn't have.
+- Member-directory surfaces (the roster) use a neutral heading ("The
+  crew"), not an RSVP-flavored one, because they include non-going rows.
