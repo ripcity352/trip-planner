@@ -83,7 +83,13 @@ export default async function MePage({ params }: PageProps) {
   // #526 — quiet cue when the chips contradict the member's own travel
   // legs. Chips win; first conflict only (a cue, not a report).
   let conflictLine: string | null = null;
-  if (trip.starts_at !== null && trip.ends_at !== null) {
+  // #534 — trip-declined viewers don't get the chips: every read
+  // surface excludes declined members' day rows (#475), so answers
+  // would be write-only. Render-gate only — stored rows are kept and
+  // resurface if the RSVP flips back to going (they were explicit
+  // per-day opt-ins, rule 8).
+  const isDeclined = member.rsvp_status === "declined";
+  if (!isDeclined && trip.starts_at !== null && trip.ends_at !== null) {
     const [rows, ownLegs] = await Promise.all([
       getMemberDays(supabase, member.id),
       getMemberLegInstants(supabase, trip.id, member.id),
@@ -152,6 +158,22 @@ export default async function MePage({ params }: PageProps) {
             />
           </div>
         </div>
+
+        {/* #534 — declined viewers get a warm redirect instead of a
+            write-only form. Same card frame; the RSVP toggle lives on
+            the trip dashboard. */}
+        {isDeclined && trip.starts_at !== null && trip.ends_at !== null ? (
+          <div className="border-border bg-card rounded-md border p-4 shadow-sm">
+            <p className="text-muted-foreground text-sm">
+              <Link
+                href={`/trips/${tripId}`}
+                className="underline-offset-4 hover:underline"
+              >
+                {MEMBER_DAYS_UI_STRINGS.memberDays_declined_line}
+              </Link>
+            </p>
+          </div>
+        ) : null}
 
         {/* #388 — which days are you around? (rule 8: opt-in framing) */}
         {dayChips.length > 0 ? (

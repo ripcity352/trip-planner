@@ -16,7 +16,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Trip, TripMember, TripRole } from "./types";
+import type { Trip, TripMember, TripRole, RsvpStatus } from "./types";
 
 // Single source of truth for the trips column list. RLS will additionally
 // hide rows where `deleted_at is not null` for non-organizers, but we
@@ -93,6 +93,7 @@ export interface ViewerMember {
   id: string;
   role: TripRole;
   is_celebrant: boolean;
+  rsvp_status: RsvpStatus;
   display_name: string | null;
   phone_e164: string | null;
   idempotency_key: string | null;
@@ -110,7 +111,9 @@ export async function getViewerMember(
 ): Promise<ViewerMember | null> {
   const { data, error } = await supabase
     .from("trip_members")
-    .select("id, role, is_celebrant, display_name, phone_e164, idempotency_key")
+    .select(
+      "id, role, is_celebrant, rsvp_status, display_name, phone_e164, idempotency_key"
+    )
     .eq("trip_id", tripId)
     .eq("user_id", userId)
     .maybeSingle();
