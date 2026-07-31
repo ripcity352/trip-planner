@@ -2,9 +2,10 @@
  * Unit tests for PollsDisclosure — #470 compact-top relayout (amended).
  *
  * The #390 decision-poll surface stays on /announcements behind a
- * one-line disclosure row: hidden for non-organizers with zero open
- * polls, count label from the dashboard glance strings, expands to the
- * real PollsSection (composer + voting cards) in place.
+ * one-line disclosure row: hidden for non-organizers only when no polls
+ * exist at all (#532 — closed polls keep a results row), count label
+ * from the dashboard glance strings, expands to the real PollsSection
+ * (composer + voting cards) in place.
  */
 
 import "@testing-library/jest-dom/vitest";
@@ -78,13 +79,30 @@ describe("PollsDisclosure", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders nothing for a non-organizer when every poll is closed", () => {
-    // closes_on far in the past — today > closes_on → closed.
+  it("shows the results row to a non-organizer when every poll is closed (#532)", () => {
+    // closes_on far in the past — today > closes_on → closed. Closed
+    // polls carry outcomes, so the row must survive for plain members.
     const closed = makePollView({ closes_on: "2020-01-01" });
-    const { container } = render(
-      <PollsDisclosure {...baseProps} initialViews={[closed]} />
+    render(<PollsDisclosure {...baseProps} initialViews={[closed]} />);
+    expect(screen.getByTestId("polls-disclosure-label")).toHaveTextContent(
+      "How the votes landed"
     );
-    expect(container.firstChild).toBeNull();
+  });
+
+  it("shows the results label to an organizer when every poll is closed (#532)", () => {
+    const closed = makePollView({ closes_on: "2020-01-01" });
+    render(
+      <PollsDisclosure
+        {...baseProps}
+        isOrganizer={true}
+        initialViews={[closed]}
+      />
+    );
+    // Results register beats the composer CTA once outcomes exist; the
+    // composer stays reachable inside the expanded section.
+    expect(screen.getByTestId("polls-disclosure-label")).toHaveTextContent(
+      "How the votes landed"
+    );
   });
 
   it("renders the singular count label with one open poll", () => {

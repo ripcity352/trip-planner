@@ -613,6 +613,10 @@ export const M5_UI_STRINGS = {
   polls_vote_count_other: "{count} votes in",
   polls_closes_template: "Closes {date}",
   polls_closed_label: "Voting's closed",
+  // #532 — disclosure row label when polls exist but every one is
+  // closed. Results-flavored: the row's job here is access to
+  // outcomes, not a vote prompt.
+  polls_all_closed_label: "How the votes landed",
   polls_closed_winner_template: "{label} takes it",
   polls_closed_tie: "Dead heat. Sort it out over a drink.",
   polls_closed_no_votes: "Nobody weighed in. Organizer's call.",

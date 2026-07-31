@@ -14,9 +14,12 @@
  * open-poll glance strings so the two surfaces can't drift):
  *   - ≥1 open poll → "1 question up for a vote" / "{n} questions up
  *     for a vote"
- *   - 0 open polls + organizer → "Put it to the crew" (the poll
+ *   - 0 open polls but ≥1 closed poll → "How the votes landed" — the
+ *     closed-outcome UI (winner/tie/nobody-voted) stays reachable for
+ *     every member, not just organizers (#532)
+ *   - 0 polls at all + organizer → "Put it to the crew" (the poll
  *     composer's own CTA register) so poll *creation* keeps a surface
- *   - 0 open polls + non-organizer → the row hides entirely
+ *   - 0 polls at all + non-organizer → the row hides entirely
  *
  * "Open" mirrors `isPollClosed` (#211 date-only register): no deadline,
  * or today ≤ closes_on. The count is computed from the server-fetched
@@ -61,14 +64,18 @@ export function PollsDisclosure({
     (v) => !isPollClosed(v.poll.closes_on, todayIso)
   ).length;
 
-  // No open polls and nothing to compose → no row at all. Organizers
-  // keep the row (poll creation has no other surface — rule 11: the
+  // No polls at all and nothing to compose → no row. Organizers keep
+  // the row (poll creation has no other surface — rule 11: the
   // affordance shows for those who can use it, no gate for the rest).
-  if (openCount === 0 && !isOrganizer) return null;
+  // Existence, not open count, is the gate (#532): closed polls carry
+  // results every member may read.
+  if (initialViews.length === 0 && !isOrganizer) return null;
 
   const label =
     openCount === 0
-      ? M5_UI_STRINGS.polls_composer_cta
+      ? initialViews.length > 0
+        ? M5_UI_STRINGS.polls_all_closed_label
+        : M5_UI_STRINGS.polls_composer_cta
       : openCount === 1
         ? DASHBOARD_GLANCE_STRINGS.glance_polls_open_one
         : DASHBOARD_GLANCE_STRINGS.glance_polls_open_other_template.replace(
