@@ -3855,3 +3855,22 @@ explicit goal of this project. Designing for it from the start adds maybe
 a day of work; retrofitting it later would mean rewriting every query.
 
 **Alternative considered:** Single-tenant MVP, refactor later. Rejected.
+
+## 2026-07-31 sweep-fix wave — #532–#536 (PRs #537–#540)
+
+Five verified sweep findings shipped in four PRs. One load-bearing
+decision beyond the issue bodies:
+
+- **#534 declined→going RSVP flip keeps stale day rows.** Option A
+  (render-gate only) hides the /me day chips for trip-declined viewers
+  behind a warm redirect, but their previously stored day rows are
+  preserved, not deleted — they were explicit per-day opt-ins (rule 8)
+  and every read surface already excludes them while declined (#475).
+  A flip back to going resurfaces them as-is; if that ever proves
+  confusing in a real walk, revisit toward a "still right?" prompt,
+  not silent deletion. `getViewerMember` now selects `rsvp_status`.
+- The presence word register introduced by #533 (in = RSVP, landed =
+  arrivals, around = day presence) lives in notes/design-system.md
+  §"Presence word register" and is binding for new copy.
+- #535 renamed `nowNext_recap_placeholder` → `nowNext_posttrip_line`;
+  repoint it if Group Recap (#56) ever ships.
