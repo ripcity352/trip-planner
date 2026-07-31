@@ -223,9 +223,12 @@ export default async function TripDashboardPage({ params }: PageProps) {
             formatCents(Math.abs(netPosition.netCents), netPosition.currency)
           );
 
+  // #536 — zero LIVE invites gets its own string: this count excludes
+  // revoked links, which the invites list still shows (audit trail),
+  // so the list's "No links out yet" claim would be false here.
   const invitesLine =
     activeInviteCount === 0
-      ? EMPTY_STATES.invites_for_trip
+      ? DASHBOARD_GLANCE_STRINGS.glance_invites_none_live
       : activeInviteCount === 1
         ? DASHBOARD_GLANCE_STRINGS.glance_invites_one
         : DASHBOARD_GLANCE_STRINGS.glance_invites_other_template.replace(

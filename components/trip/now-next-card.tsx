@@ -8,7 +8,8 @@
  *             (or no-items copy when the itinerary is empty).
  *   In-trip:  currently-active item + next item (if any).
  *   Post-trip: now=null, next=null, items in the past → "Trip wrapped N
- *              days ago." + recap placeholder (NOT a link — M5 territory).
+ *              days ago." + a quiet sign-off line (#535 — promises
+ *              nothing; Group Recap #56 is deferred with no milestone).
  *
  * The "pre-trip" vs "post-trip" disambiguation is done by checking
  * whether the items list has any future items. When items is empty or all
@@ -72,9 +73,10 @@ export async function NowNextCard({ trip, items }: NowNextCardProps) {
         <p className="text-sm font-medium">
           {M3_UI_STRINGS.nowNext_posttrip_template.replace("{days}", daysLabel)}
         </p>
-        {/* Recap placeholder — intentionally NOT a link (M5 territory) */}
+        {/* Post-trip sign-off — intentionally NOT a link (#535: no
+            recap surface exists to point at) */}
         <p className="text-muted-foreground text-sm">
-          {M3_UI_STRINGS.nowNext_recap_placeholder}
+          {M3_UI_STRINGS.nowNext_posttrip_line}
         </p>
       </div>
     );

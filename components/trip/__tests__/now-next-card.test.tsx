@@ -4,7 +4,7 @@
  * The card has three render states:
  *   1. Pre-trip: no items OR all items are future → shows "Trip starts in N days"
  *   2. In-trip: shows now/next items with headings from M3_UI_STRINGS
- *   3. Post-trip: all items past → shows "Trip wrapped N days ago" + recap placeholder
+ *   3. Post-trip: all items past → shows "Trip wrapped N days ago" + sign-off line
  *
  * The component is a Server Component (no client state), so we test it as
  * a plain async function (no act / userEvent needed).
@@ -230,7 +230,7 @@ describe("NowNextCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows post-trip copy and recap placeholder when all items are in the past", async () => {
+  it("shows post-trip copy and the sign-off line when all items are in the past", async () => {
     const { whatsHappeningNow } = await import(
       "@/lib/utils/whats-happening-now"
     );
@@ -246,15 +246,15 @@ describe("NowNextCard", () => {
 
     render(await NowNextCard({ trip, items: [pastItem] }));
 
-    // Post-trip state: shows recap placeholder (NOT an active link)
+    // Post-trip state: shows the sign-off line (NOT an active link —
+    // #535: there is no recap surface to point at)
     expect(
-      screen.getByText(M3_UI_STRINGS.nowNext_recap_placeholder)
+      screen.getByText(M3_UI_STRINGS.nowNext_posttrip_line)
     ).toBeInTheDocument();
-    // Recap placeholder must NOT be a link element
-    const recapEl = screen.getByText(
-      M3_UI_STRINGS.nowNext_recap_placeholder
+    const signOffEl = screen.getByText(
+      M3_UI_STRINGS.nowNext_posttrip_line
     );
-    expect(recapEl.tagName.toLowerCase()).not.toBe("a");
+    expect(signOffEl.tagName.toLowerCase()).not.toBe("a");
   });
 
   it("substitutes {days} with a pluralised label in the post-trip template", async () => {
