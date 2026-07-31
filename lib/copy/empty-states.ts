@@ -336,7 +336,11 @@ export const M3_UI_STRINGS = {
   nowNext_now_heading: "Right now",
   nowNext_next_heading: "Up next",
   nowNext_posttrip_template: "Trip wrapped {days} ago.",
-  nowNext_recap_placeholder: "Recap (coming soon)",
+  // #535 — was "Recap (coming soon)": Group Recap is deferred with no
+  // milestone (killed-and-deferred.md, backlog #56), so "coming soon"
+  // over-promised. Present tense, promises nothing; repoint if #56
+  // ever ships.
+  nowNext_posttrip_line: "Hope it was a good one.",
   nowNext_no_items_yet:
     "No items on the itinerary yet. Someone's about to fix that.",
   // Trip FAQ / notes (#78, Wave 3b)
@@ -814,6 +818,11 @@ export const DASHBOARD_GLANCE_STRINGS = {
   // Invites card (organizer-only) — live link count, stated plainly.
   glance_invites_one: "1 link out",
   glance_invites_other_template: "{count} links out",
+  // #536 — zero-LIVE state. Not EMPTY_STATES.invites_for_trip ("No
+  // links out yet…"): the dashboard counts live invites only, while
+  // the invites list keeps revoked rows visible as an audit trail —
+  // "yet" would contradict that list after a mint-then-revoke.
+  glance_invites_none_live: "No live links right now",
   // Announcements card — open-poll discoverability line (polls live on
   // the announcements page; non-organizers had no way to know).
   glance_polls_open_one: "1 question up for a vote",
