@@ -707,6 +707,12 @@ export const MEMBER_DAYS_UI_STRINGS = {
   // wayfinding, no nudge: neither line implies you're behind on anything.
   memberDays_link_to_headcount: "See who's around when",
   memberDays_link_to_editor: "Set which days you're around",
+  // #534 — trip-declined viewers don't get the chips (every read
+  // surface excludes declined members' day rows per #475, so the form
+  // would be write-only). Warm redirect, not a gate message — the RSVP
+  // toggle lives on the trip dashboard.
+  memberDays_declined_line:
+    "You're out for this one. If plans change, flip your RSVP and the day picker comes back.",
 } as const;
 
 export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;
