@@ -129,8 +129,9 @@ describe("RosterList", () => {
 
   it("renders the roster heading from M3_UI_STRINGS", () => {
     render(<RosterList members={sampleMembers} tripName="Test Trip" />);
-    // M3_UI_STRINGS.roster_heading = "Who's coming"
-    expect(screen.getByText("Who's coming")).toBeInTheDocument();
+    // M3_UI_STRINGS.roster_heading = "The crew" (#533 — neutral
+    // directory register; the roster shows declined members too)
+    expect(screen.getByText("The crew")).toBeInTheDocument();
   });
 
   it("shows organizer role badge for organizer members", () => {
