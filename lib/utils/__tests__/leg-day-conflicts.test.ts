@@ -1,9 +1,11 @@
 /**
- * Unit tests for deriveLegDayConflicts + legDayConflictLine (#526) —
- * chips contradict your own legs → quiet cue. Chips win; nothing
- * writes.
+ * Unit tests for deriveLegDayConflicts + legDayConflictLine (#526,
+ * revised #531) — chips contradict your own legs -> quiet cue. Chips
+ * win; nothing writes. An unmarked day (no trip_member_days row at
+ * all) is no signal, not a contradiction — only an explicit
+ * non-going row (declined/maybe) conflicts.
  *
- * Trip fixture: Aug 14–18 2026 (fri–tue), America/Los_Angeles.
+ * Trip fixture: Aug 14-18 2026 (fri-tue), America/Los_Angeles.
  */
 
 import { describe, expect, it } from "vitest";
@@ -44,16 +46,19 @@ function derive(
 }
 
 describe("deriveLegDayConflicts", () => {
-  it("flags an inbound landing on an unmarked day", () => {
-    // Lands sat aug 15 10:30 am PDT; no day rows at all.
-    expect(derive([inbound("2026-08-15T17:30:00Z")], [])).toEqual([
-      { kind: "lands_not_around", date: "2026-08-15" },
-    ]);
+  it("is quiet when the landing day is unmarked (#531 - no row is no signal)", () => {
+    expect(derive([inbound("2026-08-15T17:30:00Z")], [])).toEqual([]);
   });
 
   it("flags an inbound landing on an explicitly declined day", () => {
     expect(
       derive([inbound("2026-08-15T17:30:00Z")], days(["2026-08-15", "declined"]))
+    ).toEqual([{ kind: "lands_not_around", date: "2026-08-15" }]);
+  });
+
+  it("flags an inbound landing on an explicitly maybe day", () => {
+    expect(
+      derive([inbound("2026-08-15T17:30:00Z")], days(["2026-08-15", "maybe"]))
     ).toEqual([{ kind: "lands_not_around", date: "2026-08-15" }]);
   });
 
@@ -63,13 +68,17 @@ describe("deriveLegDayConflicts", () => {
     ).toEqual([]);
   });
 
-  it("flags an outbound departure on a not-going day", () => {
+  it("is quiet when the outbound departure day is unmarked (#531 - no row is no signal)", () => {
+    expect(derive([outbound("2026-08-16T22:00:00Z")], [])).toEqual([]);
+  });
+
+  it("flags an outbound departure on an explicitly declined day", () => {
     expect(
-      derive([outbound("2026-08-16T22:00:00Z")], days(["2026-08-15", "going"]))
+      derive([outbound("2026-08-16T22:00:00Z")], days(["2026-08-16", "declined"]))
     ).toEqual([{ kind: "leaves_not_around", date: "2026-08-16" }]);
   });
 
-  it("flags going days after the outbound departure (chips win — no writes)", () => {
+  it("flags going days after the outbound departure (chips win - no writes)", () => {
     const result = derive(
       [outbound("2026-08-16T22:00:00Z")],
       days(["2026-08-16", "going"], ["2026-08-17", "going"], ["2026-08-18", "going"])
@@ -83,10 +92,18 @@ describe("deriveLegDayConflicts", () => {
     ]);
   });
 
-  it("boundary: same-day land + leave on an unmarked day yields both direction cues", () => {
+  it("boundary: same-day land + leave on an unmarked day is quiet (#531)", () => {
     const result = derive(
-      [inbound("2026-08-15T17:30:00Z"), outbound("2026-08-16T04:00:00Z")], // both sat 15 PDT
+      [inbound("2026-08-15T17:30:00Z"), outbound("2026-08-16T04:00:00Z")],
       []
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("boundary: same-day land + leave on an explicitly declined day yields both direction cues", () => {
+    const result = derive(
+      [inbound("2026-08-15T17:30:00Z"), outbound("2026-08-16T04:00:00Z")],
+      days(["2026-08-15", "declined"])
     );
     expect(result).toEqual([
       { kind: "lands_not_around", date: "2026-08-15" },
@@ -100,17 +117,18 @@ describe("deriveLegDayConflicts", () => {
 
   it("boundary: leg days outside the trip range are skipped (no chips to contradict)", () => {
     expect(
-      derive([inbound("2026-08-12T17:30:00Z"), inbound("2026-08-20T17:30:00Z")], [])
+      derive(
+        [inbound("2026-08-12T17:30:00Z"), inbound("2026-08-20T17:30:00Z")],
+        days(["2026-08-12", "declined"], ["2026-08-20", "declined"])
+      )
     ).toEqual([]);
-    // Outbound after trip end: no going days can follow, no leaves cue.
     expect(derive([outbound("2026-08-20T22:00:00Z")], days(["2026-08-18", "going"]))).toEqual([]);
   });
 
-  it("boundary: TZ reduction — a next-day-UTC landing conflicts on the trip-local day", () => {
-    // 23:30 PDT fri aug 14 = 06:30 UTC sat aug 15.
-    expect(derive([inbound("2026-08-15T06:30:00Z")], [])).toEqual([
-      { kind: "lands_not_around", date: "2026-08-14" },
-    ]);
+  it("boundary: TZ reduction - a next-day-UTC landing conflicts on the trip-local day", () => {
+    expect(
+      derive([inbound("2026-08-15T06:30:00Z")], days(["2026-08-14", "declined"]))
+    ).toEqual([{ kind: "lands_not_around", date: "2026-08-14" }]);
   });
 
   it("returns [] for date-less trips", () => {
