@@ -5,6 +5,24 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-08-08 — #531: unmarked day chips are not a leg-conflict — Resolved
+
+**Decision:** `deriveLegDayConflicts` (#526) treated an unmarked day (no
+`trip_member_days` row — member never touched chips) the same as an
+explicit not-around day. For maybe/pending members who log travel before
+opening `/me`, this fired a standing cue with no one-tap fix, since #525's
+suggest path only offers to clear days after a return-leg departure, never
+to mark the departure day itself.
+
+Gate conflicts on row presence. An unmarked date is no signal, not a
+contradiction; only an explicit non-going row (declined/maybe) fires
+`lands_not_around` / `leaves_not_around`. `around_after_leaving` is
+unaffected (it only ever fired on explicit going rows). No suggest-side UI
+was added — the muted cue's cost was judged not worth the added surface for
+a case that's mostly pre-empted by the going-RSVP auto-seed trigger anyway.
+
+---
+
 ## 2026-07-30 — #524: per-day names for all members — deliberate walk-back of "aggregate-only, organizer-only"
 
 **Decision:** the roster "Who's around when" block (`day-headcount.tsx`)

@@ -9,17 +9,21 @@
  * people out).
  *
  * Hard contradictions only (trip-local dates via `isoToDbDate`, same
- * TZ reduction as leg-day-note / leg-day-suggestions):
+ * TZ reduction as leg-day-note / leg-day-suggestions), and only when
+ * the member has an explicit (non-going) row for that date — an
+ * unmarked date (no trip_member_days row at all) is no signal, not a
+ * contradiction (#531):
  *
- *   - inbound leg lands on a day the member hasn't marked 'going'
- *   - outbound leg departs on a day the member hasn't marked 'going'
- *     (you're around the day you leave — #525's model keeps the
- *     departure day)
+ *   - inbound leg lands on a day the member explicitly marked
+ *     not-going
+ *   - outbound leg departs on a day the member explicitly marked
+ *     not-going (you're around the day you leave — #525's model
+ *     keeps the departure day)
  *   - days AFTER an outbound departure still marked 'going'
  *
- * Soft mismatches (maybe vs going, gaps the member never marked when
- * no leg touches them) are not conflicts. Leg days outside the trip
- * range are skipped — there are no chips to contradict.
+ * Soft mismatches (maybe vs going, unmarked days, unmarked legs) are
+ * not conflicts. Leg days outside the trip range are skipped — there
+ * are no chips to contradict.
  */
 
 import { format } from "date-fns";
@@ -63,6 +67,10 @@ export function deriveLegDayConflicts(args: {
   const statusByDate = new Map(memberDays.map((d) => [d.date, d.status]));
   const inRange = (date: string): boolean =>
     date >= tripStartsAt && date <= tripEndsAt;
+  // #531 - an absent row means the member never touched chips for
+  // that date (maybe/pending members who log travel before opening
+  // /me). That's no signal, not a contradiction.
+  const hasRow = (date: string): boolean => statusByDate.has(date);
   const isGoing = (date: string): boolean =>
     statusByDate.get(date) === "going";
 
@@ -70,7 +78,7 @@ export function deriveLegDayConflicts(args: {
     if (leg.direction === "inbound") {
       if (!leg.arrive_at) return [];
       const date = isoToDbDate(leg.arrive_at, timezone);
-      if (!date || !inRange(date) || isGoing(date)) return [];
+      if (!date || !inRange(date) || !hasRow(date) || isGoing(date)) return [];
       return [{ kind: "lands_not_around", date }];
     }
 
@@ -80,7 +88,7 @@ export function deriveLegDayConflicts(args: {
     if (!departDate) return [];
 
     const conflicts: LegDayConflict[] = [];
-    if (inRange(departDate) && !isGoing(departDate)) {
+    if (inRange(departDate) && hasRow(departDate) && !isGoing(departDate)) {
       conflicts.push({ kind: "leaves_not_around", date: departDate });
     }
     const after = memberDays
