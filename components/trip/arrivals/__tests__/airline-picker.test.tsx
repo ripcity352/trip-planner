@@ -137,7 +137,7 @@ describe("AirlinePicker — selection", () => {
     await waitFor(() => expect(screen.getByText(/alaska airlines/i)).toBeInTheDocument());
     fireEvent.mouseDown(screen.getByText(/alaska airlines/i));
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ carrier: undefined })
+      expect.objectContaining({ carrier: "" })
     );
   });
 
@@ -146,7 +146,7 @@ describe("AirlinePicker — selection", () => {
     renderPicker({ airlineIata: "AA" }, onChange);
     fireEvent.click(screen.getByRole("button", { name: /clear/i }));
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ airlineIata: undefined })
+      expect.objectContaining({ airlineIata: "" })
     );
   });
 });
@@ -185,7 +185,7 @@ describe("AirlinePicker — freeform fallback", () => {
       expect.objectContaining({
         // Sanitizer strips NUL/CRLF only — spaces are preserved
         carrier: "Spirit Custom",
-        airlineIata: undefined,
+        airlineIata: "",
       })
     );
   });
@@ -286,8 +286,10 @@ describe("AirlinePicker — injection vectors", () => {
     fireEvent.mouseDown(screen.getByText("Type your airline"));
     const calls = onChange.mock.calls;
     for (const [arg] of calls) {
-      if ((arg as PickerValue).airlineIata !== undefined) {
-        expect((arg as PickerValue).airlineIata).toMatch(/^[A-Z0-9]{2}$/);
+      const airlineIata = (arg as PickerValue).airlineIata;
+      // "" is the cleared sentinel (#543), not an actual IATA code — skip it.
+      if (airlineIata !== undefined && airlineIata !== "") {
+        expect(airlineIata).toMatch(/^[A-Z0-9]{2}$/);
       }
     }
   });

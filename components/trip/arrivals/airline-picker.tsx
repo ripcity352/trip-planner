@@ -123,19 +123,19 @@ export function AirlinePicker({
     const display = `${airline.iata} / ${airline.name}`;
     setQuery(display);
     setOpen(false);
-    onChange({ ...value, airlineIata: iata, carrier: undefined });
+    onChange({ ...value, airlineIata: iata, carrier: "" });
   };
 
   const handleSelectFreeform = () => {
     const sanitized = sanitizeCarrier(query);
     setOpen(false);
-    onChange({ ...value, carrier: sanitized, airlineIata: undefined });
+    onChange({ ...value, carrier: sanitized, airlineIata: "" });
   };
 
   const handleClear = () => {
     setQuery("");
     setOpen(false);
-    onChange({ ...value, airlineIata: undefined, carrier: undefined });
+    onChange({ ...value, airlineIata: "", carrier: "" });
     inputRef.current?.focus();
   };
 
@@ -143,7 +143,7 @@ export function AirlinePicker({
     const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
     setFlightNumberError(null);
     if (raw.length > 8) return;
-    onChange({ ...value, flightNumber: raw || undefined });
+    onChange({ ...value, flightNumber: raw });
   };
 
   const handleBlur = () => {
