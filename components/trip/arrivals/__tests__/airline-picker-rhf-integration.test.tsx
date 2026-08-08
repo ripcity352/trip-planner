@@ -140,4 +140,30 @@ describe("AirlinePicker — react-hook-form Controller integration (#543)", () =
 
     expect(flightInput.value).toBe("1802");
   });
+
+  it("lets the user type over a pre-selected airline instead of freezing on the old one", () => {
+    // Same `... : undefined` revert bug, at a fifth call site (handleInputChange)
+    // not enumerated in #543's fix list: manually typing after a known airline
+    // is already selected also clears airlineIata via onChange, so it hits the
+    // identical Controller.onChange(undefined) revert-to-defaultValues quirk.
+    render(
+      <RhfHarness
+        defaultValues={{ airlineIata: "UA", flightNumber: "346", carrier: undefined }}
+      />
+    );
+
+    const combobox = screen.getByRole("combobox", {
+      name: /airline/i,
+    }) as HTMLInputElement;
+    expect(combobox.value).toBe("UA / United Airlines");
+
+    // Simulate the user typing over the selected airline to switch carriers.
+    fireEvent.change(combobox, { target: { value: "Delta" } });
+
+    // Before the fix, this rendered "UA / United Airlines" — the field
+    // appeared frozen because airlineIata reverted to defaultValues instead
+    // of clearing, so the truthy-airlineIata branch kept overriding the
+    // display with the stale selection instead of the user's typed query.
+    expect(combobox.value).toBe("Delta");
+  });
 });

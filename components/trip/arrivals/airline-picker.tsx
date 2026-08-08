@@ -110,9 +110,13 @@ export function AirlinePicker({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const next = e.target.value;
     setQuery(next);
-    // Any manual typing deselects the previously-picked known airline
+    // Any manual typing deselects the previously-picked known airline.
+    // Emit "" (not undefined, #543) — an RHF Controller.onChange(undefined)
+    // reverts the field to defaultValues instead of clearing it, which
+    // would otherwise freeze this field on the original airline the
+    // instant the user starts typing over a pre-populated selection.
     if (airlineIata) {
-      onChange({ ...value, airlineIata: undefined });
+      onChange({ ...value, airlineIata: "" });
     }
     setOpen(true);
   };
