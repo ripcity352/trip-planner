@@ -416,8 +416,8 @@ export const M3_UI_STRINGS = {
   // off FROM the trip city). Each direction records only the trip-city-
   // side instant, so trip-timezone display is inherently correct — the
   // #382 "Times are {city} time" caption died with the old model.
-  arrivals_add_inbound_cta: "Getting there",
-  arrivals_add_outbound_cta: "Heading home",
+  arrivals_add_inbound_cta: "Add a flight",
+  arrivals_add_outbound_cta: "Add a return flight",
   arrivals_section_outbound_heading: "Heading home",
   arrivals_leg_form_airport_label: "Airport",
   arrivals_leg_form_origin_label: "Coming from",

@@ -3,10 +3,11 @@
 /**
  * TravelLegFormSheet — toggle wrapper around TravelLegForm.
  *
- * Add mode (no `leg` prop): renders TWO CTAs (#477) — "Getting there"
- * (inbound) and "Heading home" (outbound). Tapping one expands the form
- * inline for that section. No actual Sheet primitive needed — inline
- * expansion at 375px is cleaner than a bottom sheet for this surface.
+ * Add mode (no `leg` prop): renders TWO CTAs (#477, relabeled #542) —
+ * "Add a flight" (inbound) and "Add a return flight" (outbound). Tapping
+ * one expands the form inline for that section. No actual Sheet primitive
+ * needed — inline expansion at 375px is cleaner than a bottom sheet for
+ * this surface.
  *
  * Edit mode (`leg` prop present): renders an "Edit" button per-leg that
  * expands the form pre-populated with the existing leg data; the section
