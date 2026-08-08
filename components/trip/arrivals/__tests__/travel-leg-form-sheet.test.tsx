@@ -37,13 +37,13 @@ vi.mock("../travel-leg-form", () => ({
 
 describe("TravelLegFormSheet — add mode (no leg prop)", () => {
   // #477: the add flow starts from two section CTAs.
-  it("renders the 'Getting there' and 'Heading home' CTAs initially", () => {
+  it("renders the 'Add a flight' and 'Add a return flight' CTAs initially", () => {
     render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
     expect(
-      screen.getByRole("button", { name: "Getting there" })
+      screen.getByRole("button", { name: "Add a flight" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Heading home" })
+      screen.getByRole("button", { name: "Add a return flight" })
     ).toBeInTheDocument();
   });
 
@@ -52,17 +52,17 @@ describe("TravelLegFormSheet — add mode (no leg prop)", () => {
     expect(screen.queryByTestId("travel-leg-form")).not.toBeInTheDocument();
   });
 
-  it("opens the form with direction=inbound from the 'Getting there' CTA", () => {
+  it("opens the form with direction=inbound from the 'Add a flight' CTA", () => {
     render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
-    fireEvent.click(screen.getByRole("button", { name: "Getting there" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a flight" }));
     const form = screen.getByTestId("travel-leg-form");
     expect(form).toBeInTheDocument();
     expect(form).toHaveAttribute("data-direction", "inbound");
   });
 
-  it("opens the form with direction=outbound from the 'Heading home' CTA", () => {
+  it("opens the form with direction=outbound from the 'Add a return flight' CTA", () => {
     render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
-    fireEvent.click(screen.getByRole("button", { name: "Heading home" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a return flight" }));
     expect(screen.getByTestId("travel-leg-form")).toHaveAttribute(
       "data-direction",
       "outbound"
@@ -71,7 +71,7 @@ describe("TravelLegFormSheet — add mode (no leg prop)", () => {
 
   it("hides the form when cancel is clicked inside the form", () => {
     render(<TravelLegFormSheet tripId="trip-1" tripTimezone="UTC" />);
-    fireEvent.click(screen.getByRole("button", { name: "Getting there" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a flight" }));
     expect(screen.getByTestId("travel-leg-form")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
