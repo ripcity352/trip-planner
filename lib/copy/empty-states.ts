@@ -706,6 +706,13 @@ export const MEMBER_DAYS_UI_STRINGS = {
   // Leg annotations on the expanded names — trip-local times.
   memberDays_leg_lands_template: "lands {time}",
   memberDays_leg_leaves_template: "leaves {time}",
+  // #552 — organizer-only marker on an expanded name whose member has NO
+  // trip_member_days row for that day (the seed trigger only fans out rows
+  // for going members, so a maybe/pending member who never opened /me shows
+  // no row). Distinguishes "hasn't set anything" from "explicitly not that
+  // day" — rule #8 (name the absence, don't let it read as a default).
+  // Factual, not a nag: no count, no lateness, no one-tap nudge.
+  memberDays_not_set_note: "hasn't set days",
   // Glanceability sweep — reciprocal one-line text links between the
   // /me day-chips editor and the roster DayHeadcount block. Plain
   // wayfinding, no nudge: neither line implies you're behind on anything.
