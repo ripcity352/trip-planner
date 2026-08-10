@@ -30,7 +30,6 @@ import {
   RsvpConfirmPromptSender,
   type RsvpPromptTarget,
 } from "@/components/trip/rsvp/rsvp-confirm-prompt-sender";
-import { CrewFlightPanel } from "@/components/trip/arrivals/crew-flight-panel";
 import type { RosterMember } from "@/components/trip/roster/roster-list";
 import type { TripMemberDayStatus } from "@/lib/db/types";
 
@@ -128,21 +127,6 @@ export default async function RosterPage({ params }: PageProps) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // #574 follow-up — "log a flight the crew's on" passengers: all non-declined
-  // members INCLUDING the viewer (isYou → self-leg; others → attributed tags).
-  // Any member (not organizer-gated) — the person with the booking email is
-  // usually a regular attendee; the confirm gate + forgery-proof RLS make it
-  // safe. Mirrors the arrivals-page panel.
-  const crewFlightMemberMap = new Map(rawMembers.map((m) => [m.id, m]));
-  const crewFlightCandidates = rawMembers
-    .filter((m) => m.rsvp_status !== "declined")
-    .map((m) => ({
-      id: m.id,
-      name: resolveMemberName(crewFlightMemberMap, m.id),
-      isYou: m.id === viewer.id,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
   // #549 — organizer RSVP confirm-prompt targets: any member except the
   // viewer. `alreadyAsked` surfaces a member's pending ask so the picker
   // shows a "· asked" cue (replace-not-stack). Organizer-only + RLS-gated.
@@ -207,15 +191,6 @@ export default async function RosterPage({ params }: PageProps) {
       {viewerIsOrganizer ? (
         <RsvpConfirmPromptSender tripId={trip.id} targets={rsvpPromptTargets} />
       ) : null}
-
-      {/* #574 follow-up — "log a flight the crew's on" (you may not be on it).
-          Any member; each tagged passenger confirms on their arrivals view. */}
-      <CrewFlightPanel
-        tripId={trip.id}
-        tripTimezone={trip.timezone}
-        viewerTripMemberId={viewer.id}
-        candidates={crewFlightCandidates}
-      />
     </section>
   );
 }

@@ -34,6 +34,7 @@ import {
 } from "@/lib/utils/leg-day-conflicts";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import { TaggedLegConfirm } from "./tagged-leg-confirm";
+import { AddToFlight, type AddToFlightCandidate } from "./add-to-flight";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TravelLegKind } from "@/lib/db/types";
 
@@ -87,6 +88,12 @@ export interface TravelLegCardProps {
    * unconfirmed" marker and the tagged member's confirm prompt.
    */
   taggerName?: string | null;
+  /**
+   * #574 follow-up — members not yet on THIS flight, so any viewer can add
+   * them straight from the card (reusing the flight's own details). Only
+   * meaningful for flights; empty/omitted hides the affordance.
+   */
+  addCandidates?: ReadonlyArray<AddToFlightCandidate>;
 }
 
 export function TravelLegCard({
@@ -99,6 +106,7 @@ export function TravelLegCard({
   tripStartsAt,
   tripEndsAt,
   taggerName,
+  addCandidates,
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
 
@@ -257,6 +265,17 @@ export function TravelLegCard({
         />
       ) : isPendingTag ? (
         <p className="text-muted-foreground text-xs italic">{pendingMarker}</p>
+      ) : null}
+
+      {/* #574 follow-up — add others onto this flight straight from the card.
+          Flights only; hidden while a tag is pending (that card's action is
+          confirm/dismiss). Any viewer can add; each added member confirms. */}
+      {leg.kind === "flight" && !isPendingTag && addCandidates ? (
+        <AddToFlight
+          leg={leg}
+          candidates={addCandidates}
+          onAdded={onMutated}
+        />
       ) : null}
     </article>
   );

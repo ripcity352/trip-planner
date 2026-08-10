@@ -97,18 +97,23 @@ duplicate-safe on a tag-failure retry: `savedLegId` routes the retry through the
 own-leg UPDATE branch (no dup) and a session-stable tag idempotency key replays
 the fan-out.
 
-**Follow-up (same day) — "log a flight the crew's on":** a standalone surface
-(`CrewFlightForm` + collapsible `CrewFlightPanel`) mounted on BOTH the arrivals
-page and the roster, letting ANY member record a shared flight they may NOT be on
-and pick the passengers. Reuses the shipped primitives with ZERO new server
-action / migration / RLS: it splits the picked passengers — the viewer, if
-picked, gets a normal self-leg (`upsertTravelLeg`), everyone else gets an
-attributed pending tag (`tagCoTravelersAction`). No confirmation_code/notes
-collected (#505). Stable idempotency keys make a partial-failure retry replay
-cleanly. Any-member (not organizer-gated) — same rationale as the tag scope. The
-panel hides when the only candidate is the viewer (use the normal add-a-flight
-flow for yourself). code-reviewer APPROVE (no CRITICAL/HIGH); no fresh security
-review needed (the RLS + action boundary is unchanged from the reviewed #574).
+**Follow-up (same day) — per-card "Add who's on this flight":** the intuitive
+way to tag people onto an EXISTING flight. First tried a standalone "log a flight
+the crew's on" form (`CrewFlightForm`/`CrewFlightPanel`, PR #576) — operator
+rejected it as "not intuitive and too much work" (re-entering flight details) and
+asked for an edit affordance ON the flight card. Pivoted (PR #577): DELETED the
+crew-flight form/panel; added `AddToFlight` — a control on every flight card that
+tags the picked members onto THAT flight, reusing the card's own leg fields (no
+re-entry). ZERO new server action / migration / RLS — reuses `tagCoTravelersAction`.
+Any member (owner or not) can add; each added member confirms (rule #8); no
+confirmation_code/notes copied (#505). Per-card candidates exclude the viewer
+(adding yourself = the normal log-your-travel flow; RLS rejects target==writer),
+trip decliners, and anyone already on the same flight (keyed airline|number|
+direction). Hidden while a tag is pending (that card's action is confirm/dismiss)
+and on non-flight legs. code-reviewer APPROVE after fixing 2 real bugs
+(viewer-in-candidates, dropped origin_label). Lesson: the operator was working
+around the gap by typing co-travelers into the leg NOTES field ("Jar Jus Mend")
+— a strong signal the friction was real.
 
 **Reviews:** security-reviewer + code-reviewer both APPROVE, no CRITICAL/HIGH.
 17-assertion live psql RLS harness passes (forge both directions incl. the
