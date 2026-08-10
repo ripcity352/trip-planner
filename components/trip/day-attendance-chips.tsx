@@ -23,14 +23,13 @@
  */
 
 import * as React from "react";
-import { format } from "date-fns";
 
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { MEMBER_DAYS_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
-import { parseDateOnly } from "@/lib/utils/date-only";
 import { setMemberDayAction } from "@/lib/actions/trip-member-days";
+import { DayChipButton } from "@/components/trip/member-days/day-chip-button";
 import type { TripMemberDayStatus } from "@/lib/db/types";
 
 export interface DayChip {
@@ -38,17 +37,19 @@ export interface DayChip {
   date: string;
   /** Stored status, or null when the trigger never seeded this member. */
   status: TripMemberDayStatus | null;
+  /**
+   * #550 — true when an organizer set this day on the member's behalf. Marks
+   * the chip with a provenance dot + surfaces the cue line. The member's own
+   * tap clears the attribution (setMemberDayAction writes written_by NULL),
+   * so the marker disappears on any change.
+   */
+  writtenByOther?: boolean;
 }
 
 export interface DayAttendanceChipsProps {
   tripId: string;
   /** One entry per trip date, in order (server-composed on /me). */
   days: ReadonlyArray<DayChip>;
-}
-
-/** Day-header register (#211): lowercase `eee d` — "fri 14". */
-function dayLabel(date: string): string {
-  return format(parseDateOnly(date), "eee d").toLowerCase();
 }
 
 type StatusMap = Readonly<Record<string, TripMemberDayStatus | null>>;
@@ -68,6 +69,12 @@ export function DayAttendanceChips({ tripId, days }: DayAttendanceChipsProps) {
   const [statuses, setStatuses] = React.useState<StatusMap>(() =>
     toStatusMap(days)
   );
+  // #550 — dates an organizer set on this member's behalf. A member tap
+  // clears the row's attribution (setMemberDayAction writes written_by
+  // NULL), so drop the date from the marked set optimistically on tap.
+  const [markedDates, setMarkedDates] = React.useState<ReadonlySet<string>>(
+    () => new Set(days.filter((d) => d.writtenByOther).map((d) => d.date))
+  );
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
 
@@ -79,7 +86,24 @@ export function DayAttendanceChips({ tripId, days }: DayAttendanceChipsProps) {
       const next: "going" | "declined" =
         current === "going" ? "declined" : "going";
 
+      const wasMarked = markedDates.has(date);
+      const restoreMarker = () => {
+        if (!wasMarked) return;
+        setMarkedDates((prev) => {
+          if (prev.has(date)) return prev;
+          const nextSet = new Set(prev);
+          nextSet.add(date);
+          return nextSet;
+        });
+      };
+
       setStatuses((prev) => ({ ...prev, [date]: next }));
+      setMarkedDates((prev) => {
+        if (!prev.has(date)) return prev;
+        const nextSet = new Set(prev);
+        nextSet.delete(date);
+        return nextSet;
+      });
       setErrorKey(null);
 
       const idempotencyKey = crypto.randomUUID();
@@ -92,8 +116,9 @@ export function DayAttendanceChips({ tripId, days }: DayAttendanceChipsProps) {
           );
 
           if (!result.ok) {
-            // Roll back to the pre-tap value; `confirmed` untouched.
+            // Roll back to the pre-tap value + marker.
             setStatuses((prev) => ({ ...prev, [date]: current }));
+            restoreMarker();
             setErrorKey(result.errorKey);
             return;
           }
@@ -106,12 +131,15 @@ export function DayAttendanceChips({ tripId, days }: DayAttendanceChipsProps) {
           // boundary still needs a rollback path.
           console.error("[day-attendance] setMemberDayAction threw:", err);
           setStatuses((prev) => ({ ...prev, [date]: current }));
+          restoreMarker();
           setErrorKey("network");
         }
       });
     },
-    [statuses, tripId]
+    [statuses, markedDates, tripId]
   );
+
+  const hasMarked = markedDates.size > 0;
 
   return (
     <div className="flex flex-col gap-2">
@@ -120,31 +148,27 @@ export function DayAttendanceChips({ tripId, days }: DayAttendanceChipsProps) {
         aria-label={MEMBER_DAYS_UI_STRINGS.memberDays_group_aria}
         className="flex flex-wrap items-center gap-2"
       >
-        {days.map((day) => {
-          const isIn = statuses[day.date] === "going";
-          return (
-            <button
-              key={day.date}
-              type="button"
-              aria-pressed={isIn}
-              disabled={isPending}
-              onClick={() => handleTap(day.date)}
-              className={cn(
-                // Hit-slop (#F4): 36px visual → 44px effective, y-only —
-                // x-slop would overlap the neighbor chip in the gap-2 row
-                // (same trade as rsvp-toggle). Label is the day-header
-                // register, so it rides in mono caption.
-                "focus-visible:ring-ring relative inline-flex h-9 items-center rounded-full border px-3 font-mono text-xs font-medium transition-colors after:absolute after:-inset-y-1 after:content-[''] focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
-                isIn
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-muted text-muted-foreground hover:bg-muted/80"
-              )}
-            >
-              {dayLabel(day.date)}
-            </button>
-          );
-        })}
+        {days.map((day) => (
+          <DayChipButton
+            key={day.date}
+            date={day.date}
+            pressed={statuses[day.date] === "going"}
+            disabled={isPending}
+            onClick={() => handleTap(day.date)}
+            marked={markedDates.has(day.date)}
+            markerAriaLabel={
+              MEMBER_DAYS_UI_STRINGS.memberDays_organizer_set_marker_aria
+            }
+          />
+        ))}
       </div>
+      {/* #550 — provenance cue when an organizer set some of these days.
+          Muted fact, not a nag; disappears as the member re-taps. */}
+      {hasMarked ? (
+        <p className="text-muted-foreground text-sm">
+          {MEMBER_DAYS_UI_STRINGS.memberDays_organizer_set_cue}
+        </p>
+      ) : null}
       {errorKey ? (
         <p
           role="alert"

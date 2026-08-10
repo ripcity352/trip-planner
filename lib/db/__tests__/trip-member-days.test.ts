@@ -63,10 +63,29 @@ describe("lib/db/trip-member-days.ts", () => {
       expect(orderCall?.args[0]).toBe("date");
     });
 
-    it("returns the rows as { date, status } pairs", async () => {
+    it("selects the attribution column (#550)", async () => {
+      const { calls, client } = makeBuilder([]);
+      await getMemberDays(client as unknown as SupabaseClient, "tm-1");
+      const selectCall = calls.find((c) => c.method === "select");
+      expect(String(selectCall?.args[0])).toContain(
+        "written_by_trip_member_id"
+      );
+    });
+
+    it("maps rows to { date, status, writtenByOther } and flags organizer-written days (#550)", async () => {
       const { client } = makeBuilder([
-        { date: "2026-08-14", status: "going" },
-        { date: "2026-08-15", status: "declined" },
+        // Self-written — written_by NULL → writtenByOther false.
+        {
+          date: "2026-08-14",
+          status: "going",
+          written_by_trip_member_id: null,
+        },
+        // Organizer-written on the member's behalf → writtenByOther true.
+        {
+          date: "2026-08-15",
+          status: "declined",
+          written_by_trip_member_id: "org-member-id",
+        },
       ]);
 
       const rows = await getMemberDays(
@@ -75,8 +94,8 @@ describe("lib/db/trip-member-days.ts", () => {
       );
 
       expect(rows).toEqual([
-        { date: "2026-08-14", status: "going" },
-        { date: "2026-08-15", status: "declined" },
+        { date: "2026-08-14", status: "going", writtenByOther: false },
+        { date: "2026-08-15", status: "declined", writtenByOther: true },
       ]);
     });
 

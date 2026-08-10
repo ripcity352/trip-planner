@@ -28,12 +28,27 @@ export interface MemberDay {
   /** ISO date — `YYYY-MM-DD`. */
   date: string;
   status: TripMemberDayStatus;
+  /**
+   * #550 — true when an organizer set this day on the member's behalf
+   * (`written_by_trip_member_id` is non-null). Anti-forgery RLS guarantees
+   * a non-null writer is never the member themselves, so this cleanly means
+   * "an organizer wrote this". Drives the /me "Dave set these — keep them?"
+   * cue; the member's own re-tap clears it. Optional so the leg-conflict /
+   * suggestion utils (which read only date + status) can build MemberDay
+   * literals without it; `getMemberDays` always sets a concrete boolean.
+   */
+  writtenByOther?: boolean;
 }
 
 /**
  * The caller's own day rows for one trip membership, ordered by date.
  * Returns [] for members whose trigger never seeded rows (RSVP maybe /
  * pending) — the chips handle upsert-from-empty.
+ *
+ * Also feeds the #550 organizer-on-behalf read: the SELECT policy
+ * ("members can read days for their trips") lets any trip member read any
+ * member's day rows, so an organizer passes a TARGET member's id here to
+ * load their current days into the on-behalf editor.
  */
 export async function getMemberDays(
   supabase: SupabaseClient,
@@ -41,7 +56,7 @@ export async function getMemberDays(
 ): Promise<MemberDay[]> {
   const { data, error } = await supabase
     .from("trip_member_days")
-    .select("date, status")
+    .select("date, status, written_by_trip_member_id")
     .eq("trip_member_id", tripMemberId)
     .order("date", { ascending: true });
 
@@ -49,7 +64,18 @@ export async function getMemberDays(
     throw new Error(`getMemberDays failed: ${error.message}`);
   }
 
-  return (data ?? []) as MemberDay[];
+  const rows = (data ?? []) as ReadonlyArray<{
+    date: string;
+    status: TripMemberDayStatus;
+    written_by_trip_member_id: string | null;
+  }>;
+
+  return rows.map((r) => ({
+    date: r.date,
+    status: r.status,
+    // `!= null` catches both null (self-written) and a missing field.
+    writtenByOther: r.written_by_trip_member_id != null,
+  }));
 }
 
 /** One member × day row as the roster "Who's around when" block consumes it. */

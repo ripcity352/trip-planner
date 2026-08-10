@@ -71,6 +71,48 @@ describe("DayAttendanceChips", () => {
     );
   });
 
+  it("#550: shows the organizer-set cue + marker when a day is writtenByOther", () => {
+    render(
+      <DayAttendanceChips
+        tripId={TRIP_ID}
+        days={[
+          { date: "2026-08-13", status: "going", writtenByOther: true },
+          { date: "2026-08-14", status: null },
+        ]}
+      />
+    );
+    // Cue line renders once any day is organizer-set.
+    expect(
+      screen.getByText(/an organizer marked the highlighted days/i)
+    ).toBeInTheDocument();
+    // The organizer-set chip's accessible name carries the marker suffix.
+    expect(
+      screen.getByRole("button", { name: /set by an organizer/i })
+    ).toBeInTheDocument();
+  });
+
+  it("#550: no cue when no day is organizer-set", () => {
+    render(<DayAttendanceChips tripId={TRIP_ID} days={DAYS} />);
+    expect(
+      screen.queryByText(/an organizer marked the highlighted days/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("#550: tapping an organizer-set chip clears its marker (member re-asserts ownership)", async () => {
+    render(
+      <DayAttendanceChips
+        tripId={TRIP_ID}
+        days={[{ date: "2026-08-13", status: "going", writtenByOther: true }]}
+      />
+    );
+    fireEvent.click(screen.getByText("thu 13"));
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/an organizer marked the highlighted days/i)
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("tapping an un-pressed chip opts IN — calls the action with status 'going'", async () => {
     render(<DayAttendanceChips tripId={TRIP_ID} days={DAYS} />);
     fireEvent.click(screen.getByText("fri 14"));

@@ -159,6 +159,14 @@ export interface TripMemberDay {
   idempotency_key: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * #550. NULL for self-written rows; set to the ORGANIZER's own
+   * trip_member_id when an organizer set this day on the member's behalf.
+   * Anti-forgery RLS guarantees it is never equal to `trip_member_id`, so
+   * a non-null value always means "an organizer wrote this" — the member's
+   * own re-tap ([Keep]) clears it, a DELETE ([Remove]) drops the row.
+   */
+  written_by_trip_member_id: string | null;
 }
 
 // =============================================================
