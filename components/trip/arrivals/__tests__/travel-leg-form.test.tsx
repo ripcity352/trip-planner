@@ -341,8 +341,9 @@ describe("TravelLegForm — edit mode", () => {
     ) as HTMLInputElement;
     expect(confirmationInput.value).toBe("ABC123");
 
+    // AirportPicker renders known IATA codes as "CODE / City" in its combobox
     expect((screen.getByLabelText("Airport") as HTMLInputElement).value).toBe(
-      "LAX"
+      "LAX / Los Angeles"
     );
     expect(
       (screen.getByLabelText("Coming from") as HTMLInputElement).value

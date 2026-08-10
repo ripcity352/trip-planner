@@ -571,6 +571,7 @@ export const M4_UI_STRINGS = {
   // Travel leg — airline typeahead
   // Voice lock: matches arrivals_leg_form_carrier_label palette tone.
   travelLeg_airline_placeholder: "Type your airline",
+  travelLeg_airport_placeholder: "Type your own",
   // /me page — W0d skeleton (no completion UI per Voice CRITICAL C1)
   me_page_heading: "You",
   me_label_name: "Name",
