@@ -89,4 +89,51 @@ describe("DayHeadcountList", () => {
     expect(sam?.className).toContain("text-muted-foreground");
     expect(carl?.className).toContain("text-foreground");
   });
+
+  // #552 — organizer-only "not set" marker distinguishes a member who has
+  // NO day row (maybe/pending laggard) from one who explicitly marked a
+  // non-going status. Keyed on `notSet`; gated on `viewerIsOrganizer`.
+  describe("#552 — not-set marker", () => {
+    const NOT_SET_DAYS: DayPresence[] = [
+      {
+        iso: "2026-08-14",
+        weekday: "fri",
+        count: 1,
+        members: [
+          { id: "tm-1", name: "Carl", around: true, legNote: null },
+          // explicitly not around (has a non-going row) — NOT "not set"
+          { id: "tm-2", name: "Dave", around: false, legNote: null, notSet: false },
+          // never touched availability — "not set"
+          { id: "tm-3", name: "Sam", around: false, legNote: null, notSet: true },
+        ],
+      },
+    ];
+
+    it("shows the 'hasn't set days' note on not-set members for organizers", () => {
+      render(<DayHeadcountList days={NOT_SET_DAYS} viewerIsOrganizer />);
+      fireEvent.click(screen.getByText("fri 1"));
+      const sam = screen.getByText("Sam").closest("li");
+      expect(sam?.textContent).toMatch(/hasn't set days/i);
+    });
+
+    it("does NOT show the note on members who explicitly marked a non-going day", () => {
+      render(<DayHeadcountList days={NOT_SET_DAYS} viewerIsOrganizer />);
+      fireEvent.click(screen.getByText("fri 1"));
+      const dave = screen.getByText("Dave").closest("li");
+      expect(dave?.textContent).not.toMatch(/hasn't set days/i);
+    });
+
+    it("hides the note entirely from non-organizers", () => {
+      render(<DayHeadcountList days={NOT_SET_DAYS} viewerIsOrganizer={false} />);
+      fireEvent.click(screen.getByText("fri 1"));
+      expect(screen.queryByText(/hasn't set days/i)).not.toBeInTheDocument();
+    });
+
+    it("never shows the note on an around member", () => {
+      render(<DayHeadcountList days={NOT_SET_DAYS} viewerIsOrganizer />);
+      fireEvent.click(screen.getByText("fri 1"));
+      const carl = screen.getByText("Carl").closest("li");
+      expect(carl?.textContent).not.toMatch(/hasn't set days/i);
+    });
+  });
 });
