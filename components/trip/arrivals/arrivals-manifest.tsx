@@ -31,7 +31,6 @@ import { resolveMemberName } from "@/lib/utils/member-display";
 import { computeRideShareClusters } from "@/lib/utils/ride-share";
 import { TravelLegCard } from "./travel-leg-card";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
-import { CrewFlightPanel } from "./crew-flight-panel";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TripMember } from "@/lib/db/types";
 
@@ -115,17 +114,38 @@ export function ArrivalsManifest({
     .filter((m) => m.id !== myTripMemberId && m.rsvp_status !== "declined")
     .map((m) => ({ id: m.id, name: resolveMemberName(memberNameMap, m.id) }));
 
-  // #574 follow-up — "log a flight the crew's on" passengers: all non-declined
-  // members INCLUDING the viewer (isYou → a self-leg; others → attributed tags).
-  const crewCandidates = tripMembers
-    .filter((m) => m.rsvp_status !== "declined")
-    .map((m) => ({
-      id: m.id,
-      name: resolveMemberName(memberNameMap, m.id),
-      isYou: m.id === myTripMemberId,
-    }))
-    // Same ordering as the roster mount (name A→Z).
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // #574 follow-up — per-card "add who's on this flight": for each flight,
+  // who could still be added. A member is a candidate for a leg unless they
+  // declined the trip, or they already have a leg on the SAME flight (same
+  // airline + flight number). Keyed lookup so each card gets its own list
+  // (the tagger adds OTHERS; the confirm gate keeps it opt-in).
+  // Candidates never include the viewer — adding yourself to a flight is the
+  // normal "log your travel" flow (and RLS rejects target == writer, rule #8).
+  const nonDeclined = tripMembers.filter(
+    (m) => m.rsvp_status !== "declined" && m.id !== myTripMemberId
+  );
+  // flight key → set of member ids already on it. Keyed on airline + number +
+  // direction so an inbound and outbound leg sharing a number aren't merged.
+  // Legs missing the airline or number can't be matched, so only their own
+  // owner counts (unique per-leg key).
+  const flightKey = (leg: TravelLeg): string =>
+    leg.airline_iata && leg.flight_number
+      ? `${leg.airline_iata}|${leg.flight_number}|${leg.direction}`
+      : `leg:${leg.id}`;
+  const membersByFlightKey = new Map<string, Set<string>>();
+  for (const leg of legs) {
+    const key = flightKey(leg);
+    const set = membersByFlightKey.get(key) ?? new Set<string>();
+    set.add(leg.trip_member_id);
+    membersByFlightKey.set(key, set);
+  }
+  const addCandidatesFor = (leg: TravelLeg) => {
+    const onThisFlight = membersByFlightKey.get(flightKey(leg)) ?? new Set();
+    return nonDeclined
+      .filter((m) => !onThisFlight.has(m.id))
+      .map((m) => ({ id: m.id, name: resolveMemberName(memberNameMap, m.id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
 
   // #477: split the manifest by direction. `legs` arrives sorted by
   // arrive_at ASC (nulls last), which is the right order for inbound;
@@ -151,6 +171,8 @@ export function ArrivalsManifest({
           ? resolveMemberName(memberNameMap, leg.written_by_trip_member_id)
           : null
       }
+      // #574 follow-up — who this viewer can still add to this flight.
+      addCandidates={addCandidatesFor(leg)}
       tripTimezone={tripTimezone}
       // #452: without this, the per-card edit sheet's save/delete left
       // stale legs on screen until a manual reload.
@@ -217,15 +239,6 @@ export function ArrivalsManifest({
         tripEndsAt={tripEndsAt}
         // #574 — co-travelers taggable onto a new shared flight.
         tagCandidates={tagCandidates}
-      />
-
-      {/* #574 follow-up — log a flight the crew's on (you may not be on it).
-          Enter once, pick passengers; each confirms. Any member. */}
-      <CrewFlightPanel
-        tripId={tripId}
-        tripTimezone={tripTimezone}
-        viewerTripMemberId={myTripMemberId}
-        candidates={crewCandidates}
       />
     </div>
   );

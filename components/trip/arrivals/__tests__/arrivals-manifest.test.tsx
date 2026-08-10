@@ -26,14 +26,20 @@ vi.mock("../travel-leg-card", () => ({
     leg,
     ownerName,
     onMutated,
+    addCandidates,
   }: {
     leg: TravelLeg;
     myTripMemberId: string;
     ownerName: string;
     tripTimezone: string;
     onMutated?: () => void;
+    addCandidates?: ReadonlyArray<{ id: string; name: string }>;
   }) => (
-    <div data-testid="travel-leg-card" data-leg-id={leg.id}>
+    <div
+      data-testid="travel-leg-card"
+      data-leg-id={leg.id}
+      data-add-candidates={(addCandidates ?? []).map((c) => c.id).join(",")}
+    >
       {ownerName}
       <button
         data-testid={`card-mutated-${leg.id}`}
@@ -433,5 +439,62 @@ describe("ArrivalsManifest — two sections (#477)", () => {
     ]);
 
     expect(screen.queryByText(/split a ride/)).not.toBeInTheDocument();
+  });
+
+  // #574 follow-up — a flight card's "add who's on this" candidates exclude
+  // trip decliners and anyone already on the SAME flight (matched by
+  // airline + flight number), so you never re-add a passenger.
+  it("computes per-card add-candidates, excluding same-flight members and decliners", () => {
+    const jusLeg = makeLeg({
+      id: "leg-jus",
+      trip_member_id: "jus",
+      airline_iata: "HA",
+      flight_number: "AS840",
+    });
+    // Jar is already on the SAME flight (HA AS840) → must not be a candidate.
+    const jarLeg = makeLeg({
+      id: "leg-jar",
+      trip_member_id: "jar",
+      airline_iata: "HA",
+      flight_number: "AS840",
+    });
+
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[jusLeg, jarLeg]}
+        myTripMemberId="rip"
+        tripMembers={[
+          makeMember({ id: "jus", display_name: "Jus" }),
+          makeMember({ id: "jar", display_name: "Jar" }),
+          makeMember({ id: "mend", display_name: "Mend" }),
+          makeMember({ id: "rip", display_name: "Rip" }),
+          makeMember({
+            id: "out",
+            display_name: "Out",
+            rsvp_status: "declined",
+          }),
+        ]}
+        tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+
+    const jusCard = screen
+      .getAllByTestId("travel-leg-card")
+      .find((el) => el.getAttribute("data-leg-id") === "leg-jus")!;
+    const candidateIds = (
+      jusCard.getAttribute("data-add-candidates") ?? ""
+    ).split(",");
+    // Only Mend remains: jus/jar are on the flight, out declined, and rip
+    // (the viewer) is never a candidate — adding yourself is the log-your-
+    // travel flow (RLS rejects target == writer).
+    expect(candidateIds).toContain("mend");
+    expect(candidateIds).not.toContain("rip");
+    expect(candidateIds).not.toContain("jus");
+    expect(candidateIds).not.toContain("jar");
+    expect(candidateIds).not.toContain("out");
   });
 });
