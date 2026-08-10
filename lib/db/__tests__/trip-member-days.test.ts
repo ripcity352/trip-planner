@@ -127,8 +127,16 @@ describe("lib/db/trip-member-days.ts", () => {
       // through the trip_members embed (rule 6: every query scopes by
       // trip_id). An unscoped read would return other trips' days.
       const selectCall = calls.find((c) => c.method === "select");
-      expect(String(selectCall?.args[0])).toContain("trip_members!inner");
-      expect(String(selectCall?.args[0])).toContain("trip_member_id");
+      // The embed MUST name the FK explicitly. Since #550 added a second
+      // FK to trip_members (written_by_trip_member_id), a bare
+      // `trip_members!inner` is ambiguous → PostgREST 300 (this crashed the
+      // roster in prod). Guard the disambiguated form so it can't regress.
+      expect(String(selectCall?.args[0])).toContain(
+        "trip_members!trip_member_id!inner"
+      );
+      expect(String(selectCall?.args[0])).not.toContain(
+        "status, trip_members!inner"
+      );
       const eqCalls = calls.filter((c) => c.method === "eq");
       const args = eqCalls.map((c) => `${c.args[0]}=${c.args[1]}`);
       expect(args).toContain("trip_members.trip_id=trip-1");
