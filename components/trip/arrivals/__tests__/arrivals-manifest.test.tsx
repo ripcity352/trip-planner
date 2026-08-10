@@ -245,6 +245,55 @@ describe("ArrivalsManifest", () => {
     expect(screen.getByText("10:30 am")).toBeInTheDocument();
   });
 
+  // #579 — a persisted "full" preference is applied AFTER mount (SSR-safe:
+  // first paint is the default Compact, the effect then hydrates from
+  // localStorage). Guards against a regression to a render-time initializer.
+  it("hydrates the persisted Full preference from localStorage on mount", () => {
+    window.localStorage.setItem("pt:arrivalsView", "full");
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[makeLeg({ id: "leg-1" })]}
+        myTripMemberId="member-1"
+        tripMembers={[makeMember()]}
+        tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+    // No toggle click — the stored preference alone must yield Full (cards).
+    expect(screen.getAllByTestId("travel-leg-card")).toHaveLength(1);
+  });
+
+  // #579 — flipping the toggle persists the choice for the next visit.
+  it("persists the chosen view to localStorage on toggle", () => {
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[makeLeg({ id: "leg-1" })]}
+        myTripMemberId="member-1"
+        tripMembers={[makeMember()]}
+        tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_full,
+      })
+    );
+    expect(window.localStorage.getItem("pt:arrivalsView")).toBe("full");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_compact,
+      })
+    );
+    expect(window.localStorage.getItem("pt:arrivalsView")).toBe("compact");
+  });
+
   // #579 — the day header adopts the lowercase-mono register (`fri 14`),
   // replacing the pre-#579 uppercase `Fri, Aug 14` eyebrow (an anti-tell).
   it("renders day headers in the lowercase-mono register, not the uppercase eyebrow", () => {
