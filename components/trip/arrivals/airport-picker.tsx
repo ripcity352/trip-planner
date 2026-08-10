@@ -85,7 +85,14 @@ export function AirportPicker({
     // "type and hit Save" path without ever opening the suggestion row.
     const next = sanitizeFreeform(e.target.value);
     setQuery(next);
-    onChange(next);
+    // An exact case-insensitive match to a catalog code resolves the
+    // display to "IATA / City" (below) even though the user never
+    // explicitly selected a suggestion — commit the canonical uppercase
+    // code here too, or the stored value stays whatever case they typed
+    // ("pdx") while the UI shows the resolved catalog entry, silently
+    // reintroducing the case inconsistency this picker exists to fix.
+    const exactMatch = findAirport(next);
+    onChange(exactMatch ? exactMatch.iata : next);
     setOpen(true);
   };
 
