@@ -452,6 +452,19 @@ export const M3_UI_STRINGS = {
     "{count} of you land at {airport} within an hour — split a ride?",
   // Card origin label, inbound only. {origin} is free text ("JFK", "Ohio").
   arrivals_card_from_template: "from {origin}",
+  // #574 — co-traveler tagging (shared flights). The picker on the add-a-
+  // flight form; the tagged member confirms on their own arrivals view.
+  arrivals_tag_cotravelers_label: "Anyone else on this flight?",
+  arrivals_tag_cotravelers_hint:
+    "It'll land on their arrivals too — they just confirm it's them.",
+  // Shown on a still-pending tag. {name} = the member who added it. On
+  // everyone else's view this is the whole story; on the tagged member's
+  // own card it sits above the confirm buttons.
+  arrivals_tag_pending_marker_template: "Added by {name} · unconfirmed",
+  // The tagged member's confirm prompt. {name} = the tagger.
+  arrivals_tag_confirm_heading_template: "{name} says you're on this flight.",
+  arrivals_tag_confirm_cta: "Yep, that's me",
+  arrivals_tag_dismiss_cta: "Not me",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   // #533 — the roster deliberately lists ALL members (including "Can't

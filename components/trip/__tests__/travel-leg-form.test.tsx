@@ -46,6 +46,7 @@ const LEG: TravelLeg = {
   direction: "inbound",
   airport: null,
   origin_label: null,
+  written_by_trip_member_id: null,
 };
 
 async function renderEditForm() {

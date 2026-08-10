@@ -22,6 +22,22 @@ vi.mock("../travel-leg-form-sheet", () => ({
   ),
 }));
 
+// Mock TaggedLegConfirm (#574) — tested separately; here we only assert the
+// card mounts it (with the right props) for the tagged member.
+vi.mock("../tagged-leg-confirm", () => ({
+  TaggedLegConfirm: ({
+    legId,
+    taggerName,
+  }: {
+    legId: string;
+    taggerName: string;
+  }) => (
+    <div data-testid="tagged-leg-confirm" data-leg-id={legId}>
+      {taggerName}
+    </div>
+  ),
+}));
+
 const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   id: "leg-1",
   trip_id: "trip-1",
@@ -37,6 +53,7 @@ const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   direction: "inbound",
   airport: null,
   origin_label: null,
+  written_by_trip_member_id: null,
   ...overrides,
 });
 
@@ -413,5 +430,60 @@ describe("TravelLegCard — airport and origin (#477)", () => {
       />
     );
     expect(screen.queryByText("LAX")).not.toBeInTheDocument();
+  });
+});
+
+// #574 — pending co-traveler tag rendering.
+describe("TravelLegCard — pending co-traveler tag (#574)", () => {
+  const pendingLeg = () =>
+    makeLeg({
+      trip_member_id: "member-2", // the tagged member owns the row
+      written_by_trip_member_id: "member-1", // tagged by someone else
+    });
+
+  it("shows the confirm control to the tagged member (owner), not the edit sheet", () => {
+    render(
+      <TravelLegCard
+        leg={pendingLeg()}
+        myTripMemberId="member-2"
+        ownerName="Rob"
+        taggerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    const confirm = screen.getByTestId("tagged-leg-confirm");
+    expect(confirm).toBeInTheDocument();
+    expect(confirm).toHaveTextContent("Dave");
+    // While pending, the edit affordance is suppressed (confirm/dismiss first).
+    expect(screen.queryByTestId("edit-leg-sheet")).not.toBeInTheDocument();
+  });
+
+  it("shows a muted 'Added by X · unconfirmed' marker to everyone else", () => {
+    render(
+      <TravelLegCard
+        leg={pendingLeg()}
+        myTripMemberId="member-3" // an uninvolved viewer
+        ownerName="Rob"
+        taggerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.getByText("Added by Dave · unconfirmed")).toBeInTheDocument();
+    expect(screen.queryByTestId("tagged-leg-confirm")).not.toBeInTheDocument();
+  });
+
+  it("renders no tag marker or confirm on a normal (self-logged) leg", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg()}
+        myTripMemberId="member-1"
+        ownerName="Dave"
+        tripTimezone="UTC"
+      />
+    );
+    expect(screen.queryByTestId("tagged-leg-confirm")).not.toBeInTheDocument();
+    expect(screen.queryByText(/unconfirmed/)).not.toBeInTheDocument();
+    // Owner of a confirmed leg keeps the edit affordance.
+    expect(screen.getByTestId("edit-leg-sheet")).toBeInTheDocument();
   });
 });

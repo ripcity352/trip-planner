@@ -18,12 +18,18 @@ import type { TravelLeg } from "@/lib/db/types";
 vi.mock("@/lib/actions/travel-legs", () => ({
   upsertTravelLeg: vi.fn(),
   deleteTravelLeg: vi.fn(),
+  tagCoTravelersAction: vi.fn(),
 }));
 
-import { upsertTravelLeg, deleteTravelLeg } from "@/lib/actions/travel-legs";
+import {
+  upsertTravelLeg,
+  deleteTravelLeg,
+  tagCoTravelersAction,
+} from "@/lib/actions/travel-legs";
 
 const mockUpsert = vi.mocked(upsertTravelLeg);
 const mockDelete = vi.mocked(deleteTravelLeg);
+const mockTag = vi.mocked(tagCoTravelersAction);
 
 const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   id: "leg-1",
@@ -42,6 +48,7 @@ const makeLeg = (overrides: Partial<TravelLeg> = {}): TravelLeg => ({
   direction: "inbound",
   airport: null,
   origin_label: null,
+  written_by_trip_member_id: null,
   ...overrides,
 });
 
@@ -914,5 +921,197 @@ describe("TravelLegForm — required time per direction (#477)", () => {
     expect(
       screen.queryByText(M3_UI_STRINGS.arrivals_leg_form_arrive_required)
     ).not.toBeInTheDocument();
+  });
+});
+
+// #574 — co-traveler tagging picker + fan-out.
+describe("TravelLegForm — co-traveler tagging (#574)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockUpsert.mockReset();
+    mockTag.mockReset();
+  });
+
+  const candidates = [
+    { id: "member-2", name: "Rob" },
+    { id: "member-3", name: "Dana" },
+  ];
+
+  it("shows the picker for a NEW flight when candidates exist", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+    expect(
+      screen.getByText(M3_UI_STRINGS.arrivals_tag_cotravelers_label)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Rob")).toBeInTheDocument();
+    expect(screen.getByText("Dana")).toBeInTheDocument();
+  });
+
+  it("hides the picker in edit mode", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg()}
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+    expect(
+      screen.queryByText(M3_UI_STRINGS.arrivals_tag_cotravelers_label)
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the picker for a non-flight kind", () => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+    fireEvent.change(screen.getByLabelText("How"), {
+      target: { value: "drive" },
+    });
+    expect(
+      screen.queryByText(M3_UI_STRINGS.arrivals_tag_cotravelers_label)
+    ).not.toBeInTheDocument();
+  });
+
+  it("fans out to the selected co-travelers after the own leg saves", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg({ id: "leg-9" }) });
+    mockTag.mockResolvedValue({ ok: true, tagged: 1 });
+    const onSuccess = vi.fn();
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T20:00" },
+    });
+    fireEvent.click(screen.getByText("Rob"));
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockTag).toHaveBeenCalledOnce();
+    });
+    const [tagInput] = mockTag.mock.calls[0];
+    expect(tagInput.targetTripMemberIds).toEqual(["member-2"]);
+    expect(tagInput.kind).toBe("flight");
+    // The tag payload carries no PNR/notes fields at all (server also
+    // hard-nulls them) — only shareable flight facts.
+    expect(tagInput).not.toHaveProperty("confirmationCode");
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+  });
+
+  it("does NOT fan out when no co-traveler is selected", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg({ id: "leg-9" }) });
+    const onSuccess = vi.fn();
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T20:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(mockTag).not.toHaveBeenCalled();
+  });
+
+  it("keeps the form open on a tag failure (own leg saved, error shown)", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg({ id: "leg-9" }) });
+    mockTag.mockResolvedValue({ ok: false, errorKey: "rate_limit" });
+    const onSuccess = vi.fn();
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T20:00" },
+    });
+    fireEvent.click(screen.getByText("Rob"));
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => expect(mockTag).toHaveBeenCalledOnce());
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("retry after a tag failure UPDATEs the saved leg (no dup) and replays the same tag key", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg({ id: "leg-9" }) });
+    mockTag
+      .mockResolvedValueOnce({ ok: false, errorKey: "rate_limit" })
+      .mockResolvedValueOnce({ ok: true, tagged: 1 });
+    const onSuccess = vi.fn();
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T20:00" },
+    });
+    fireEvent.click(screen.getByText("Rob"));
+
+    // First submit — own leg saves (insert, no legId), tag fails.
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+    await waitFor(() => expect(mockTag).toHaveBeenCalledOnce());
+    expect(mockUpsert.mock.calls[0][0].legId).toBeUndefined();
+
+    // Second submit — own leg UPDATEs the saved id (no duplicate), tag
+    // replays with the SAME idempotency key.
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+    await waitFor(() => expect(mockTag).toHaveBeenCalledTimes(2));
+
+    expect(mockUpsert.mock.calls[1][0].legId).toBe("leg-9");
+    const firstTagKey = mockTag.mock.calls[0][1];
+    const secondTagKey = mockTag.mock.calls[1][1];
+    expect(secondTagKey).toBe(firstTagKey);
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
   });
 });

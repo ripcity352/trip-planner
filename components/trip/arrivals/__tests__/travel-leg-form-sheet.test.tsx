@@ -95,6 +95,7 @@ describe("TravelLegFormSheet — edit mode (leg prop present)", () => {
     direction: "inbound",
     airport: null,
     origin_label: null,
+    written_by_trip_member_id: null,
   };
 
   it("renders the edit CTA button", () => {

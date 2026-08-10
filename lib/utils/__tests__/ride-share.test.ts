@@ -31,6 +31,7 @@ function makeLeg(overrides: Partial<TravelLeg> = {}): TravelLeg {
     direction: "inbound",
     airport: "LAX",
     origin_label: null,
+    written_by_trip_member_id: null,
     ...overrides,
   };
 }

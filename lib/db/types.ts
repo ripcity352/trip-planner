@@ -441,6 +441,15 @@ export interface TravelLeg {
   airport: string | null;
   /** Optional "from JFK" label — inbound only, free text. */
   origin_label: string | null;
+  /**
+   * #574. NULL for self-logged legs (the default). Set to the TAGGER's own
+   * trip_member_id when a member tags this co-traveler onto a shared flight.
+   * An UNCONFIRMED tag is `written_by_trip_member_id != null && !=
+   * trip_member_id`; the tagged member's confirm (own UPDATE) clears it to
+   * NULL, dismiss (own DELETE) drops the row. Anti-forgery RLS guarantees it
+   * is never equal to `trip_member_id`.
+   */
+  written_by_trip_member_id: string | null;
 }
 
 /**

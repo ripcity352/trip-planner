@@ -31,7 +31,7 @@ import {
   deriveLegDaySuggestions,
   type LegDaySuggestions,
 } from "@/lib/utils/leg-day-suggestions";
-import { TravelLegForm } from "./travel-leg-form";
+import { TravelLegForm, type TagCandidate } from "./travel-leg-form";
 import { LegDaySuggestPrompt } from "./leg-day-suggest-prompt";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TravelLegDirection } from "@/lib/db/types";
@@ -51,6 +51,11 @@ export interface TravelLegFormSheetProps {
   myDays?: ReadonlyArray<MemberDay>;
   tripStartsAt?: string | null;
   tripEndsAt?: string | null;
+  /**
+   * #574 — co-travelers taggable onto a shared flight. Threaded to
+   * TravelLegForm; only used in add-mode for a flight. Omit in edit mode.
+   */
+  tagCandidates?: ReadonlyArray<TagCandidate>;
 }
 
 /**
@@ -87,6 +92,7 @@ export function TravelLegFormSheet({
   myDays,
   tripStartsAt,
   tripEndsAt,
+  tagCandidates,
 }: TravelLegFormSheetProps) {
   // Add mode: which section's CTA opened the form; null = closed.
   // Edit mode: any non-null value opens (direction comes from the leg).
@@ -155,6 +161,7 @@ export function TravelLegFormSheet({
           tripTimezone={tripTimezone}
           onSuccess={handleSuccess}
           onCancel={handleCancel}
+          tagCandidates={tagCandidates}
         />
       </div>
     );
