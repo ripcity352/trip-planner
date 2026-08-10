@@ -38,7 +38,11 @@ import { callAction } from "@/lib/ui/call-action";
 import { M3_UI_STRINGS, M4_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { MEMBER_FLAG_CHIPS } from "@/lib/data/member-flags";
-import { addItemFlag, removeItemFlag } from "@/lib/actions/item-flags";
+import {
+  addItemFlag,
+  removeItemFlag,
+  confirmItemFlag,
+} from "@/lib/actions/item-flags";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -65,6 +69,20 @@ const FIXED_CHIPS: ReadonlyArray<string> = MEMBER_FLAG_CHIPS;
 export interface MemberFlagRow {
   flag: string;
   note: string | null;
+  /**
+   * #171. When an organizer transcribed this flag on the member's behalf
+   * and it isn't confirmed yet, this is the organizer's display name;
+   * otherwise null/undefined (a normal self-owned row). Such rows surface
+   * in a distinct "keep it?" confirm section, NOT as pressed chips.
+   */
+  savedByName?: string | null;
+}
+
+/** An unconfirmed organizer-written row — narrowed for the confirm section. */
+interface PendingOnBehalf {
+  flag: string;
+  note: string | null;
+  savedByName: string;
 }
 
 export interface MemberFlagPickerProps {
@@ -82,15 +100,30 @@ export function MemberFlagPicker({
   initialFlags = [],
   className,
 }: MemberFlagPickerProps) {
+  // #171 — an unconfirmed organizer-written row carries savedByName. Those
+  // rows go to the confirm section only; they are excluded from the chip
+  // and custom partitions until the member taps Keep.
+  const [pending, setPending] = React.useState<ReadonlyArray<PendingOnBehalf>>(
+    () =>
+      initialFlags
+        .filter((f): f is MemberFlagRow & { savedByName: string } =>
+          Boolean(f.savedByName)
+        )
+        .map((f) => ({ flag: f.flag, note: f.note, savedByName: f.savedByName }))
+  );
   const [selected, setSelected] = React.useState<Set<string>>(
     () =>
       new Set(
-        initialFlags.filter((f) => FIXED_CHIPS.includes(f.flag)).map((f) => f.flag)
+        initialFlags
+          .filter((f) => !f.savedByName && FIXED_CHIPS.includes(f.flag))
+          .map((f) => f.flag)
       )
   );
   const [customFlags, setCustomFlags] = React.useState<
     ReadonlyArray<MemberFlagRow>
-  >(() => initialFlags.filter((f) => !FIXED_CHIPS.includes(f.flag)));
+  >(() =>
+    initialFlags.filter((f) => !f.savedByName && !FIXED_CHIPS.includes(f.flag))
+  );
   // #399: closed by default; auto-open only when flags already exist.
   const [open, setOpen] = React.useState(initialFlags.length > 0);
   const [freeformFlag, setFreeformFlag] = React.useState("");
@@ -104,6 +137,15 @@ export function MemberFlagPicker({
   // ── Chip toggle ─────────────────────────────────────────────────────────────
 
   const toggleChip = (chip: string) => {
+    // A chip whose flag is an unconfirmed on-behalf row lives in the confirm
+    // section, not the pressed grid — tapping it IS the Keep (routes through
+    // confirmItemFlag so attribution actually clears, not a no-op re-add).
+    const pendingRow = pending.find((p) => p.flag === chip);
+    if (pendingRow) {
+      keepPending(pendingRow);
+      return;
+    }
+
     const isSelected = selected.has(chip);
 
     setErrorKey(null);
@@ -150,6 +192,49 @@ export function MemberFlagPicker({
         return;
       }
       setCustomFlags((prev) => prev.filter((f) => f.flag !== flag));
+      setSaved(true);
+    });
+  };
+
+  // ── #171 confirm section — Keep / Remove an organizer-written row ────────────
+
+  const keepPending = (row: PendingOnBehalf) => {
+    setErrorKey(null);
+    setSaved(false);
+
+    startTransition(async () => {
+      const result = await callAction(() => confirmItemFlag(itemId, row.flag));
+      if (!result.ok) {
+        setErrorKey(result.errorKey);
+        return;
+      }
+      // Now a normal self-owned flag: drop from pending, reflect in the
+      // matching partition so a reload (which derives from initialFlags)
+      // shows the same thing.
+      setPending((prev) => prev.filter((f) => f.flag !== row.flag));
+      if (FIXED_CHIPS.includes(row.flag)) {
+        setSelected((prev) => new Set([...prev, row.flag]));
+      } else {
+        setCustomFlags((prev) => [
+          ...prev.filter((f) => f.flag !== row.flag),
+          { flag: row.flag, note: row.note },
+        ]);
+      }
+      setSaved(true);
+    });
+  };
+
+  const removePending = (row: PendingOnBehalf) => {
+    setErrorKey(null);
+    setSaved(false);
+
+    startTransition(async () => {
+      const result = await callAction(() => removeItemFlag(itemId, row.flag));
+      if (!result.ok) {
+        setErrorKey(result.errorKey);
+        return;
+      }
+      setPending((prev) => prev.filter((f) => f.flag !== row.flag));
       setSaved(true);
     });
   };
@@ -234,6 +319,62 @@ export function MemberFlagPicker({
           <p className="text-muted-foreground text-xs">
             {M4_UI_STRINGS.itineraryItem_memberFlag_subhead}
           </p>
+
+          {/* #171 — organizer-transcribed rows awaiting the member's say.
+              Distinct from self-set chips; the member keeps or removes. */}
+          {pending.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {pending.map((row) => (
+                <li
+                  key={row.flag}
+                  className="border-border bg-muted flex flex-col gap-1.5 rounded-xs border px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium break-words">{row.flag}</p>
+                    {row.note ? (
+                      <p className="text-muted-foreground text-xs break-words">
+                        {row.note}
+                      </p>
+                    ) : null}
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      {M3_UI_STRINGS.itinerary_item_flag_onbehalf_confirm_template.replace(
+                        "{name}",
+                        row.savedByName
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => keepPending(row)}
+                      className={cn(
+                        "focus-visible:ring-ring rounded-xs border px-3 py-1 text-xs font-medium transition-colors",
+                        "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+                        "disabled:cursor-not-allowed disabled:opacity-60",
+                        "border-foreground bg-foreground text-background"
+                      )}
+                    >
+                      {M3_UI_STRINGS.itinerary_item_flag_onbehalf_keep}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => removePending(row)}
+                      className={cn(
+                        "focus-visible:ring-ring rounded-xs border px-3 py-1 text-xs font-medium transition-colors",
+                        "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
+                        "disabled:cursor-not-allowed disabled:opacity-60",
+                        "border-border bg-muted text-muted-foreground hover:bg-muted/80"
+                      )}
+                    >
+                      {M3_UI_STRINGS.itinerary_item_flag_onbehalf_remove}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {/* Chip grid */}
           <div

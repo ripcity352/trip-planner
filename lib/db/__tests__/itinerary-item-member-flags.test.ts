@@ -47,6 +47,7 @@ const flagA: ItineraryItemMemberFlag = {
   flag: "vegan",
   note: "strict vegan please",
   created_at: "2026-05-21T00:00:00.000Z",
+  written_by_trip_member_id: null,
 };
 
 /** (b) Flag owned by a different member of the same trip — NOT visible to caller */
@@ -57,6 +58,7 @@ const flagB: ItineraryItemMemberFlag = {
   flag: "sober",
   note: null,
   created_at: "2026-05-21T00:01:00.000Z",
+  written_by_trip_member_id: null,
 };
 
 /**

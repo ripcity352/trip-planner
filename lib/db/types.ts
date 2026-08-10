@@ -442,6 +442,14 @@ export interface ItineraryItemMemberFlag {
   flag: string;
   note: string | null;
   created_at: string;
+  /**
+   * #171. NULL for self-written rows (the default). Set to the ORGANIZER's
+   * own trip_member_id when an organizer transcribed this flag on the
+   * member's behalf. An UNCONFIRMED on-behalf row is
+   * `written_by_trip_member_id != null && != trip_member_id`; the member's
+   * [Keep] clears it to NULL, [Remove] deletes the row.
+   */
+  written_by_trip_member_id: string | null;
 }
 
 // =============================================================

@@ -21,6 +21,8 @@ import { MapsLink } from "./maps-link";
 import { ItemRsvpChip } from "./item-rsvp-chip";
 import { ItemFlagForm } from "./item-flag-form";
 import { OrganizerFlagView } from "./organizer-flag-view";
+import { OrganizerFlagOnBehalf } from "./organizer-flag-on-behalf";
+import { resolveMemberName } from "@/lib/utils/member-display";
 import { EditItemFormSheet } from "./edit-item-form-sheet";
 import { LodgingRoster } from "./lodging-roster";
 import type {
@@ -55,6 +57,9 @@ export interface ItemCardProps {
   lodgingAssignments: LodgingAssignment[];
   /** All trip members — used by LodgingRoster to display names. */
   tripMembers: TripMember[];
+  /** #171: the viewer's own trip_member_id. Excludes self from the
+   * organizer on-behalf target picker (self uses the normal picker). */
+  viewerMemberId: string;
   /** IANA timezone from `trips.timezone` — forwarded to EditItemFormSheet. */
   tripTimezone: string;
   /** #365: member flags for this item. Under organizer RLS this is every
@@ -77,6 +82,7 @@ export function ItemCard({
   celebrantName,
   lodgingAssignments,
   tripMembers,
+  viewerMemberId,
   tripTimezone,
   itemFlags,
   inCount,
@@ -217,27 +223,50 @@ export function ItemCard({
       {/* Per-item RSVP chip */}
       <ItemRsvpChip itemId={item.id} initialStatus={myRsvpStatus} />
 
-      {/* #365: organizer read surface for member flags. Renders only when
-          flags exist — a per-card "nothing yet" line is 375px noise. */}
-      {isOrganizer && itemFlags.length > 0 ? (
-        <OrganizerFlagView
-          flags={itemFlags}
-          memberNames={Object.fromEntries(
-            tripMembers.flatMap((m) =>
-              m.display_name ? [[m.id, m.display_name]] : []
-            )
-          )}
-        />
+      {/* Organizer flag surface: the read view (only when flags exist) plus
+          the #171 write-on-behalf entry (always, so the first heads-up can
+          be banked). */}
+      {isOrganizer ? (
+        <div className="flex flex-col gap-3">
+          {itemFlags.length > 0 ? (
+            <OrganizerFlagView
+              flags={itemFlags}
+              memberNames={Object.fromEntries(
+                tripMembers.flatMap((m) =>
+                  m.display_name ? [[m.id, m.display_name]] : []
+                )
+              )}
+            />
+          ) : null}
+          <OrganizerFlagOnBehalf
+            itemId={item.id}
+            tripMembers={tripMembers}
+            viewerMemberId={viewerMemberId}
+          />
+        </div>
       ) : null}
 
       {/* Per-item flag form — only for non-organizer members. itemFlags is
           RLS-scoped to the viewer's own rows here, so it doubles as the
           rehydration source (#365). Full rows pass through so custom flags
-          (and their notes) render back as removable entries (#398). */}
+          (and their notes) render back as removable entries (#398). #171:
+          an organizer-transcribed row (written_by set & != self) carries
+          the organizer's name so the picker shows the keep/remove confirm. */}
       {!isOrganizer ? (
         <ItemFlagForm
           itemId={item.id}
-          initialFlags={itemFlags.map(({ flag, note }) => ({ flag, note }))}
+          initialFlags={itemFlags.map((f) => ({
+            flag: f.flag,
+            note: f.note,
+            savedByName:
+              f.written_by_trip_member_id &&
+              f.written_by_trip_member_id !== f.trip_member_id
+                ? resolveMemberName(
+                    new Map(tripMembers.map((m) => [m.id, m])),
+                    f.written_by_trip_member_id
+                  )
+                : null,
+          }))}
         />
       ) : null}
     </article>

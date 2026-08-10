@@ -131,6 +131,8 @@ const baseProps = {
   isCelebrant: false,
   lodgingAssignments: [] as LodgingAssignment[],
   tripMembers: [] as TripMember[],
+  // #171: viewer's own trip_member_id (organizer on-behalf picker excludes self)
+  viewerMemberId: "viewer-1",
   // W2b: tripTimezone required by EditItemFormSheet
   tripTimezone: "America/New_York",
   // #365: member flags for this item (organizer read surface / rehydrate)
@@ -148,6 +150,7 @@ const makeFlag = (
   flag: "Vegetarian",
   note: null,
   created_at: "2026-05-20T00:00:00Z",
+  written_by_trip_member_id: null,
   ...overrides,
 });
 
@@ -443,9 +446,51 @@ describe("ItemCard — member flags (#365)", () => {
       />
     );
     const form = screen.getByTestId("flag-form");
-    // #398: rows (flag + note) pass through so custom flags render back
+    // #398: rows (flag + note) pass through so custom flags render back.
+    // #171: savedByName rides along (null for a normal self-written row).
     expect(form.getAttribute("data-initial-flags")).toBe(
-      JSON.stringify([{ flag: "Late arrival", note: null }])
+      JSON.stringify([
+        { flag: "Late arrival", note: null, savedByName: null },
+      ])
+    );
+  });
+
+  // #171 — an organizer-transcribed row (written_by set & != self) threads
+  // the organizer's name to the picker so it can show the keep/remove confirm.
+  it("threads savedByName for an organizer-written (on-behalf) flag row", () => {
+    render(
+      <ItemCard
+        {...baseProps}
+        item={makeItem()}
+        tripMembers={[
+          {
+            id: "org-1",
+            trip_id: "trip-1",
+            user_id: "u-org",
+            role: "organizer",
+            rsvp_status: "going",
+            joined_at: "2026-05-20T00:00:00Z",
+            is_celebrant: false,
+            display_name: "Dave",
+            phone_e164: null,
+            email: null,
+            idempotency_key: null,
+          },
+        ]}
+        itemFlags={[
+          makeFlag({
+            flag: "Shellfish",
+            trip_member_id: "member-1",
+            written_by_trip_member_id: "org-1",
+          }),
+        ]}
+      />
+    );
+    const form = screen.getByTestId("flag-form");
+    expect(form.getAttribute("data-initial-flags")).toBe(
+      JSON.stringify([
+        { flag: "Shellfish", note: null, savedByName: "Dave" },
+      ])
     );
   });
 });

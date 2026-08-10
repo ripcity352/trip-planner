@@ -109,7 +109,9 @@ export async function getItemFlagsForOrganizer(
   const { data, error } = await supabase
     .from("itinerary_item_member_flags")
     .select(
-      "id, item_id, trip_member_id, flag, note, created_at, itinerary_items!inner(trip_id)"
+      // #171: written_by_trip_member_id rides along so the member-side
+      // picker can detect an unconfirmed organizer-transcribed row.
+      "id, item_id, trip_member_id, flag, note, created_at, written_by_trip_member_id, itinerary_items!inner(trip_id)"
     )
     .eq("itinerary_items.trip_id", tripId);
 
