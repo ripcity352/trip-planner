@@ -112,7 +112,15 @@ export async function getMemberDaysByTrip(
 ): Promise<TripMemberDayRow[]> {
   const { data, error } = await supabase
     .from("trip_member_days")
-    .select("trip_member_id, date, status, trip_members!inner(trip_id, rsvp_status)")
+    // The embed MUST name the FK: since #550 added
+    // `written_by_trip_member_id`, this table has TWO foreign keys to
+    // trip_members, so a bare `trip_members!inner(...)` is ambiguous and
+    // PostgREST answers 300 (Multiple Choices) — which crashed the roster
+    // + day-headcount reads in prod. `!trip_member_id!inner` pins the join
+    // to the attendee FK (never the attribution FK).
+    .select(
+      "trip_member_id, date, status, trip_members!trip_member_id!inner(trip_id, rsvp_status)"
+    )
     .eq("trip_members.trip_id", tripId)
     .neq("trip_members.rsvp_status", "declined")
     .order("date", { ascending: true });
