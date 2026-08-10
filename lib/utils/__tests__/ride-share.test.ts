@@ -121,6 +121,33 @@ describe("computeRideShareClusters", () => {
     expect(clusters).toEqual([]);
   });
 
+  it("excludes unconfirmed co-traveler tags (#574 written_by set) from the count", () => {
+    // A pending tag asserts someone's flight before they've opted in — it must
+    // not inflate the ride-share count (rule #8: recommend, don't assume).
+    // Mirrors getArrivalTimesByTrip's `.is("written_by_trip_member_id", null)`.
+    const clusters = computeRideShareClusters([
+      makeLeg({ arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({
+        arrive_at: "2026-08-14T18:30:00.000Z",
+        // tagged by member-1 onto this member's row, not yet confirmed
+        written_by_trip_member_id: "tagger-1",
+      }),
+    ]);
+    // Only the one confirmed (self-logged) leg remains — no cluster of 2.
+    expect(clusters).toEqual([]);
+  });
+
+  it("counts a confirmed (adopted) tag — written_by cleared to null", () => {
+    const clusters = computeRideShareClusters([
+      makeLeg({ arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({
+        arrive_at: "2026-08-14T18:30:00.000Z",
+        written_by_trip_member_id: null,
+      }),
+    ]);
+    expect(clusters).toEqual([{ airport: "LAX", count: 2 }]);
+  });
+
   it("emits one cluster per airport when both qualify", () => {
     const clusters = computeRideShareClusters([
       makeLeg({ airport: "LAX", arrive_at: "2026-08-14T18:00:00.000Z" }),

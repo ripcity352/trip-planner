@@ -33,7 +33,8 @@ interface ClusterableLeg {
 /**
  * Compute ride-share clusters from a trip's travel legs.
  *
- * Only inbound legs with a non-blank airport and a parseable arrive_at
+ * Only inbound legs with a non-blank airport, a parseable arrive_at, and no
+ * pending #574 co-traveler tag (`written_by_trip_member_id is null`)
  * participate. Within each airport, legs are sorted by arrival and greedily
  * windowed: a cluster is every leg arriving within 60 minutes of the
  * cluster's first leg. Clusters with fewer than 2 distinct members are
@@ -44,6 +45,12 @@ export function computeRideShareClusters(
 ): RideShareCluster[] {
   const clusterable = legs.flatMap<ClusterableLeg>((leg) => {
     if (leg.direction !== "inbound") return [];
+    // #574/#581: an unconfirmed co-traveler tag (written_by set) asserts
+    // someone's flight before they've opted in — counting it inflates the
+    // ride-share cluster (rule #8: recommend, don't assume). A self-logged
+    // leg and a confirmed/adopted tag both carry NULL here. Mirrors
+    // getArrivalTimesByTrip's `.is("written_by_trip_member_id", null)`.
+    if (leg.written_by_trip_member_id !== null) return [];
     const airportDisplay = (leg.airport ?? "").trim();
     if (!airportDisplay || !leg.arrive_at) return [];
     const arriveMs = Date.parse(leg.arrive_at);
