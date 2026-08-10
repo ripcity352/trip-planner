@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
 import { getVisibleRsvpByMemberId } from "@/lib/db/rsvp";
 import { getMemberDaysByTrip } from "@/lib/db/trip-member-days";
+import { getPromptsByTrip } from "@/lib/db/rsvp-confirm-prompts";
 import { isOrganizerRole } from "@/lib/utils/expense-visibility";
 import { resolveMemberName } from "@/lib/utils/member-display";
 import { parseDateOnly } from "@/lib/utils/date-only";
@@ -25,6 +26,10 @@ import {
   OrganizerMemberDaysPanel,
   type OrganizerDayTarget,
 } from "@/components/trip/member-days/organizer-member-days-panel";
+import {
+  RsvpConfirmPromptSender,
+  type RsvpPromptTarget,
+} from "@/components/trip/rsvp/rsvp-confirm-prompt-sender";
 import type { RosterMember } from "@/components/trip/roster/roster-list";
 import type { TripMemberDayStatus } from "@/lib/db/types";
 
@@ -122,6 +127,23 @@ export default async function RosterPage({ params }: PageProps) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  // #549 — organizer RSVP confirm-prompt targets: any member except the
+  // viewer. `alreadyAsked` surfaces a member's pending ask so the picker
+  // shows a "· asked" cue (replace-not-stack). Organizer-only + RLS-gated.
+  let rsvpPromptTargets: RsvpPromptTarget[] = [];
+  if (viewerIsOrganizer) {
+    const promptByMember = await getPromptsByTrip(supabase, trip.id);
+    const memberNameMap = new Map(rawMembers.map((m) => [m.id, m]));
+    rsvpPromptTargets = rawMembers
+      .filter((m) => m.id !== viewer.id)
+      .map((m) => ({
+        id: m.id,
+        name: resolveMemberName(memberNameMap, m.id),
+        alreadyAsked: promptByMember.get(m.id) ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-6">
@@ -158,6 +180,13 @@ export default async function RosterPage({ params }: PageProps) {
           read-only DayHeadcount above; a separate collapsible surface. */}
       {viewerIsOrganizer ? (
         <OrganizerMemberDaysPanel tripId={trip.id} targets={onBehalfTargets} />
+      ) : null}
+
+      {/* #549 — organizer-only "confirm someone's RSVP" sender. The member
+          confirms with their own tap on the dashboard; this only sends the
+          ask. */}
+      {viewerIsOrganizer ? (
+        <RsvpConfirmPromptSender tripId={trip.id} targets={rsvpPromptTargets} />
       ) : null}
     </section>
   );

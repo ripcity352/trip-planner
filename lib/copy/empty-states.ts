@@ -760,6 +760,43 @@ export const MEMBER_DAYS_UI_STRINGS = {
 export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;
 
 /**
+ * #549 — organizer-sent RSVP confirm-prompt. An organizer relays what a
+ * member told them offline; the member confirms with their own tap (which
+ * is the only thing that ever writes the real RSVP). Voice: warm, no nag —
+ * the member is doing the organizer a favor by confirming, not being chased.
+ */
+export const RSVP_CONFIRM_PROMPT_UI_STRINGS = {
+  // Member-facing banner (on the dashboard, above the RSVP toggle). One per
+  // proposed status; {sender} is the organizer's name.
+  rsvpPrompt_banner_going: "{sender} heard you're in — that right?",
+  rsvpPrompt_banner_maybe: "{sender} heard you're a maybe — that right?",
+  rsvpPrompt_banner_declined:
+    "{sender} heard you're sitting this one out — that right?",
+  // Fallback when the sender has no display name yet.
+  rsvpPrompt_sender_fallback: "An organizer",
+  // The optional note the organizer attached.
+  rsvpPrompt_note_template: "They added: {note}",
+  rsvpPrompt_confirm_cta: "Yep, that's me",
+  rsvpPrompt_dismiss_cta: "Not quite",
+  // Organizer-facing sender (on the roster). Collapsible, mirrors the
+  // day-on-behalf panel.
+  rsvpPrompt_send_trigger: "Confirm someone's RSVP",
+  rsvpPrompt_send_pick_person: "Who did you hear from?",
+  rsvpPrompt_send_status_label: "What did they say?",
+  rsvpPrompt_send_status_going: "They're in",
+  rsvpPrompt_send_status_maybe: "They're a maybe",
+  rsvpPrompt_send_status_declined: "They're out",
+  rsvpPrompt_send_note_placeholder: "Add a note (optional)",
+  rsvpPrompt_send_cta: "Send the confirm",
+  rsvpPrompt_send_hint:
+    "They'll get a one-tap confirm — you're not setting it for them.",
+  rsvpPrompt_send_sent_template: "Asked {name} to confirm.",
+} as const;
+
+export type RsvpConfirmPromptUIStringKey =
+  keyof typeof RSVP_CONFIRM_PROMPT_UI_STRINGS;
+
+/**
  * #525 — post-save leg→day-chip suggestion prompt ("suggest, don't
  * write"). One quiet question after a travel leg saves; one tap
  * applies, "Leave it" means never ask again for this leg version.

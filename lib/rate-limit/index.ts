@@ -189,6 +189,11 @@ export const RATE_LIMIT_SCOPES = {
   // credential minting) — same posture as the other authed mutations.
   DELETE_ANNOUNCEMENT: "deleteAnnouncement",
   PIN_ANNOUNCEMENT: "pinAnnouncement",
+  // #549 — organizer-sent RSVP confirm-prompt (send/replace/dismiss). Low-
+  // tap coordination surface; own bucket so a burst can't starve other
+  // budgets. Default 30/60s; fail-OPEN on shim (a pending ask, never a
+  // write to the real rsvp_status — that stays on SET_RSVP).
+  SEND_RSVP_PROMPT: "sendRsvpPrompt",
 } as const;
 
 export type RateLimitScope =

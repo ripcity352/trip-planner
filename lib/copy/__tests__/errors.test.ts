@@ -95,6 +95,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "poll_visibility_self_hidden",
   // #388 — day-scoped attendance chip save failure
   "member_day_save_failed",
+  // #549 — organizer RSVP confirm-prompt send/confirm/dismiss failure
+  "rsvp_prompt_save_failed",
   // #386 — organizer member management (guards are deterministic
   // rule-explanations; the _failed pair is transient-retry voice)
   "member_role_save_failed",
