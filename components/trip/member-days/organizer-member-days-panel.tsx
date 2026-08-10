@@ -75,7 +75,11 @@ export function OrganizerMemberDaysPanel({
         aria-controls={panelId}
         onClick={() => setOpen((prev) => !prev)}
         className={cn(
-          "text-muted-foreground flex items-center gap-1.5 self-start text-sm font-medium",
+          // Foreground (not muted): this is the organizer's write entry point
+          // for the read-only "Who's around when" block right above it, so it
+          // should read as an actionable control, not secondary chrome (#550
+          // discoverability fix — the muted greyed label was being missed).
+          "text-foreground flex items-center gap-1.5 self-start text-sm font-medium",
           "focus-visible:ring-ring rounded-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         )}
       >
