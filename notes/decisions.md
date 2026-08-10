@@ -117,6 +117,49 @@ idempotency key (rule #9), `security-reviewer` + `code-reviewer` pairing.
 
 ---
 
+## 2026-08-09 — organizer-power-for-laggards Wave 0: HEAD-reconciliation before build
+
+**Context:** the 2026-08-09 brainstorm/audit (`wf_b93ba055-25c`) filed 15
+"organizer power for laggard/inactive attendees" issues. Wave 0 was the
+read-only/zero-schema subset (#552, #556, #558, #559). Per the "name the
+gap before patching" rule, each issue's "current state" claim was verified
+against HEAD before any code — several had drifted since 2026-08-09.
+
+**Reconciliation (what actually holds at HEAD):**
+
+- **#556 (unassigned lodging) — built.** Real gap: `lodging-roster.tsx`
+  computed `unassignedMembers` but only fed it to the organizer assign
+  dropdown; it was never surfaced as a read-side bucket. Shipped option (1)
+  from the issue — an organizer-only "No room yet" list, alphabetical,
+  decliners excluded (#475), no count/blocking framing. Read-side only.
+
+- **#552 (not-yet-set day bucket) — built this session (own PR), premise
+  adjusted.** The issue's
+  premise ("a never-set member silently doesn't appear anywhere") is
+  **stale post-#524** — that block now renders every non-declined member,
+  greyed when not "going." The genuine *residual* gap: the grey bucket
+  conflates "explicitly not that day" (a `trip_member_days` row with a
+  non-going status) with "never set anything" (no row — the maybe/pending
+  laggard the seed trigger never fanned out). Closed it with an
+  organizer-only "not set" annotation keyed on row presence; non-organizer
+  view is unchanged. Chose the annotation over a separate bucket to stay
+  inside the #524 one-panel-per-day glance surface.
+
+- **#559 (item RSVP aggregate) — deferred, mischaracterized.** The issue
+  reads as a copy fix ("split '4 confirmed of 9 invited' into two counts"),
+  but **no per-item RSVP aggregate exists at HEAD** — the item card carries
+  only `inCount` (trip-level going count, the #394 per-head denominator).
+  #559 is therefore net-new: a per-item who-responded surface, which lands
+  squarely in anti-shame territory (#387) and needs its own design pass
+  deciding whether that surface should exist at all. Not built speculatively.
+
+- **#558 (pending-status audit) — see its own audit note.** `rsvp-aggregate`
+  already carries a "no answer yet" bucket and `roster-list` a pending chip;
+  the audit's job is to confirm no silent-omission spots remain in the three
+  named files, not to add a dashboard (that stays gated behind #169).
+
+---
+
 ## 2026-08-08 — #531: unmarked day chips are not a leg-conflict — Resolved
 
 **Decision:** `deriveLegDayConflicts` (#526) treated an unmarked day (no
