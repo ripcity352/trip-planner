@@ -451,6 +451,14 @@ export const M3_UI_STRINGS = {
     "When do you take off? Drop the departure in so nobody plans around you.",
   // Inbound legs without a landing time (legacy rows) group under this.
   arrivals_inbound_time_tbd: "Landing time TBD",
+  // #579 — compact chronological view. The toggle switches between the
+  // dense one-line glance (Compact, default) and today's detail cards
+  // (Full — the surface for editing / confirming / adding to a flight).
+  arrivals_view_toggle_label: "Arrivals view",
+  arrivals_view_toggle_compact: "Compact",
+  arrivals_view_toggle_full: "Full",
+  // Middot between the time and the name in a compact row (`9:50 pm · Rob`).
+  arrivals_compact_separator: "·",
   // Ride-share nudge — one quiet computed line, no matching engine (#118
   // stays open). {count} distinct people, {airport} free text.
   arrivals_ride_share_template:

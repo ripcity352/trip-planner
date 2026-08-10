@@ -23,6 +23,7 @@ import {
   toLocalInputValue,
   fromLocalInputValue,
   formatTripDateTime,
+  formatTripDayHeader,
   isoToDbTime,
   isoToDbDate,
   dbTimeToIso,
@@ -293,6 +294,42 @@ describe("formatTripDateTime", () => {
 // server must reduce it to the trip-local wall-clock "HH:mm:ss" before
 // writing, or every save fails at the DB layer.
 // -------------------------------------------------------------------------
+
+describe("formatTripDayHeader", () => {
+  // The day-header tier of the date/time register (#211, #579): lowercase
+  // JetBrains-Mono `fri 14` — NEVER an uppercase tracked eyebrow.
+  it("renders the lowercase `eee d` day-header register", () => {
+    // 2026-08-14 is a Friday.
+    expect(formatTripDayHeader("2026-08-14T14:30:00Z", "America/New_York")).toBe(
+      "fri 14"
+    );
+  });
+
+  it("is lowercase — uppercase-eyebrow anti-tell guard", () => {
+    const result = formatTripDayHeader("2026-08-14T14:30:00Z", "America/New_York");
+    expect(result).toBe(result.toLowerCase());
+    expect(result).not.toMatch(/[A-Z]/);
+  });
+
+  it("resolves the weekday/day in the trip timezone, not ambient (#254)", () => {
+    // 2026-08-15T02:30:00Z is still Fri 14 in America/Los_Angeles (UTC-7,
+    // = 7:30 pm Fri) but Sat 15 in UTC — the trip tz must win.
+    const iso = "2026-08-15T02:30:00Z";
+    vi.stubEnv("TZ", "UTC");
+    const underUtc = formatTripDayHeader(iso, "America/Los_Angeles");
+    vi.stubEnv("TZ", "Asia/Tokyo");
+    const underTokyo = formatTripDayHeader(iso, "America/Los_Angeles");
+    expect(underUtc).toBe(underTokyo);
+    expect(underUtc).toBe("fri 14");
+    vi.unstubAllEnvs();
+  });
+
+  it("returns the raw iso on unparseable input", () => {
+    expect(formatTripDayHeader("not-a-date", "America/New_York")).toBe(
+      "not-a-date"
+    );
+  });
+});
 
 describe("isoToDbTime", () => {
   it("converts a UTC ISO instant to HH:mm:ss in the trip's timezone (EDT)", () => {

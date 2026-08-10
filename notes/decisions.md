@@ -4269,3 +4269,70 @@ decision beyond the issue bodies:
   §"Presence word register" and is binding for new copy.
 - #535 renamed `nowNext_recap_placeholder` → `nowNext_posttrip_line`;
   repoint it if Group Recap (#56) ever ships.
+
+## 2026-08-10 — #579 compact chronological arrivals view
+
+**Gap named.** The arrivals manifest was already chronological
+(`travel-legs.ts` sorts inbound `arrive_at ASC`) but rendered every leg as
+a full `TravelLegCard` — the problem was *density*, not order. The design
+system already defines a **day-header register** (lowercase JetBrains-Mono
+`fri 14`, five-format-tiers §) and treats itineraries as timelines, but
+**arrivals never adopted it** — worse, its day headers rendered as an
+*uppercase tracked eyebrow* (`Fri, Aug 14`), which is a documented
+vibecoded anti-tell. Two gaps: no compact arrivals-row register, and a
+register violation in the existing headers.
+
+**Decision.**
+- Add a **`Compact | Full` view toggle** at the top of the arrivals
+  manifest. **Compact is the default**; the choice persists to
+  `localStorage` (read in `useEffect`, never in render — avoids the
+  #254-class SSR/CSR hydration mismatch).
+- **Compact** is a *read-only* chronological glance: legs grouped by
+  landing day under lowercase-mono `fri 14` headers, one line per leg —
+  `9:50 pm · Rob (PDX)` (absolute-time tier via `formatTripTime`, owner
+  name, airport code in parentheses). No flight number / origin / notes /
+  PNR in the glance. Outbound gets the same compact treatment in its quiet
+  "Heading home" section.
+- **Full** is today's `TravelLegCard` list, **unchanged** — it remains the
+  single action surface (edit, confirm/dismiss a tag, add-to-flight,
+  owner-only PNR, notes, conflict cue). To act on any leg you flip to Full.
+
+**Load-bearing calls (from a two-round subagent design review — mobile-UI,
+party-planning, organizer-persona lenses, then a simplicity/interaction/
+correctness adversarial pass):**
+- **No per-row inline expand.** The first cut had a global toggle *and*
+  per-row accordion — two controls for one job. Cut the accordion: Compact
+  is glance-only, Full is the (already-expanded) action surface. This also
+  erases the PNR-leak surface entirely (compact rows never render the
+  confirmation code) and the animated-height/`aria-expanded` a11y burden.
+- **Pending co-traveler tags render as normal rows** in Compact (operator
+  call 2026-08-10: "assume unconfirmed tags are fine"). No filter, no
+  "unconfirmed" marker in the glance. The confirm/dismiss prompt still
+  lives on the Full card (unchanged), so the affordance is preserved.
+  (This relaxes the reviewers' rule-#8 concern per explicit operator
+  direction; the load-bearing aggregates — the "landed"/"who's in" glance
+  and /me conflict cue — already filter unconfirmed tags at the data layer
+  and are untouched here.)
+- **Ride-share untouched.** All ride-share changes deferred. The reviewers
+  found a live rule-#8 gap (`computeRideShareClusters` counts unconfirmed
+  tags) — filed separately, not fixed here. The "recommend, then add who
+  you're riding with" feature is #581 (evolves #118 beyond suggestion-only,
+  reusing the #574 write-on-behalf + confirm pattern).
+
+**Folded in (in-scope correctness, same PR):**
+- Fix the Full-view day header from uppercase `Fri, Aug 14` to the
+  lowercase-mono `fri 14` register, so both views share one register
+  (name-the-gap, not a per-view patch).
+- Sort determinism: add a `created_at` secondary sort in
+  `getTravelLegsByTrip` (stabilises the "Landing time TBD" bucket and
+  same-instant legs); sort null-`depart_at` outbound legs **last** (they
+  currently float to the top because `"" < any time`).
+
+**Scope:** presentation-only — ZERO schema / RLS / server-action change.
+New read-only `TravelLegRow` + `ViewToggle`; `TravelLegCard` untouched.
+
+**Deferred (own issues):** #581 (ride groups — recommend + add who you're
+riding with), the ride-share unconfirmed-count fix, and a "who hasn't
+logged travel" count (high persona value but risks the banned
+completion-score/nag pattern — needs its own microcopy review). #580
+(airport-code typeahead picker) pairs with this but ships independently.
