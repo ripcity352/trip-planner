@@ -48,6 +48,7 @@ import {
 } from "@/lib/actions/travel-legs";
 import type { TravelLeg, TravelLegDirection } from "@/lib/db/types";
 import { AirlinePicker } from "./airline-picker";
+import { AirportPicker } from "./airport-picker";
 
 /** #574 — a member who can be tagged onto a shared flight. */
 export interface TagCandidate {
@@ -454,19 +455,20 @@ export function TravelLegForm({
         ) : null}
       </div>
 
-      {/* Airport — free text, either direction */}
-      <div>
-        <label htmlFor="leg-airport" className={labelClass}>
-          {M3_UI_STRINGS.arrivals_leg_form_airport_label}
-        </label>
-        <input
-          id="leg-airport"
-          type="text"
-          {...register("airport")}
-          disabled={isBusy}
-          className={inputClass}
-        />
-      </div>
+      {/* Airport — typeahead picker, either direction */}
+      <Controller
+        name="airport"
+        control={control}
+        render={({ field }) => (
+          <AirportPicker
+            id="leg-airport"
+            label={M3_UI_STRINGS.arrivals_leg_form_airport_label}
+            value={field.value}
+            onChange={field.onChange}
+            disabled={isBusy}
+          />
+        )}
+      />
 
       {/* Kind */}
       <div>
@@ -538,20 +540,21 @@ export function TravelLegForm({
         </div>
       )}
 
-      {/* Coming from — inbound only (#477), optional free text */}
+      {/* Coming from — inbound only (#477) */}
       {isInbound ? (
-        <div>
-          <label htmlFor="leg-origin" className={labelClass}>
-            {M3_UI_STRINGS.arrivals_leg_form_origin_label}
-          </label>
-          <input
-            id="leg-origin"
-            type="text"
-            {...register("originLabel")}
-            disabled={isBusy}
-            className={inputClass}
-          />
-        </div>
+        <Controller
+          name="originLabel"
+          control={control}
+          render={({ field }) => (
+            <AirportPicker
+              id="leg-origin"
+              label={M3_UI_STRINGS.arrivals_leg_form_origin_label}
+              value={field.value}
+              onChange={field.onChange}
+              disabled={isBusy}
+            />
+          )}
+        />
       ) : null}
 
       {/* #574 — tag co-travelers on this shared flight. Add-mode + flight
