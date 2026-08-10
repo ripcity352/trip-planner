@@ -89,6 +89,20 @@ describe("AirportPicker — selection", () => {
     fireEvent.mouseDown(screen.getByText(/PDX.*Portland/i));
     expect(onChange).toHaveBeenCalledWith("PDX");
   });
+
+  it("normalizes to the uppercase IATA code when the typed text is an exact case-insensitive match, even without an explicit click", () => {
+    // The display resolves to "PDX / Portland" (looking selected) the
+    // instant the raw typed text exactly matches a catalog code — the
+    // committed value must match that resolution, not the raw case the
+    // user typed, or the stored data silently reintroduces the case
+    // inconsistency this picker exists to fix (a real bug caught during
+    // a live-site walk: typing "las" saved as lowercase "las").
+    const onChange = vi.fn();
+    renderPicker(undefined, onChange);
+    const input = screen.getByRole("combobox", { name: /airport/i });
+    typeIntoInput(input, "pdx");
+    expect(onChange).toHaveBeenLastCalledWith("PDX");
+  });
 });
 
 describe("AirportPicker — freeform fallback", () => {
