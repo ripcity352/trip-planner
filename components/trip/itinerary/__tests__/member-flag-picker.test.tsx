@@ -109,6 +109,24 @@ describe("MemberFlagPicker", () => {
       expect(screen.getByText(/Dave saved this for you/i)).toBeInTheDocument();
     });
 
+    it("tapping the chip of a pending flag confirms it (not a no-op re-add)", async () => {
+      renderPicker({
+        initialFlags: [{ flag: "Vegan", note: null, savedByName: "Dave" }],
+      });
+      // Tapping the (greyed) chip routes through confirmItemFlag, not addItemFlag.
+      fireEvent.click(screen.getByRole("button", { name: "Vegan" }));
+      await waitFor(() =>
+        expect(mockConfirm).toHaveBeenCalledWith(ITEM_ID, "Vegan")
+      );
+      expect(mockAdd).not.toHaveBeenCalled();
+      // Now confirmed → the chip is pressed and the prompt is gone.
+      expect(screen.getByRole("button", { name: "Vegan" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+      expect(screen.queryByText(/saved this for you/i)).not.toBeInTheDocument();
+    });
+
     it("Keep calls confirmItemFlag and clears the prompt", async () => {
       renderPicker({ initialFlags: onBehalf });
       fireEvent.click(screen.getByRole("button", { name: "Keep" }));

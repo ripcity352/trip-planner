@@ -137,6 +137,15 @@ export function MemberFlagPicker({
   // ── Chip toggle ─────────────────────────────────────────────────────────────
 
   const toggleChip = (chip: string) => {
+    // A chip whose flag is an unconfirmed on-behalf row lives in the confirm
+    // section, not the pressed grid — tapping it IS the Keep (routes through
+    // confirmItemFlag so attribution actually clears, not a no-op re-add).
+    const pendingRow = pending.find((p) => p.flag === chip);
+    if (pendingRow) {
+      keepPending(pendingRow);
+      return;
+    }
+
     const isSelected = selected.has(chip);
 
     setErrorKey(null);

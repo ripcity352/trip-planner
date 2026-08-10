@@ -47,6 +47,14 @@ const members: TripMember[] = [
     user_id: "u-d",
     rsvp_status: "declined",
   }),
+  // A co-organizer — excluded: organizers never see the member-side confirm
+  // surface, so transcribing for one would strand the row (no keep/remove).
+  makeMember({
+    id: "m-cora",
+    display_name: "Cora",
+    user_id: "u-c",
+    role: "co_organizer",
+  }),
 ];
 
 function open() {
@@ -85,13 +93,14 @@ describe("OrganizerFlagOnBehalf", () => {
     ).toBeInTheDocument();
   });
 
-  it("excludes the organizer themselves and decliners, sorted alphabetically", () => {
+  it("excludes self, decliners, and other organizers; sorted alphabetically", () => {
     open();
     const options = screen
       .getAllByRole("option")
       .map((o) => o.textContent)
       .filter((t) => t && !t.startsWith("—")); // drop the placeholder
-    expect(options).toEqual(["Alex", "Zack"]); // no "You", no declined "Dee"
+    // no "You" (self), no declined "Dee", no co-organizer "Cora"
+    expect(options).toEqual(["Alex", "Zack"]);
   });
 
   it("submits addItemFlagOnBehalf with the target, flag and note", async () => {

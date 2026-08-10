@@ -25,6 +25,7 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { addItemFlagOnBehalf } from "@/lib/actions/item-flags";
 import { resolveMemberName } from "@/lib/utils/member-display";
+import { isOrganizerRole } from "@/lib/utils/expense-visibility";
 import type { TripMember } from "@/lib/db/types";
 
 const FLAG_MAX = 100;
@@ -64,12 +65,22 @@ export function OrganizerFlagOnBehalf({
     [tripMembers]
   );
 
-  // Targets: everyone but the organizer themselves (self uses the normal
-  // picker) and trip-level decliners (#475 — out of the trip, no heads-up).
+  // Targets: regular members only. Excluded:
+  //   - the organizer themselves (self uses the normal picker);
+  //   - trip-level decliners (#475 — out of the trip, no heads-up);
+  //   - other organizers/co-organizers. They never see the member-side
+  //     confirm surface (item-card renders it only for `!isOrganizer`), so
+  //     transcribing for one would strand the row as permanently attributed
+  //     with no keep/remove path. Organizers self-manage their own flags.
   const targets = React.useMemo(
     () =>
       tripMembers
-        .filter((m) => m.id !== viewerMemberId && m.rsvp_status !== "declined")
+        .filter(
+          (m) =>
+            m.id !== viewerMemberId &&
+            m.rsvp_status !== "declined" &&
+            !isOrganizerRole(m.role)
+        )
         .map((m) => ({ id: m.id, name: resolveMemberName(memberMap, m.id) }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [tripMembers, viewerMemberId, memberMap]
