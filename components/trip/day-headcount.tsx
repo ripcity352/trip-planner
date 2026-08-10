@@ -49,6 +49,12 @@ export interface DayHeadcountProps {
   endsAt: string | null;
   /** IANA timezone from trips.timezone — leg times render trip-local. */
   timezone: string;
+  /**
+   * #552 — when true, greyed rows whose member has NO day row at all get a
+   * quiet "hasn't set days" marker (distinct from an explicit non-going
+   * day). Organizer-only display affordance; defaults false.
+   */
+  viewerIsOrganizer?: boolean;
 }
 
 export async function DayHeadcount({
@@ -57,6 +63,7 @@ export async function DayHeadcount({
   startsAt,
   endsAt,
   timezone,
+  viewerIsOrganizer = false,
 }: DayHeadcountProps) {
   if (!startsAt || !endsAt) {
     return null;
@@ -83,7 +90,15 @@ export async function DayHeadcount({
   }
 
   const goingByDate = new Map<string, Set<string>>();
+  // #552 — every member×day that has ANY row (any status). A member absent
+  // from this set for a day has never set that day: the seed trigger only
+  // fans out rows for going members, so this is the maybe/pending laggard.
+  const hasRowByDate = new Map<string, Set<string>>();
   for (const row of dayRows) {
+    hasRowByDate.set(
+      row.date,
+      new Set([...(hasRowByDate.get(row.date) ?? []), row.trip_member_id])
+    );
     if (row.status !== "going") continue;
     goingByDate.set(
       row.date,
@@ -97,6 +112,7 @@ export async function DayHeadcount({
   }).map((d) => {
     const iso = format(d, "yyyy-MM-dd");
     const goingSet = goingByDate.get(iso) ?? new Set<string>();
+    const rowSet = hasRowByDate.get(iso) ?? new Set<string>();
     const dayMembers: DayPresenceMember[] = visibleMembers.map((m) => {
       const around = goingSet.has(m.id);
       return {
@@ -109,6 +125,9 @@ export async function DayHeadcount({
         legNote: around
           ? legNoteForDay(legsByMember.get(m.id) ?? [], iso, timezone)
           : null,
+        // #552 — no row at all for this day = never set (vs. an explicit
+        // non-going row). Marker is organizer-gated in the client.
+        notSet: !rowSet.has(m.id),
       };
     });
     // Around first, greyed rest after — both keep roster (joined_at) order.
@@ -143,7 +162,7 @@ export async function DayHeadcount({
         // No separate sr-only counts line: each day token is a button
         // whose aria-label carries "{count} in on {day}" (the compact
         // "fri 4" register is ambiguous read aloud).
-        <DayHeadcountList days={days} />
+        <DayHeadcountList days={days} viewerIsOrganizer={viewerIsOrganizer} />
       )}
       {/* Reciprocal wayfinding to the /me day-chips editor these
           statuses are fed by. */}

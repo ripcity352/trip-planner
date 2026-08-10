@@ -24,6 +24,13 @@ export interface DayPresenceMember {
   around: boolean;
   /** Pre-formatted leg annotation, e.g. "lands 10:30 am" — or null. */
   legNote: string | null;
+  /**
+   * #552 — true when this member has NO `trip_member_days` row for this
+   * day (never set anything), as opposed to an explicit non-going row.
+   * Only surfaced to organizers (see `viewerIsOrganizer`). Optional so
+   * existing callers/tests default to "no marker".
+   */
+  notSet?: boolean;
 }
 
 export interface DayPresence {
@@ -37,8 +44,16 @@ export interface DayPresence {
 
 export function DayHeadcountList({
   days,
+  viewerIsOrganizer = false,
 }: {
   days: ReadonlyArray<DayPresence>;
+  /**
+   * #552 — gates the organizer-only "not set" marker. Defaults false so
+   * the member-visible view (post-#524) is unchanged. Not an access gate
+   * (the rows are member-readable via RLS); a display affordance per
+   * rule #11 mirroring the #169 organizer-private outstanding-list.
+   */
+  viewerIsOrganizer?: boolean;
 }) {
   const [openIso, setOpenIso] = React.useState<string | null>(null);
 
@@ -86,6 +101,17 @@ export function DayHeadcountList({
               {m.name}
               {m.legNote ? (
                 <span className="text-muted-foreground"> — {m.legNote}</span>
+              ) : null}
+              {/* #552 — organizer-only marker: this member has no day row at
+                  all (never set), distinct from an explicit non-going day.
+                  Factual aside, never a nudge or a count. */}
+              {viewerIsOrganizer && m.notSet && !m.around ? (
+                // Italic only — inherits the greyed row's muted colour so no
+                // new opacity token is introduced (design-system anti-tell).
+                <span className="italic">
+                  {" "}
+                  · {MEMBER_DAYS_UI_STRINGS.memberDays_not_set_note}
+                </span>
               ) : null}
             </li>
           ))}
