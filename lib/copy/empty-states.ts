@@ -283,6 +283,19 @@ export const M3_UI_STRINGS = {
   itinerary_item_flag_note_label: "Extra detail (optional)",
   itinerary_item_flag_note_placeholder: "More context for the organizers…",
   itinerary_item_flag_empty_organizer: "No heads-ups from anyone yet.",
+  // #171 — organizer write-on-behalf + member confirm. The organizer
+  // transcribes a heads-up a member volunteered out-of-band; the member
+  // gets the final say. Voice test: what Dave would actually text.
+  //   {name} = the organizer who saved it.
+  itinerary_item_flag_onbehalf_confirm_template: "{name} saved this for you — keep it?",
+  itinerary_item_flag_onbehalf_keep: "Keep",
+  itinerary_item_flag_onbehalf_remove: "Remove",
+  // Organizer-side entry (renders on the organizer's item view only).
+  itinerary_item_flag_onbehalf_add_trigger: "Save a heads-up for someone",
+  itinerary_item_flag_onbehalf_pick_person: "— Who's this for? —",
+  itinerary_item_flag_onbehalf_save: "Save for them",
+  //   {name} = the member it was saved for.
+  itinerary_item_flag_onbehalf_saved_template: "Saved for {name}. They'll get the final say.",
   // Maps links
   itinerary_maps_apple: "Apple Maps",
   itinerary_maps_google: "Google Maps",
@@ -710,6 +723,13 @@ export const MEMBER_DAYS_UI_STRINGS = {
   // Leg annotations on the expanded names — trip-local times.
   memberDays_leg_lands_template: "lands {time}",
   memberDays_leg_leaves_template: "leaves {time}",
+  // #552 — organizer-only marker on an expanded name whose member has NO
+  // trip_member_days row for that day (the seed trigger only fans out rows
+  // for going members, so a maybe/pending member who never opened /me shows
+  // no row). Distinguishes "hasn't set anything" from "explicitly not that
+  // day" — rule #8 (name the absence, don't let it read as a default).
+  // Factual, not a nag: no count, no lateness, no one-tap nudge.
+  memberDays_not_set_note: "hasn't set days",
   // Glanceability sweep — reciprocal one-line text links between the
   // /me day-chips editor and the roster DayHeadcount block. Plain
   // wayfinding, no nudge: neither line implies you're behind on anything.

@@ -13,6 +13,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
 import { getVisibleRsvpByMemberId } from "@/lib/db/rsvp";
+import { isOrganizerRole } from "@/lib/utils/expense-visibility";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { RosterList } from "@/components/trip/roster/roster-list";
 import { DayHeadcount } from "@/components/trip/day-headcount";
@@ -83,6 +84,11 @@ export default async function RosterPage({ params }: PageProps) {
         startsAt={trip.starts_at}
         endsAt={trip.ends_at}
         timezone={trip.timezone}
+        // #552 — organizer-only "not set" marker on greyed rows. Display
+        // affordance (rule #11), not an access gate: the day rows are
+        // member-readable via RLS; organizers just get the extra cue.
+        // isOrganizerRole keeps this in lockstep with is_trip_organizer.
+        viewerIsOrganizer={isOrganizerRole(viewer.role)}
       />
 
       <RosterList
