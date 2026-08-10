@@ -5,6 +5,106 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-08-10 — #574 (shared-flight co-traveler tagging): fan-out + attribution + member-confirm
+
+**Status:** design locked (brainstorm pass, 3 forks confirmed by operator).
+Migration `20260810030000_travel_legs_cotraveler_tagging.sql`. Extends the
+write-on-behalf + attribution + member-confirm family (#171 / #550 / #549) to
+`travel_legs`.
+
+**The gap / principle.** `travel_legs` is one row per member per leg, strictly
+owner-only for writes — so a 6-person group on the same flight enters that flight
+6 times. Letting one person enter it once and *tag* the others asserts those
+members are on the flight, which is exactly the "encode a default / assume an
+attendee" anti-pattern rule #8 + `persona-edge-attendees.md` warn against. So a
+tag must never silently write another member's leg as fact: it records a
+**pending, attributed** leg the tagged member **confirms (opts in) or dismisses**.
+
+**Three forks (operator-confirmed):**
+
+1. **Data model — (A) fan-out/copy-on-tag, NOT (B) normalized `flights` +
+   `flight_passengers`.** (A) reuses the just-shipped attribution+confirm RLS
+   shape and the confirm-banner UX; smallest safe change; delivers "enter once"
+   now. Known limitation: N copies can drift (if the flight changes, the tagger
+   edits theirs, the others' don't auto-update). (B) is the drift-free end-state
+   but reworks the manifest view, every `lib/db/travel-legs` read, the dashboard
+   glance, and `leg-day-conflicts` — overkill for MVP. Treat (B) as the migration
+   target if drift becomes a real pain.
+
+2. **Tag scope — ANY trip member can tag anyone (not organizer-only).** Unlike
+   #550/#549, the person with the confirmation email is usually a regular
+   attendee, not an organizer; organizer-gating would defeat the feature. Safe
+   because the confirm gate + forgery-proof attribution mean the worst a member
+   can do is create a dismissible, attributed pending row (rate-limited, non-
+   anonymous). Rule #11: affordance, not gate.
+
+3. **Pending-tag visibility — visible trip-wide, marked "unconfirmed" (not
+   hidden-until-confirmed).** Matches #550 exactly (organizer-set chip shows
+   immediately with attribution; the member's tap clears the marker). Rendering
+   with attribution ("Added by Dave · unconfirmed") is the non-silent mitigation
+   rule #8 asks for, not hiding. Rejected the hide-until-confirmed alternative:
+   it needs a new SELECT policy + manifest-view visibility predicate for a
+   marginal opt-in gain over an already-attributed marker.
+
+**RLS shape (simpler than #550 — pure INSERT fan-out, no upsert/ON CONFLICT):**
+- TIGHTEN `travel legs: owner insert` + `owner update` WITH CHECK with
+  `written_by_trip_member_id IS NULL` — a member's own write can never carry
+  attribution (closes forge-from-the-member-direction; doubles as the confirm-
+  clear: editing/adopting a leg nulls attribution).
+- ADD `members tag co-travelers` INSERT policy: `written_by` = the caller's OWN
+  membership in the leg's `trip_id` (writer-binding + tenancy), target
+  `trip_member_id` is a member of the SAME trip, and `trip_member_id <>
+  written_by_trip_member_id` (anti-forgery). NO on-behalf UPDATE or DELETE — the
+  tagger creates the pending row; only the target manages it thereafter.
+- Confirm = the target's own UPDATE setting `written_by` NULL (owner-update
+  policy). Dismiss = the target's own DELETE (owner-delete policy). No new
+  member-side policy beyond the two tightenings.
+- OR-stacking audit (the #171/#550 lesson): {own row, attribution NULL} OR
+  {other's row, attributed-to-me, non-forged} — no combination yields a silently-
+  forged row from either direction. Re-run security-reviewer on the additive RLS.
+
+**PNR privacy (#505):** tagged rows copy the shareable flight facts (kind,
+direction, times, airport, origin, carrier, airline_iata, flight_number) but
+NEVER `confirmation_code` or `notes` — each traveler keeps their own PNR.
+
+**2nd-FK PostgREST trap (took the crew page down on 2026-08-10):** `written_by`
+is a 2nd FK to `trip_members`. Verified NO `travel_legs→trip_members` embed
+exists repo-wide (the manifest view uses an `exists()` subquery, not an embed;
+all reads select plain columns), so no bare embed goes ambiguous. `written_by`
+is added to the manifest view + column lists as a PLAIN column. Guard held by a
+real curl against `supabase_rest` (expect 200) per #572.
+
+**Counting surfaces:** the "landed / everyone's in" glance
+(`getArrivalTimesByTrip`) AND the /me conflict cue (`getMemberLegInstants`, #526)
+both filter to confirmed legs (`written_by IS NULL`) — an unconfirmed tag must
+not count someone as landed nor fire a conflict cue on their own page before they
+opt in. The `TravelLegCard` own-conflict cue is likewise suppressed while a tag is
+pending. Ride-share clustering DOES count pending tags (a shared flight is
+precisely a ride-share signal).
+
+**Partial-success semantics (review-driven):** the fan-out inserts per-target; a
+per-target `42501` (a target that stopped being taggable between page load and
+submit — e.g. removed from the trip) is SKIPPED, not fatal, so one stale target
+can't dead-end tagging everyone else. `23505` counts as tagged (idempotent
+replay). Any other coded error fails the whole call. The confirm/dismiss path
+reuses `deleteTravelLeg` (dismiss) and a new `confirmTaggedLeg` (adopt); confirm
+deliberately reuses the `UPSERT_TRAVEL_LEG` rate bucket (a light own-row write,
+low-frequency), while the fan-out sender gets its own `TAG_CO_TRAVELERS` bucket.
+
+**Scope:** the co-traveler multi-select is flight-only and add-mode only for MVP
+(re-tagging an existing leg / shared drives+trains are follow-ups). The form is
+duplicate-safe on a tag-failure retry: `savedLegId` routes the retry through the
+own-leg UPDATE branch (no dup) and a session-stable tag idempotency key replays
+the fan-out.
+
+**Reviews:** security-reviewer + code-reviewer both APPROVE, no CRITICAL/HIGH.
+17-assertion live psql RLS harness passes (forge both directions incl. the
+silent-assertion case, anti-forgery, writer-binding, cross-tenant both ways,
+confirm/dismiss target-only, tagger-cannot-mutate-target, trip-wide visibility).
+2nd-FK PostgREST-300 trap verified-avoided via a real curl against the local
+`supabase_rest` container (base/view reads 200; explicit `trip_members` embed 300,
+pinned 200 — but no such embed exists in our code).
+
 ## 2026-08-10 — #549 (RSVP confirm-prompt): organizer stays OUT of the rsvp_status write path
 
 **Status:** SHIPPED (PR pending). Migration `20260810020000_rsvp_confirm_prompts.sql`.

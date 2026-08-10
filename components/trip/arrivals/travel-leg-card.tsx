@@ -33,6 +33,7 @@ import {
   legDayConflictLine,
 } from "@/lib/utils/leg-day-conflicts";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
+import { TaggedLegConfirm } from "./tagged-leg-confirm";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TravelLegKind } from "@/lib/db/types";
 
@@ -79,6 +80,13 @@ export interface TravelLegCardProps {
   myDays?: ReadonlyArray<MemberDay>;
   tripStartsAt?: string | null;
   tripEndsAt?: string | null;
+  /**
+   * #574 — display name of the member who tagged this leg (the tagger),
+   * present only for an unconfirmed co-traveler tag
+   * (`written_by_trip_member_id` set & != owner). Drives the "Added by X ·
+   * unconfirmed" marker and the tagged member's confirm prompt.
+   */
+  taggerName?: string | null;
 }
 
 export function TravelLegCard({
@@ -90,14 +98,31 @@ export function TravelLegCard({
   myDays,
   tripStartsAt,
   tripEndsAt,
+  taggerName,
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
+
+  // #574 — an unconfirmed co-traveler tag: attributed to someone other than
+  // the leg's owner. The owner (tagged member) sees a confirm/dismiss
+  // prompt; everyone else sees a muted "Added by X · unconfirmed" marker so
+  // it never reads as settled fact (rule #8).
+  const isPendingTag =
+    !!leg.written_by_trip_member_id &&
+    leg.written_by_trip_member_id !== leg.trip_member_id;
+  const pendingMarker = isPendingTag
+    ? M3_UI_STRINGS.arrivals_tag_pending_marker_template.replace(
+        "{name}",
+        taggerName ?? ""
+      )
+    : null;
 
   // #526 — conflict cue on the viewer's OWN card only (never on
   // others' — no calling people out). Derived per-leg from the same
   // helper the /me chips card uses; chips win, this never writes.
+  // #574: suppress on an unconfirmed tag — a pending leg asserts nothing
+  // until the member confirms it, so it must not drive a conflict cue.
   const ownConflicts =
-    isOwner && myDays
+    isOwner && myDays && !isPendingTag
       ? deriveLegDayConflicts({
           legs: [leg],
           memberDays: myDays,
@@ -156,7 +181,10 @@ export function TravelLegCard({
         <span className="text-muted-foreground ml-auto min-w-0 truncate text-xs">
           {ownerName}
         </span>
-        {isOwner ? (
+        {/* #574: while a tag is pending, the owner's action is confirm/
+            dismiss (below), not edit — editing implicitly adopts it, so the
+            edit affordance returns once the leg is confirmed. */}
+        {isOwner && !isPendingTag ? (
           <TravelLegFormSheet
             tripId={leg.trip_id}
             leg={leg}
@@ -217,6 +245,19 @@ export function TravelLegCard({
           {legDayConflictLine(conflict)}
         </p>
       ))}
+
+      {/* #574 — pending co-traveler tag. The tagged member (owner) gets the
+          confirm/dismiss prompt; everyone else sees a muted attribution
+          marker so it never reads as confirmed fact. */}
+      {isPendingTag && isOwner ? (
+        <TaggedLegConfirm
+          legId={leg.id}
+          taggerName={taggerName ?? ""}
+          onResolved={onMutated}
+        />
+      ) : isPendingTag ? (
+        <p className="text-muted-foreground text-xs italic">{pendingMarker}</p>
+      ) : null}
     </article>
   );
 }

@@ -108,6 +108,12 @@ export const RATE_LIMIT_SCOPES = {
   SET_ITEM_RSVP: "setItemRsvp",
   SET_ITEM_FLAG: "setItemFlag",
   UPSERT_TRAVEL_LEG: "upsertTravelLeg",
+  // #574 — co-traveler tagging fans out one attributed leg per tagged
+  // member. Own bucket so a burst of tags can't starve a member's own
+  // leg-logging budget. Default 30/60s; NOT in FAIL_CLOSED_ON_SHIM (authed
+  // trip mutation; a bootstrapping deploy must not brick it) — and each
+  // fanned-out row is idempotent, so a rate-limited retry is always safe.
+  TAG_CO_TRAVELERS: "tagCoTravelers",
   ASSIGN_LODGING: "assignLodging",
   // M3 Wave 4c — issue #107: minting invite links now has its own bucket
   // separate from `ACCEPT_INVITE` so a burst of organizer mints cannot

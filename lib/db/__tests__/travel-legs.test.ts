@@ -55,6 +55,7 @@ const mockLeg: TravelLeg = {
   direction: "inbound",
   airport: "LAX",
   origin_label: "JFK",
+  written_by_trip_member_id: null,
 };
 
 describe("getTravelLegsByTrip", () => {
@@ -147,6 +148,8 @@ describe("TRAVEL_LEG_COLUMNS coverage", () => {
     "direction",
     "airport",
     "origin_label",
+    // #574 co-traveler tag attribution
+    "written_by_trip_member_id",
   ] as const;
 
   function makeColumnCapturingClient(capture: { columns: string }) {
@@ -192,13 +195,22 @@ describe("getArrivalTimesByTrip — inbound only (#477)", () => {
   // A logged flight home used to count toward "X landed / everyone's in"
   // while people were flying home. The glance read must scope to
   // direction = 'inbound' at the DB.
-  function makeEqCapturingClient(capture: { eqCalls: [string, unknown][] }) {
+  function makeEqCapturingClient(capture: {
+    eqCalls: [string, unknown][];
+    isCalls: [string, unknown][];
+  }) {
     const buildProxy = (): Record<string, unknown> => {
       const handler: ProxyHandler<Record<string, unknown>> = {
         get(_target, prop: string) {
           if (prop === "eq") {
             return (column: string, value: unknown) => {
               capture.eqCalls = [...capture.eqCalls, [column, value]];
+              return proxy;
+            };
+          }
+          if (prop === "is") {
+            return (column: string, value: unknown) => {
+              capture.isCalls = [...capture.isCalls, [column, value]];
               return proxy;
             };
           }
@@ -219,12 +231,32 @@ describe("getArrivalTimesByTrip — inbound only (#477)", () => {
   }
 
   it("filters legs to direction = 'inbound'", async () => {
-    const capture: { eqCalls: [string, unknown][] } = { eqCalls: [] };
+    const capture = { eqCalls: [], isCalls: [] } as {
+      eqCalls: [string, unknown][];
+      isCalls: [string, unknown][];
+    };
     const client = makeEqCapturingClient(capture);
 
     await getArrivalTimesByTrip(client, TRIP_ID);
 
     expect(capture.eqCalls).toContainEqual(["direction", "inbound"]);
+  });
+
+  // #574: an unconfirmed co-traveler tag must NOT count toward "everyone's
+  // in" / ride-share — the glance read filters to confirmed legs only.
+  it("excludes unconfirmed tags (written_by_trip_member_id IS NULL)", async () => {
+    const capture = { eqCalls: [], isCalls: [] } as {
+      eqCalls: [string, unknown][];
+      isCalls: [string, unknown][];
+    };
+    const client = makeEqCapturingClient(capture);
+
+    await getArrivalTimesByTrip(client, TRIP_ID);
+
+    expect(capture.isCalls).toContainEqual([
+      "written_by_trip_member_id",
+      null,
+    ]);
   });
 });
 
@@ -233,6 +265,7 @@ describe("getMemberLegInstants — #526 own-legs slim read", () => {
     from?: string;
     select?: string;
     eqCalls: [string, unknown][];
+    isCalls: [string, unknown][];
   }) {
     const buildProxy = () => {
       const handler: ProxyHandler<Record<string, unknown>> = {
@@ -245,6 +278,7 @@ describe("getMemberLegInstants — #526 own-legs slim read", () => {
             if (prop === "select") capture.select = String(args[0]);
             if (prop === "eq")
               capture.eqCalls.push([String(args[0]), args[1]]);
+            if (prop === "is") capture.isCalls.push([String(args[0]), args[1]]);
             return proxy;
           };
         },
@@ -261,10 +295,14 @@ describe("getMemberLegInstants — #526 own-legs slim read", () => {
   }
 
   it("scopes by trip AND member (self-only), instants columns only", async () => {
-    const capture = { eqCalls: [] as [string, unknown][] } as {
+    const capture = {
+      eqCalls: [] as [string, unknown][],
+      isCalls: [] as [string, unknown][],
+    } as {
       from?: string;
       select?: string;
       eqCalls: [string, unknown][];
+      isCalls: [string, unknown][];
     };
     const client = makeCapturingClient(capture);
 
@@ -276,14 +314,39 @@ describe("getMemberLegInstants — #526 own-legs slim read", () => {
     expect(capture.eqCalls).toContainEqual(["trip_member_id", "tm-1"]);
   });
 
+  // #574: the /me conflict cue must not fire on an unconfirmed tag — the
+  // self-legs read filters to confirmed rows only.
+  it("excludes unconfirmed tags (written_by_trip_member_id IS NULL)", async () => {
+    const capture = {
+      eqCalls: [] as [string, unknown][],
+      isCalls: [] as [string, unknown][],
+    } as {
+      from?: string;
+      select?: string;
+      eqCalls: [string, unknown][];
+      isCalls: [string, unknown][];
+    };
+    const client = makeCapturingClient(capture);
+
+    await getMemberLegInstants(client, "trip-1", "tm-1");
+
+    expect(capture.isCalls).toContainEqual([
+      "written_by_trip_member_id",
+      null,
+    ]);
+  });
+
   it("throws when Supabase reports an error", async () => {
     const failing = {
       from: vi.fn(() => ({
         select: () => ({
           eq: () => ({
             eq: () => ({
-              order: () =>
-                Promise.resolve({ data: null, error: { message: "boom" } }),
+              // #574: getMemberLegInstants now filters confirmed-only via .is()
+              is: () => ({
+                order: () =>
+                  Promise.resolve({ data: null, error: { message: "boom" } }),
+              }),
             }),
           }),
         }),

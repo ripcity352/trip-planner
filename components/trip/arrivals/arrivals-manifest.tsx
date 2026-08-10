@@ -107,6 +107,13 @@ export function ArrivalsManifest({
   // display_name and falls back to "Guest" — email/id never surface in the UI.
   const memberNameMap = new Map(tripMembers.map((m) => [m.id, m]));
 
+  // #574 — who can be tagged onto a shared flight: every trip member except
+  // the viewer and trip-level decliners (#475 — don't offer to tag someone
+  // who said they're not coming). Names via resolveMemberName (never id/email).
+  const tagCandidates = tripMembers
+    .filter((m) => m.id !== myTripMemberId && m.rsvp_status !== "declined")
+    .map((m) => ({ id: m.id, name: resolveMemberName(memberNameMap, m.id) }));
+
   // #477: split the manifest by direction. `legs` arrives sorted by
   // arrive_at ASC (nulls last), which is the right order for inbound;
   // outbound is re-sorted by depart_at.
@@ -124,6 +131,13 @@ export function ArrivalsManifest({
       leg={leg}
       myTripMemberId={myTripMemberId}
       ownerName={resolveMemberName(memberNameMap, leg.trip_member_id)}
+      // #574: only set for an unconfirmed tag (written_by set & != owner).
+      taggerName={
+        leg.written_by_trip_member_id &&
+        leg.written_by_trip_member_id !== leg.trip_member_id
+          ? resolveMemberName(memberNameMap, leg.written_by_trip_member_id)
+          : null
+      }
       tripTimezone={tripTimezone}
       // #452: without this, the per-card edit sheet's save/delete left
       // stale legs on screen until a manual reload.
@@ -188,6 +202,8 @@ export function ArrivalsManifest({
         myDays={myDays}
         tripStartsAt={tripStartsAt}
         tripEndsAt={tripEndsAt}
+        // #574 — co-travelers taggable onto a new shared flight.
+        tagCandidates={tagCandidates}
       />
     </div>
   );

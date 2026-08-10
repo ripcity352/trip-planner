@@ -20,7 +20,7 @@ import type { TravelLeg } from "./types";
 // upsertTravelLeg writes — pinned by the hydration-drift test). Add new
 // travel_legs columns to the VIEW migration too, or they'll hydrate blank.
 const TRAVEL_LEG_COLUMNS =
-  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at, airline_iata, flight_number, direction, airport, origin_label";
+  "id, trip_id, trip_member_id, kind, depart_at, arrive_at, carrier, confirmation_code, notes, idempotency_key, created_at, airline_iata, flight_number, direction, airport, origin_label, written_by_trip_member_id";
 
 /**
  * Return all travel legs for a trip, ordered by arrive_at ASC (arrivals
@@ -63,6 +63,11 @@ export interface ArrivalInstant {
  *
  * #477: scoped to inbound legs only — a logged flight home must never
  * count toward "X landed / everyone's in".
+ *
+ * #574: confirmed legs only (`written_by_trip_member_id is null`). An
+ * unconfirmed co-traveler tag asserts someone's flight before they've
+ * opted in — it must not count them as landed / part of "everyone's in".
+ * A self-logged leg and a confirmed (adopted) tag both carry NULL here.
  */
 export async function getArrivalTimesByTrip(
   supabase: SupabaseClient,
@@ -73,6 +78,7 @@ export async function getArrivalTimesByTrip(
     .select("trip_member_id, arrive_at")
     .eq("trip_id", tripId)
     .eq("direction", "inbound")
+    .is("written_by_trip_member_id", null)
     .not("arrive_at", "is", null);
 
   if (error) {
@@ -94,6 +100,11 @@ export interface MemberLegInstants {
  * cue). Reads the base table (no confirmation_code selected, so the
  * #505 view redaction is moot); RLS limits rows to trips the caller
  * belongs to, and the explicit member filter keeps it self-only.
+ *
+ * #574: confirmed legs only (`written_by_trip_member_id is null`) —
+ * consistent with getArrivalTimesByTrip. An unconfirmed co-traveler tag
+ * on the member's own row must not drive a /me conflict cue before they've
+ * opted in (a pending tag asserts nothing until confirmed).
  */
 export async function getMemberLegInstants(
   supabase: SupabaseClient,
@@ -105,6 +116,7 @@ export async function getMemberLegInstants(
     .select("direction, arrive_at, depart_at")
     .eq("trip_id", tripId)
     .eq("trip_member_id", tripMemberId)
+    .is("written_by_trip_member_id", null)
     // Stable order so "first conflict" downstream is deterministic.
     .order("created_at", { ascending: true });
 

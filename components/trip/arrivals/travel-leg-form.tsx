@@ -41,9 +41,20 @@ import {
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { callAction } from "@/lib/ui/call-action";
-import { upsertTravelLeg, deleteTravelLeg } from "@/lib/actions/travel-legs";
+import {
+  upsertTravelLeg,
+  deleteTravelLeg,
+  tagCoTravelersAction,
+} from "@/lib/actions/travel-legs";
 import type { TravelLeg, TravelLegDirection } from "@/lib/db/types";
 import { AirlinePicker } from "./airline-picker";
+
+/** #574 — a member who can be tagged onto a shared flight. */
+export interface TagCandidate {
+  /** trip_member_id. */
+  id: string;
+  name: string;
+}
 
 const LEG_KINDS = ["flight", "train", "drive", "other"] as const;
 
@@ -121,6 +132,14 @@ export interface TravelLegFormProps {
    */
   onSuccess: (savedLeg?: TravelLeg) => void;
   onCancel: () => void;
+  /**
+   * #574 — members who can be tagged onto a shared flight (all trip members
+   * except the viewer + trip-level decliners; server-composed). When present
+   * and the leg is a flight in ADD mode, a "who else is on this flight?"
+   * multi-select renders; on save, each selected member gets a pending,
+   * attributed leg they confirm. Omit (or empty) to hide the picker.
+   */
+  tagCandidates?: ReadonlyArray<TagCandidate>;
 }
 
 export function TravelLegForm({
@@ -130,6 +149,7 @@ export function TravelLegForm({
   tripTimezone,
   onSuccess,
   onCancel,
+  tagCandidates,
 }: TravelLegFormProps) {
   const isEditMode = !!leg;
   // #477: edit mode derives the section from the leg; add mode takes the
@@ -143,6 +163,22 @@ export function TravelLegForm({
     null
   );
   const [isDeleting, setIsDeleting] = React.useState(false);
+
+  // #574 — selected co-travelers to tag onto this (flight, add-mode) leg.
+  const [selectedTagIds, setSelectedTagIds] = React.useState<
+    ReadonlyArray<string>
+  >([]);
+  // If the self-leg saved but the tag fan-out failed, the form stays open;
+  // this records the saved leg's id so a retry UPDATES it (no duplicate own
+  // leg) rather than inserting a second one.
+  const [savedLegId, setSavedLegId] = React.useState<string | null>(null);
+  // Stable idempotency key for the tag fan-out across retries within this
+  // form session — a retry replays (per-target 23505) instead of creating
+  // duplicate pending tags. Lazily initialised (crypto is client-only).
+  const tagIdemKeyRef = React.useRef<string | null>(null);
+  if (tagIdemKeyRef.current === null) {
+    tagIdemKeyRef.current = crypto.randomUUID();
+  }
 
   const {
     register,
@@ -178,6 +214,24 @@ export function TravelLegForm({
     // use. Belt + suspenders with the server-side check.
     const isFlight = values.kind === "flight";
 
+    // #477: each direction records ONLY its trip-city-side instant. These
+    // are the shareable facts a co-traveler tag copies too (#574).
+    const departAt = isInbound
+      ? null
+      : fromLocalInputValue(values.departAt ?? "", tripTimezone);
+    const arriveAt = isInbound
+      ? fromLocalInputValue(values.arriveAt ?? "", tripTimezone)
+      : null;
+    const airport = values.airport || null;
+    const originLabel = isInbound ? values.originLabel || null : null;
+    const carrier = values.carrier || null;
+    const airlineIata = isFlight ? values.airlineIata || null : null;
+    const flightNumber = isFlight ? values.flightNumber || null : null;
+
+    // #574: on retry after a tag failure, savedLegId updates the already-
+    // saved own leg rather than inserting a duplicate.
+    const effectiveLegId = isEditMode ? leg.id : savedLegId;
+
     // #431: rejected awaits resolve to the network envelope via callAction.
     const result = await callAction(() =>
       upsertTravelLeg(
@@ -185,25 +239,18 @@ export function TravelLegForm({
           tripId,
           kind: values.kind,
           direction,
-          // #477: each direction records ONLY its trip-city-side instant.
-          // The other column is written null — including on edits of
-          // legacy rows that carried both times.
-          departAt: isInbound
-            ? null
-            : fromLocalInputValue(values.departAt ?? "", tripTimezone),
-          arriveAt: isInbound
-            ? fromLocalInputValue(values.arriveAt ?? "", tripTimezone)
-            : null,
-          airport: values.airport || null,
+          departAt,
+          arriveAt,
+          airport,
           // #477: originLabel is inbound-only — mirror of the #248 pattern.
-          originLabel: isInbound ? values.originLabel || null : null,
-          carrier: values.carrier || null,
+          originLabel,
+          carrier,
           confirmationCode: values.confirmationCode || null,
           notes: values.notes || null,
-          legId: isEditMode ? leg.id : undefined,
+          legId: effectiveLegId ?? undefined,
           // M4 W2c additions — only sent when kind === "flight" (#248)
-          airlineIata: isFlight ? values.airlineIata || null : null,
-          flightNumber: isFlight ? values.flightNumber || null : null,
+          airlineIata,
+          flightNumber,
         },
         idempotencyKey
       )
@@ -212,6 +259,38 @@ export function TravelLegForm({
     if (!result.ok) {
       setServerErrorKey(result.errorKey);
       return;
+    }
+
+    // #574: fan out attributed pending legs to any tagged co-travelers.
+    // Flight-only + add-mode + at least one selected. The self-leg is
+    // already saved; a tag failure keeps the form open (savedLegId guards a
+    // duplicate own leg on retry) so the error is actionable, not silently
+    // dropped.
+    if (canTag && selectedTagIds.length > 0) {
+      const tagResult = await callAction(() =>
+        tagCoTravelersAction(
+          {
+            tripId,
+            targetTripMemberIds: [...selectedTagIds],
+            kind: "flight",
+            direction,
+            departAt,
+            arriveAt,
+            airport,
+            originLabel,
+            carrier,
+            airlineIata,
+            flightNumber,
+          },
+          tagIdemKeyRef.current as string
+        )
+      );
+
+      if (!tagResult.ok) {
+        setSavedLegId(result.leg.id);
+        setServerErrorKey(tagResult.errorKey);
+        return;
+      }
     }
 
     onSuccess(result.leg);
@@ -237,6 +316,18 @@ export function TravelLegForm({
   };
 
   const kind = watch("kind");
+
+  // #574: the co-traveler picker shows only for a NEW flight with candidates
+  // (editing an existing leg re-shares nothing; non-flights are out of MVP
+  // scope). `canTag` also gates the fan-out in onSubmit.
+  const canTag =
+    !isEditMode && kind === "flight" && (tagCandidates?.length ?? 0) > 0;
+
+  const toggleTag = (id: string) => {
+    setSelectedTagIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
   const inputClass = cn(
     "w-full rounded-xs border border-border bg-background px-3 py-2 text-sm",
@@ -375,6 +466,47 @@ export function TravelLegForm({
             className={inputClass}
           />
         </div>
+      ) : null}
+
+      {/* #574 — tag co-travelers on this shared flight. Add-mode + flight
+          only; each checked member gets a pending, attributed leg they
+          confirm on their own arrivals view. */}
+      {canTag ? (
+        <fieldset className="flex flex-col gap-2">
+          <legend className={labelClass}>
+            {M3_UI_STRINGS.arrivals_tag_cotravelers_label}
+          </legend>
+          <div className="flex flex-wrap gap-2">
+            {tagCandidates?.map((candidate) => {
+              const checked = selectedTagIds.includes(candidate.id);
+              return (
+                <label
+                  key={candidate.id}
+                  className={cn(
+                    "focus-within:ring-ring inline-flex cursor-pointer items-center gap-2 rounded-xs border px-3 py-1.5 text-sm",
+                    "focus-within:ring-2 focus-within:ring-offset-2",
+                    checked
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border bg-background text-muted-foreground",
+                    isBusy && "cursor-not-allowed opacity-60"
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={checked}
+                    disabled={isBusy}
+                    onChange={() => toggleTag(candidate.id)}
+                  />
+                  {candidate.name}
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-muted-foreground text-xs">
+            {M3_UI_STRINGS.arrivals_tag_cotravelers_hint}
+          </p>
+        </fieldset>
       ) : null}
 
       {/* Confirmation code */}

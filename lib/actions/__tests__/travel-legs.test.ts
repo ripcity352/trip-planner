@@ -43,6 +43,12 @@ vi.mock("@/lib/rate-limit", async () => {
   };
 });
 
+// #574 — capture write payloads per table so tag/confirm tests can assert
+// the fan-out shape (drop-self, no PNR copied, attribution). Backward-
+// compatible: existing tests that never read it are unaffected.
+const capturedCalls: Array<{ table: string; method: string; arg: unknown }> =
+  [];
+
 function buildClient(): unknown {
   const tableProxy = (table: string): Record<string, unknown> => {
     const thenable: PromiseLike<{ data: unknown; error: unknown }> = {
@@ -55,7 +61,12 @@ function buildClient(): unknown {
     const handler: ProxyHandler<Record<string, unknown>> = {
       get(_t, prop: string) {
         if (prop === "then") return thenable.then.bind(thenable);
-        return () => proxy;
+        return (...args: unknown[]) => {
+          if (prop === "insert" || prop === "update") {
+            capturedCalls.push({ table, method: prop, arg: args[0] });
+          }
+          return proxy;
+        };
       },
     };
     const proxy: Record<string, unknown> = new Proxy({}, handler);
@@ -701,5 +712,244 @@ describe("upsertTravelLeg — two-section rules (#477)", () => {
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+});
+
+// #574 — co-traveler tagging (shared flights).
+describe("tagCoTravelersAction", () => {
+  const TARGET_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const TARGET_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  const baseInput = {
+    tripId: VALID_TRIP_ID,
+    targetTripMemberIds: [TARGET_A, TARGET_B],
+    kind: "flight" as const,
+    direction: "inbound" as const,
+    arriveAt: VALID_ARRIVE_AT,
+    airport: "LAX",
+    carrier: "Southwest",
+    confirmationCode: "SHOULD_NOT_COPY",
+    notes: "my personal note",
+  };
+
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    rateLimitedActionMock.mockClear();
+    capturedCalls.length = 0;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on a bad idempotency key", async () => {
+    primeAuth(VALID_USER_ID);
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(baseInput, "not-a-uuid");
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("rejects a non-flight kind (flight-only for MVP)", async () => {
+    primeAuth(VALID_USER_ID);
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(
+      // @ts-expect-error non-flight kind is outside the tag schema
+      { ...baseInput, kind: "drive" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("rls_denied when not authenticated", async () => {
+    primeAuth(null);
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(baseInput, VALID_IDEMPOTENCY_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("rls_denied when the caller has no membership in the trip", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({ data: null, error: null }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(baseInput, VALID_IDEMPOTENCY_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("validation_failed when the only target is the caller (self drop)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(
+      { ...baseInput, targetTripMemberIds: [VALID_MEMBER_ID] },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("fans out one attributed row per target — never copying PNR or notes", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({ data: null, error: null }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(baseInput, VALID_IDEMPOTENCY_KEY);
+
+    expect(result).toEqual({ ok: true, tagged: 2 });
+
+    const inserts = capturedCalls.filter(
+      (c) => c.table === "travel_legs" && c.method === "insert"
+    );
+    expect(inserts).toHaveLength(2);
+    const targets = inserts.map(
+      (c) => (c.arg as { trip_member_id: string }).trip_member_id
+    );
+    expect(targets).toEqual([TARGET_A, TARGET_B]);
+    for (const c of inserts) {
+      const row = c.arg as Record<string, unknown>;
+      // Attribution is the CALLER's own resolved membership.
+      expect(row.written_by_trip_member_id).toBe(VALID_MEMBER_ID);
+      // #505 — the tagger's private PNR/notes are NEVER copied.
+      expect(row.confirmation_code).toBeNull();
+      expect(row.notes).toBeNull();
+      // The shareable flight facts ARE copied.
+      expect(row.airport).toBe("LAX");
+      expect(row.carrier).toBe("Southwest");
+      expect(row.idempotency_key).toBe(VALID_IDEMPOTENCY_KEY);
+    }
+  });
+
+  it("drops the caller and duplicates, tagging only the distinct others", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({ data: null, error: null }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(
+      {
+        ...baseInput,
+        targetTripMemberIds: [TARGET_A, TARGET_A, VALID_MEMBER_ID, TARGET_B],
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, tagged: 2 });
+    const inserts = capturedCalls.filter((c) => c.method === "insert");
+    expect(inserts).toHaveLength(2);
+  });
+
+  it("counts a 23505 replay as tagged (idempotent double-tap)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({
+      data: null,
+      error: { code: "23505", message: "duplicate" },
+    }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(baseInput, VALID_IDEMPOTENCY_KEY);
+    expect(result).toEqual({ ok: true, tagged: 2 });
+  });
+
+  it("skips a per-target 42501 (stale target) instead of aborting the batch", async () => {
+    // A 42501 on one target means it stopped being taggable between load
+    // and submit — skip it (uncounted), don't dead-end the whole tag. Both
+    // targets 42501 here → ok with tagged: 0 (nobody blocked the others).
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({
+      data: null,
+      error: { code: "42501", message: "denied" },
+    }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(baseInput, VALID_IDEMPOTENCY_KEY);
+    expect(result).toEqual({ ok: true, tagged: 0 });
+  });
+
+  it("surfaces a non-42501 coded error as save_rejected", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({
+      data: null,
+      error: { code: "23514", message: "check violation" },
+    }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const result = await tagCoTravelersAction(baseInput, VALID_IDEMPOTENCY_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "travel_leg_save_rejected" });
+  });
+
+  it("uses the dedicated TAG_CO_TRAVELERS rate-limit bucket", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID },
+      error: null,
+    }));
+    tableResolvers.set("travel_legs", () => ({ data: null, error: null }));
+    const { tagCoTravelersAction } = await import("@/lib/actions/travel-legs");
+    const { RATE_LIMIT_SCOPES } = await import("@/lib/rate-limit");
+    await tagCoTravelersAction(baseInput, VALID_IDEMPOTENCY_KEY);
+    expect(rateLimitedActionMock).toHaveBeenCalledWith(
+      RATE_LIMIT_SCOPES.TAG_CO_TRAVELERS,
+      VALID_USER_ID,
+      expect.any(Function)
+    );
+  });
+});
+
+describe("confirmTaggedLeg", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    rateLimitedActionMock.mockClear();
+    capturedCalls.length = 0;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on a non-uuid leg id", async () => {
+    primeAuth(VALID_USER_ID);
+    const { confirmTaggedLeg } = await import("@/lib/actions/travel-legs");
+    const result = await confirmTaggedLeg("not-a-uuid");
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("rls_denied when not authenticated", async () => {
+    primeAuth(null);
+    const { confirmTaggedLeg } = await import("@/lib/actions/travel-legs");
+    const result = await confirmTaggedLeg(VALID_LEG_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("clears attribution (written_by → null) and returns ok", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("travel_legs", () => ({ data: null, error: null }));
+    const { confirmTaggedLeg } = await import("@/lib/actions/travel-legs");
+    const result = await confirmTaggedLeg(VALID_LEG_ID);
+    expect(result).toEqual({ ok: true });
+    const update = capturedCalls.find((c) => c.method === "update");
+    expect(update?.arg).toEqual({ written_by_trip_member_id: null });
+  });
+
+  it("maps an RLS rejection (42501) to rls_denied", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("travel_legs", () => ({
+      data: null,
+      error: { code: "42501", message: "denied" },
+    }));
+    const { confirmTaggedLeg } = await import("@/lib/actions/travel-legs");
+    const result = await confirmTaggedLeg(VALID_LEG_ID);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
   });
 });
