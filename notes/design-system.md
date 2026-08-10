@@ -1870,3 +1870,33 @@ Corollaries:
   would claim roster coverage the data doesn't have.
 - Member-directory surfaces (the roster) use a neutral heading ("The
   crew"), not an RSVP-flavored one, because they include non-going rows.
+
+## Compact arrivals-row register (#579)
+
+**Gap named.** The arrivals manifest rendered every leg as a full
+`TravelLegCard` and its day headers as an *uppercase tracked eyebrow*
+(`Fri, Aug 14`) — a vibecoded anti-tell (see the day/time tiers § and
+"Anti-tells"). There was no compact arrivals-row primitive, so a crew of
+6+ flights filled the screen and didn't read as a timeline even though the
+data was already chronological.
+
+**The register.** Arrivals adopts the existing **Day-header tier**
+(lowercase JetBrains-Mono `fri 14`) and **Absolute-time tier**
+(`9:50 pm`, lowercase am/pm mono) and renders a dense timeline behind a
+`Compact | Full` toggle (Compact default).
+
+| Element | Spec |
+|---|---|
+| Day header (both views) | `fri 14` — `font-mono`, lowercase, muted caption. NEVER `FRI, AUG 14` / uppercase tracked eyebrow. Produced by `formatTripDayHeader` (helper, not inline `format()`). |
+| Compact row | one line: `9:50 pm · Rob (PDX)` — mono time (`formatTripTime`) · owner name (via `resolveMemberName`) · airport code in parens. Middot `·` (U+00B7) separators. Read-only; no actions, no PNR, no expand. |
+| Row overflow | name gets `min-w-0 truncate`; time and `(airport)` are fixed, non-shrinking — the airport (the coordination fact) is never the thing that truncates. Reads at 375px (≈343px usable). |
+| Compact — omitted | flight number, origin (`from LAX`), notes, confirmation code (PNR) — all live in Full only. |
+| Full view | today's `TravelLegCard`, unchanged — the action surface (edit / confirm-dismiss / add-to-flight / PNR / notes / conflict cue). |
+| Pending tags | render as normal compact rows — no "unconfirmed" marker in the glance (operator call: unconfirmed tags are fine). Confirm/dismiss stays on the Full card. |
+
+**Interaction.** The `Compact | Full` toggle is the *single* density
+control — Compact is a glance, Full is the (already-expanded) action
+surface. No per-row accordion (that would be a second density control for
+one job). Toggle choice persists to `localStorage` (`pt:arrivalsView`),
+read in `useEffect` so first paint is deterministic (Compact) and never
+mismatches SSR.

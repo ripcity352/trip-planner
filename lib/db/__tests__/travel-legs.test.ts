@@ -107,6 +107,42 @@ describe("getTravelLegsByTrip", () => {
     expect(result[0].arrive_at).toBeNull();
   });
 
+  // #579: deterministic order — arrive_at ASC (nulls last) with a created_at
+  // secondary sort so the "Landing time TBD" bucket and same-instant legs
+  // don't shuffle between loads.
+  it("orders by arrive_at then created_at (deterministic TBD bucket)", async () => {
+    const orderCalls: Array<{ col: string; opts?: unknown }> = [];
+    const recordingClient = {
+      from: () => {
+        const proxy: Record<string, unknown> = new Proxy(
+          {},
+          {
+            get(_t, prop: string) {
+              if (prop === "then") {
+                return (onfulfilled: (r: { data: unknown; error: unknown }) => unknown) =>
+                  Promise.resolve({ data: [], error: null }).then(onfulfilled);
+              }
+              if (prop === "order") {
+                return (col: string, opts?: unknown) => {
+                  orderCalls.push({ col, opts });
+                  return proxy;
+                };
+              }
+              return () => proxy;
+            },
+          }
+        );
+        return proxy;
+      },
+    } as unknown as SupabaseClient;
+
+    await getTravelLegsByTrip(recordingClient, TRIP_ID);
+    expect(orderCalls).toEqual([
+      { col: "arrive_at", opts: { ascending: true, nullsFirst: false } },
+      { col: "created_at", opts: { ascending: true } },
+    ]);
+  });
+
   // #505: confirmation_code is field-level-private. The shared manifest
   // read MUST target the redacting view, not the base table — reading
   // travel_legs directly would hand every member everyone's PNR.
