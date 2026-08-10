@@ -330,6 +330,10 @@ export const M3_UI_STRINGS = {
   lodging_assign_cta: "Assign a room",
   lodging_unassign_cta: "Unassign",
   lodging_assign_pick_person: "— Pick a person —",
+  // #556 — organizer-only "not yet set" bucket. Names an absence explicitly
+  // (rule #8) instead of letting an omitted member read as handled. No count
+  // in the heading, no "blocking" framing, alphabetical order only.
+  lodging_unassigned_heading: "No room yet",
   // Now/next card (#77, Wave 3b)
   nowNext_pretrip_template: "Trip starts in {days}.",
   nowNext_today_label: "Today",

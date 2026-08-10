@@ -120,8 +120,12 @@ describe("LodgingRoster", () => {
     render(
       <LodgingRoster {...{ ...defaultProps, assignments: [] }} />
     );
-    // No assignment rows for Dave — the name isn't in the list
-    expect(screen.queryAllByText("Dave")).toHaveLength(0);
+    // No assignment rows exist — the unassign affordance (which only renders
+    // per assignment) is absent. Members with no room now surface in the
+    // organizer-only "No room yet" bucket (#556), not as assignment rows.
+    expect(
+      screen.queryByRole("button", { name: /unassign/i })
+    ).not.toBeInTheDocument();
   });
 
   // #240 — dropdown must NEVER show a raw UUID. Display sites use
@@ -157,6 +161,82 @@ describe("LodgingRoster", () => {
     expect(option).toBeInTheDocument();
     // UUID must never appear
     expect(screen.queryByRole("option", { name: "member-2" })).not.toBeInTheDocument();
+  });
+
+  // #556 — organizer-only "No room yet" bucket. Names an absence explicitly
+  // instead of letting an omitted member read as handled. Organizer-only
+  // (mirrors #169 outstanding-list), alphabetical, no count, no blocking framing.
+  describe("#556 — unassigned bucket", () => {
+    it("shows organizer a 'No room yet' bucket listing members with no assignment", () => {
+      // defaultProps: member-1 (Dave) assigned, member-2 (Alex) unassigned
+      render(<LodgingRoster {...defaultProps} />);
+      expect(screen.getByText(/no room yet/i)).toBeInTheDocument();
+      // Alex is unassigned → appears in the bucket
+      expect(screen.getByText("Alex")).toBeInTheDocument();
+    });
+
+    it("does NOT show the unassigned bucket to non-organizers", () => {
+      render(<LodgingRoster {...{ ...defaultProps, isOrganizer: false }} />);
+      expect(screen.queryByText(/no room yet/i)).not.toBeInTheDocument();
+      // Alex (unassigned) must not surface on the member-visible read-only view
+      expect(screen.queryByText("Alex")).not.toBeInTheDocument();
+    });
+
+    it("excludes trip-level decliners from the unassigned bucket (#475 semantics)", () => {
+      const members = [
+        makeMember({ id: "member-1", display_name: "Dave" }),
+        makeMember({
+          id: "member-2",
+          display_name: "Alex",
+          user_id: "user-2",
+          rsvp_status: "declined",
+        }),
+      ];
+      render(
+        <LodgingRoster
+          itemId="item-1"
+          assignments={[makeAssignment({ trip_member_id: "member-1" })]}
+          tripMembers={members}
+          isOrganizer={true}
+        />
+      );
+      // Alex declined the trip → no longer "needs a room"
+      expect(screen.queryByText(/no room yet/i)).not.toBeInTheDocument();
+      expect(screen.queryByText("Alex")).not.toBeInTheDocument();
+    });
+
+    it("orders the unassigned bucket alphabetically, not by join order", () => {
+      const members = [
+        makeMember({ id: "member-1", display_name: "Zach" }),
+        makeMember({ id: "member-2", display_name: "Alex", user_id: "user-2" }),
+        makeMember({ id: "member-3", display_name: "Mia", user_id: "user-3" }),
+      ];
+      render(
+        <LodgingRoster
+          itemId="item-1"
+          assignments={[]}
+          tripMembers={members}
+          isOrganizer={true}
+        />
+      );
+      const items = screen
+        .getAllByTestId("lodging-unassigned-member")
+        .map((el) => el.textContent);
+      expect(items).toEqual(["Alex", "Mia", "Zach"]);
+    });
+
+    it("hides the unassigned bucket when everyone has a room", () => {
+      const members = [makeMember({ id: "member-1", display_name: "Dave" })];
+      render(
+        <LodgingRoster
+          itemId="item-1"
+          assignments={[makeAssignment({ trip_member_id: "member-1" })]}
+          tripMembers={members}
+          isOrganizer={true}
+        />
+      );
+      expect(screen.queryByText(/no room yet/i)).not.toBeInTheDocument();
+    });
   });
 
   it("shows 'Guest' in dropdown when both display_name and email are null — never the UUID", async () => {

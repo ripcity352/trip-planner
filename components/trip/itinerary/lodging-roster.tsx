@@ -58,6 +58,16 @@ export function LodgingRoster({
     (m) => !assignedMemberIds.has(m.id)
   );
 
+  // #556 — organizer-only "No room yet" bucket. Names an absence explicitly
+  // (rule #8) so an omitted member never reads as "handled." Distinct from the
+  // assign dropdown above: trip-level decliners are dropped (#475 — a member
+  // who's out of the trip doesn't "need a room"), and the order is alphabetical
+  // by resolved name (never by join order or lateness — #169 anti-ranking).
+  const unassignedForDisplay = unassignedMembers
+    .filter((m) => m.rsvp_status !== "declined")
+    .map((m) => ({ id: m.id, name: resolveMemberName(memberMap, m.id) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const handleAssign = () => {
     if (!selectedMemberId) return;
     setErrorKey(null);
@@ -140,6 +150,28 @@ export function LodgingRoster({
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {/* #556 — organizer-only "No room yet" bucket. Read-side surfacing of
+          the absence; no count in the heading, no blocking framing, alphabetical
+          order. Hidden entirely from non-organizers (anti-shame, #387). */}
+      {isOrganizer && unassignedForDisplay.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <h5 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            {M3_UI_STRINGS.lodging_unassigned_heading}
+          </h5>
+          <ul className="flex flex-col gap-1">
+            {unassignedForDisplay.map((m) => (
+              <li
+                key={m.id}
+                data-testid="lodging-unassigned-member"
+                className="text-muted-foreground min-w-0 truncate text-sm"
+              >
+                {m.name}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {/* Assign form (organizer only) */}
