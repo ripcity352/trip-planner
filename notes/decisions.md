@@ -5,6 +5,118 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-08-09 — #555 (paused status): trigger-shape ADR — Shape (2), attribution+confirm
+
+**Status:** PROPOSAL, pending operator ratification. **Blocking gate** for #555
+per its "ADR first" fix-plan. No schema/code until this is confirmed.
+
+**Context.** #555 wants a reversible `paused` status on `trip_members` so an
+organizer can sideline a member who's gone dark — no data loss, no hitting the
+celebrant/founder/expense-tied removal blockers. The issue names the rule-#8
+risk: an organizer unilaterally deciding a member is "out" and *silently*
+uncounting them is an assumption, not a transcribed fact. It offers two trigger
+shapes and requires one be chosen here first.
+
+**Decision: Shape (2)** — organizer-discretion, but always **provisional,
+reversible, and never silent** — implemented with the **#171 attribution +
+member-confirm template** (`paused_by_trip_member_id` + a private member-facing
+"you've been marked inactive — tap to confirm you're still coming" affordance
+the member can dismiss/reverse at any time). **Reject Shape (1).**
+
+**Why Shape (1) is incoherent for this use case.** Shape (1) requires a fact the
+member actually communicated. But the triggering condition *is* "gone dark" — the
+member is by definition **not** communicating. If they had said "set me aside,"
+that is already expressible as an RSVP change (`maybe`/`declined`); a new status
+would be redundant. Shape (1) would therefore only ever apply in the exact case
+where pausing isn't needed. Shape (2) is the only shape that addresses the real
+gap without inverting rule #8, because the aggregate change is **acknowledged,
+not silent** — the member always retains visibility and the final say.
+
+**Binding guardrails (carry into the build):**
+- **Removal blockers stay fully intact.** Pause is NOT a backdoor around the
+  celebrant/founder/expense-tied guards in `removeMemberAction` /
+  `lib/actions/members.ts`. Pause ≠ delete; a paused celebrant is still the
+  celebrant, still undeletable, data untouched.
+- **Member data untouched.** RSVP, flags, expenses are unchanged by pausing.
+- **Aggregate treatment.** Paused members leave the organizer's "still waiting
+  on / outstanding" view for a distinct **organizer-only** "paused / set aside"
+  sub-list. Never group-visible as "paused" (anti-shame; mirrors the #169
+  outstanding-list organizer-private convention). No count/badge/ranking.
+- **In-app only.** The member-reversal affordance is a read-time surface on
+  their own dashboard, never a push (killed-and-deferred push ban).
+- **Attribution is forgery-proof** (reuse the #171 additive-RLS + anti-forgery
+  pattern verified in PR #566) and the write pairs `security-reviewer` +
+  `code-reviewer` (new role-adjacent status on the most sensitive table).
+
+**Open question for the operator:** does a first-class `paused` enum/column on
+`trip_members` earn its schema + RLS surface, versus a lighter organizer-private
+"set aside" marker table? Recommend building only if the real-trip retro shows
+the outstanding-list "ghost member" problem is a genuine planning pain — same
+evidence bar the milestone gate applies to every M5+ feature. **Do not build on
+spec alone.**
+
+---
+
+## 2026-08-09 — #562 (availability nudge): reconciliation with the no-nudge boundary
+
+**Status:** PROPOSAL, pending operator ratification. **Blocking gate** for #562
+per its "ADR addendum first" fix-plan.
+
+**Context.** #562 wants an organizer to send a private prompt to a member with
+zero/partial day-chips, deep-linking to that member's own `/me` editor — never
+writing `trip_member_days` on their behalf. It must be reconciled with the
+standing anti-nudge / anti-shame boundary before proceeding.
+
+**The boundary it must clear** (`notes/killed-and-deferred.md`):
+- "Push notifications for non-logistics events" + "Mid-trip push for anything
+  that isn't a cliff date / day-of logistics"
+- "Naming the last-to-RSVP person anywhere" (no ranking by outstanding)
+- "Progress bars / completion scores" (no count/badge)
+- "Group-visible 'outstanding' lists" (organizer-private only)
+- CLAUDE.md hard-ban: "passive-aggressive nudge ('Carl still hasn't
+  responded…')"
+
+**Precedents it leans on:**
+- **#480** (decisions.md 2026-07-21): the app *does* permit an organizer-facing
+  advisory signal about an incomplete/edge state when it is **read-time,
+  organizer-scoped, non-group-visible, and never a gate**. #562 inherits that
+  advisory framing.
+- **#549** (RSVP confirm-prompt): the accepted "organizer relays, member acts,
+  system never writes on the member's behalf" shape. #562 is structurally the
+  same pattern applied to day-chips instead of `rsvp_status`.
+
+**Decision: PERMIT #562 under strict guardrails** — it is NOT the banned nudge,
+*provided* every one of these holds (all binding):
+1. **In-app only. No push.** The prompt appears when the member next opens the
+   app. This is the load-bearing line that keeps it off the banned push surface.
+2. **Private** — organizer + target member only, never group-visible.
+3. **No ranking / count / badge** — one member at a time, organizer-initiated;
+   never a list ordered by "most incomplete," never "you've filled 2/5 days."
+4. **One active prompt per member, replace-not-stack** (mirrors #549 — no spam).
+5. **Warm, dismissible copy that offers help, not a nag** — deep-links to the
+   member's OWN picker ("still sorting your days? here's your picker"), member
+   can dismiss. Microcopy voice pass required (would you say it at a pre-trip
+   dinner?). The ban targets *public naming + passive-aggression + push spam*;
+   #562 avoids all three by construction (private, warm, in-app, one-shot).
+6. **Never writes `trip_member_days`** — the dormant "organizer writes any days"
+   RLS grant stays unused; the member opts in by filling their own chips.
+
+**Redundancy finding (flag for the operator).** #562 and **#550**
+(organizer-write-on-behalf for day-chips) are two answers to the *same* gap — "a
+member hasn't set their days." #550 = do it for them (with member confirm);
+#562 = poke them to do it themselves. Shipping **both** is redundant organizer
+surface for one problem. **Recommend picking one primary.** #550 already mirrors
+the #171 template exactly and is sequenced in Wave 1; #562 is the lighter-touch
+"nudge, don't do-it-for-them" alternative for members who'd prefer autonomy.
+Decision on whether #562 is worth building alongside #550 is the operator's —
+this ADR clears the *principle* question (it CAN exist without violating the
+boundary), not the *should-we* question.
+
+**If built:** reuse #549's prompt-table shape (or add a `kind`), client
+idempotency key (rule #9), `security-reviewer` + `code-reviewer` pairing.
+
+---
+
 ## 2026-08-08 — #531: unmarked day chips are not a leg-conflict — Resolved
 
 **Decision:** `deriveLegDayConflicts` (#526) treated an unmarked day (no
