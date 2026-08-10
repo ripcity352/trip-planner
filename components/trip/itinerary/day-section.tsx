@@ -28,6 +28,9 @@ export interface DaySectionProps {
   lodgingAssignmentsMap: Map<string, LodgingAssignment[]>;
   /** All trip members — used by LodgingRoster to display names. */
   tripMembers: TripMember[];
+  /** #171: the viewer's own trip_member_id — forwarded to ItemCard for the
+   * organizer on-behalf target picker (excludes self). */
+  viewerMemberId: string;
   /** IANA timezone from `trips.timezone` — forwarded to ItemCard → EditItemFormSheet. */
   tripTimezone: string;
   /** #365: itemId → member flags (organizer: all members; member: own). */
@@ -55,6 +58,7 @@ export function DaySection({
   celebrantName,
   lodgingAssignmentsMap,
   tripMembers,
+  viewerMemberId,
   tripTimezone,
   itemFlagsMap,
   inCount,
@@ -134,6 +138,7 @@ export function DaySection({
               celebrantName={celebrantName}
               lodgingAssignments={lodgingAssignmentsMap.get(item.id) ?? []}
               tripMembers={tripMembers}
+              viewerMemberId={viewerMemberId}
               tripTimezone={tripTimezone}
               itemFlags={itemFlagsMap.get(item.id) ?? []}
               inCount={inCount}

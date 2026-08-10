@@ -34,12 +34,18 @@ import { clickAndSettle } from "@/tests/fixtures/dom";
 vi.mock("@/lib/actions/item-flags", () => ({
   addItemFlag: vi.fn(),
   removeItemFlag: vi.fn(),
+  confirmItemFlag: vi.fn(),
 }));
 
-import { addItemFlag, removeItemFlag } from "@/lib/actions/item-flags";
+import {
+  addItemFlag,
+  removeItemFlag,
+  confirmItemFlag,
+} from "@/lib/actions/item-flags";
 
 const mockAdd = vi.mocked(addItemFlag);
 const mockRemove = vi.mocked(removeItemFlag);
+const mockConfirm = vi.mocked(confirmItemFlag);
 
 const ITEM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -75,6 +81,56 @@ describe("MemberFlagPicker", () => {
     // inject MOCK_DELAY_MS individually (see toggles + multi-chip tests).
     mockAdd.mockResolvedValue({ ok: true });
     mockRemove.mockResolvedValue({ ok: true });
+    mockConfirm.mockResolvedValue({ ok: true });
+  });
+
+  // #171 — organizer-transcribed rows surface in a distinct confirm section.
+  describe("#171 — organizer-written confirm section", () => {
+    const onBehalf = [
+      { flag: "Shellfish", note: "told Dave in March", savedByName: "Dave" },
+    ];
+
+    it("shows the 'saved this for you — keep it?' prompt with the organizer's name", () => {
+      renderPicker({ initialFlags: onBehalf });
+      expect(screen.getByText("Shellfish")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Dave saved this for you — keep it\?/i)
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Keep" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    });
+
+    it("does NOT render an organizer-written fixed-chip flag as a pressed chip", () => {
+      renderPicker({
+        initialFlags: [{ flag: "Vegan", note: null, savedByName: "Dave" }],
+      });
+      const veganChip = screen.getByRole("button", { name: "Vegan" });
+      expect(veganChip).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByText(/Dave saved this for you/i)).toBeInTheDocument();
+    });
+
+    it("Keep calls confirmItemFlag and clears the prompt", async () => {
+      renderPicker({ initialFlags: onBehalf });
+      fireEvent.click(screen.getByRole("button", { name: "Keep" }));
+      await waitFor(() =>
+        expect(mockConfirm).toHaveBeenCalledWith(ITEM_ID, "Shellfish")
+      );
+      expect(screen.queryByText(/saved this for you/i)).not.toBeInTheDocument();
+    });
+
+    it("Remove calls removeItemFlag and clears the prompt", async () => {
+      renderPicker({ initialFlags: onBehalf });
+      fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+      await waitFor(() =>
+        expect(mockRemove).toHaveBeenCalledWith(ITEM_ID, "Shellfish")
+      );
+      expect(screen.queryByText(/saved this for you/i)).not.toBeInTheDocument();
+    });
+
+    it("normal self-written rows (no savedByName) show no confirm prompt", () => {
+      renderPicker({ initialFlags: [{ flag: "Sober", note: null }] });
+      expect(screen.queryByText(/saved this for you/i)).not.toBeInTheDocument();
+    });
   });
 
   // 1. Heading — exact voice-locked string

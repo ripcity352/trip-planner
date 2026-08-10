@@ -283,6 +283,19 @@ export const M3_UI_STRINGS = {
   itinerary_item_flag_note_label: "Extra detail (optional)",
   itinerary_item_flag_note_placeholder: "More context for the organizers…",
   itinerary_item_flag_empty_organizer: "No heads-ups from anyone yet.",
+  // #171 — organizer write-on-behalf + member confirm. The organizer
+  // transcribes a heads-up a member volunteered out-of-band; the member
+  // gets the final say. Voice test: what Dave would actually text.
+  //   {name} = the organizer who saved it.
+  itinerary_item_flag_onbehalf_confirm_template: "{name} saved this for you — keep it?",
+  itinerary_item_flag_onbehalf_keep: "Keep",
+  itinerary_item_flag_onbehalf_remove: "Remove",
+  // Organizer-side entry (renders on the organizer's item view only).
+  itinerary_item_flag_onbehalf_add_trigger: "Save a heads-up for someone",
+  itinerary_item_flag_onbehalf_pick_person: "— Who's this for? —",
+  itinerary_item_flag_onbehalf_save: "Save for them",
+  //   {name} = the member it was saved for.
+  itinerary_item_flag_onbehalf_saved_template: "Saved for {name}. They'll get the final say.",
   // Maps links
   itinerary_maps_apple: "Apple Maps",
   itinerary_maps_google: "Google Maps",

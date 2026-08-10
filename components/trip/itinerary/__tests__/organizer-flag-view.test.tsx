@@ -26,6 +26,7 @@ const flagAlice: ItineraryItemMemberFlag = {
   flag: "Vegan",
   note: "strict, no honey either",
   created_at: "2026-05-21T00:00:00.000Z",
+  written_by_trip_member_id: null,
 };
 
 const flagAlice2: ItineraryItemMemberFlag = {
@@ -35,6 +36,7 @@ const flagAlice2: ItineraryItemMemberFlag = {
   flag: "Nut allergy",
   note: null,
   created_at: "2026-05-21T00:01:00.000Z",
+  written_by_trip_member_id: null,
 };
 
 const flagBob: ItineraryItemMemberFlag = {
@@ -44,6 +46,7 @@ const flagBob: ItineraryItemMemberFlag = {
   flag: "Sober",
   note: null,
   created_at: "2026-05-21T00:02:00.000Z",
+  written_by_trip_member_id: null,
 };
 
 /** Name map: trip_member_id → display name */

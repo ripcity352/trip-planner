@@ -65,6 +65,8 @@ const sharedProps = {
   lodgingAssignmentsMap: new Map(),
   itemFlagsMap: new Map(),
   tripMembers: [],
+  // #171: viewer's own trip_member_id, forwarded to ItemCard
+  viewerMemberId: "viewer-1",
   // W2b: tripTimezone required by DaySection → ItemCard → EditItemFormSheet
   tripTimezone: "America/New_York",
   // #394: trip-level "going" RSVP count, forwarded to every ItemCard

@@ -33,6 +33,7 @@ function makeFlag(tripMemberId: string): ItineraryItemMemberFlag {
     flag: "dietary",
     note: null,
     created_at: "2026-01-01T00:00:00Z",
+    written_by_trip_member_id: null,
   };
 }
 

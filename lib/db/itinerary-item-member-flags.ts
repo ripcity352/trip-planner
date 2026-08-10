@@ -1,21 +1,27 @@
 /**
  * Data layer for `itinerary_item_member_flags`.
  *
- * RLS summary (as of M4 Delta 1):
+ * RLS summary (as of #171):
  *   SELECT:
  *     - "item flags: organizers read" (M3)  — organizer of the trip sees ALL flags
  *     - "item flags: owner reads own"  (M4) — member sees only their OWN flags
  *     Both policies stack via OR (additive). Coverage C4 validates this triad.
- *   INSERT:  owner-only (trip_member_id maps to caller's membership)
- *   DELETE:  owner-only (trip_member_id maps to caller's membership)
- *   UPDATE:  none — flag mutation is delete + re-insert
+ *   INSERT:
+ *     - "item flags: owner insert" (M3)            — self-write (written_by NULL)
+ *     - "item flags: organizer insert on behalf" (#171) — organizer transcribes
+ *       for a member, written_by = organizer's own membership (forgery-proof)
+ *   UPDATE:
+ *     - "item flags: owner confirms on-behalf row" (#171) — owner clears
+ *       written_by to NULL ([Keep]); the ONLY permitted update
+ *   DELETE:  owner-only (trip_member_id maps to caller's membership) — [Remove]
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ItineraryItemMemberFlag } from "./types";
 
-const FLAG_COLUMNS = "id, item_id, trip_member_id, flag, note, created_at";
+const FLAG_COLUMNS =
+  "id, item_id, trip_member_id, flag, note, created_at, written_by_trip_member_id";
 
 /**
  * Returns all flags for a given item. Under organizer RLS this returns

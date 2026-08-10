@@ -235,3 +235,205 @@ describe("removeItemFlag", () => {
     expect(result).toEqual({ ok: true });
   });
 });
+
+// #171 — organizer write-on-behalf + member confirm.
+const VALID_TARGET_ID = "66666666-6666-4666-8666-666666666666";
+
+/** Prime item + caller membership WITH a role (on-behalf organizer check). */
+function primeItemAndRole(tripId: string, memberId: string, role: string) {
+  tableResolvers.set("itinerary_items", () => ({
+    data: { trip_id: tripId },
+    error: null,
+  }));
+  tableResolvers.set("trip_members", () => ({
+    data: { id: memberId, role },
+    error: null,
+  }));
+}
+
+describe("addItemFlagOnBehalf", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on non-uuid targetTripMemberId", async () => {
+    primeAuth(VALID_USER_ID);
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: "not-a-uuid",
+      flag: "shellfish",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns rls_denied when not authenticated", async () => {
+    primeAuth(null);
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: VALID_TARGET_ID,
+      flag: "shellfish",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns rls_denied when caller is a member but NOT an organizer", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndRole(VALID_TRIP_ID, VALID_MEMBER_ID, "attendee");
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: VALID_TARGET_ID,
+      flag: "shellfish",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns validation_failed when the organizer targets themselves", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndRole(VALID_TRIP_ID, VALID_MEMBER_ID, "organizer");
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    // target == caller's own membership → self path, rejected
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: VALID_MEMBER_ID,
+      flag: "shellfish",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns ok:true when an organizer transcribes for another member", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndRole(VALID_TRIP_ID, VALID_MEMBER_ID, "organizer");
+    tableResolvers.set("itinerary_item_member_flags", () => ({
+      data: null,
+      error: null,
+    }));
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: VALID_TARGET_ID,
+      flag: "shellfish",
+      note: "told me in March",
+    });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("co-organizers may also write on behalf", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndRole(VALID_TRIP_ID, VALID_MEMBER_ID, "co_organizer");
+    tableResolvers.set("itinerary_item_member_flags", () => ({
+      data: null,
+      error: null,
+    }));
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: VALID_TARGET_ID,
+      flag: "shellfish",
+    });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("returns ok:true on 23505 (already transcribed — idempotent)", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndRole(VALID_TRIP_ID, VALID_MEMBER_ID, "organizer");
+    tableResolvers.set("itinerary_item_member_flags", () => ({
+      data: null,
+      error: { code: "23505", message: "duplicate" },
+    }));
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: VALID_TARGET_ID,
+      flag: "shellfish",
+    });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("maps a 42501 RLS denial to rls_denied", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndRole(VALID_TRIP_ID, VALID_MEMBER_ID, "organizer");
+    tableResolvers.set("itinerary_item_member_flags", () => ({
+      data: null,
+      error: { code: "42501", message: "rls" },
+    }));
+    const { addItemFlagOnBehalf } = await import("@/lib/actions/item-flags");
+    const result = await addItemFlagOnBehalf({
+      itemId: VALID_ITEM_ID,
+      targetTripMemberId: VALID_TARGET_ID,
+      flag: "shellfish",
+    });
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+});
+
+describe("confirmItemFlag", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on non-uuid itemId", async () => {
+    primeAuth(VALID_USER_ID);
+    const { confirmItemFlag } = await import("@/lib/actions/item-flags");
+    expect(await confirmItemFlag("not-a-uuid", "shellfish")).toEqual({
+      ok: false,
+      errorKey: "validation_failed",
+    });
+  });
+
+  it("returns rls_denied when not authenticated", async () => {
+    primeAuth(null);
+    const { confirmItemFlag } = await import("@/lib/actions/item-flags");
+    expect(await confirmItemFlag(VALID_ITEM_ID, "shellfish")).toEqual({
+      ok: false,
+      errorKey: "rls_denied",
+    });
+  });
+
+  it("returns rls_denied when caller is not a member", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({ data: null, error: null }));
+    const { confirmItemFlag } = await import("@/lib/actions/item-flags");
+    expect(await confirmItemFlag(VALID_ITEM_ID, "shellfish")).toEqual({
+      ok: false,
+      errorKey: "rls_denied",
+    });
+  });
+
+  it("returns ok:true after clearing attribution (Keep)", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndMember(VALID_TRIP_ID, VALID_MEMBER_ID);
+    tableResolvers.set("itinerary_item_member_flags", () => ({
+      data: null,
+      error: null,
+    }));
+    const { confirmItemFlag } = await import("@/lib/actions/item-flags");
+    expect(await confirmItemFlag(VALID_ITEM_ID, "shellfish")).toEqual({
+      ok: true,
+    });
+  });
+
+  it("maps a 42501 RLS denial to rls_denied", async () => {
+    primeAuth(VALID_USER_ID);
+    primeItemAndMember(VALID_TRIP_ID, VALID_MEMBER_ID);
+    tableResolvers.set("itinerary_item_member_flags", () => ({
+      data: null,
+      error: { code: "42501", message: "rls" },
+    }));
+    const { confirmItemFlag } = await import("@/lib/actions/item-flags");
+    expect(await confirmItemFlag(VALID_ITEM_ID, "shellfish")).toEqual({
+      ok: false,
+      errorKey: "rls_denied",
+    });
+  });
+});
