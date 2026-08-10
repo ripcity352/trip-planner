@@ -120,6 +120,41 @@ export function formatTripTime(iso: string, tripTimezone: string): string {
 }
 
 /**
+ * Day-header sibling of `formatTripDateTime` — the timeline day-header tier
+ * of the date/time register (#211, #579): lowercase `"fri 14"`
+ * (`EEE d`, lowercased). Rendered in JetBrains Mono by the consumer.
+ *
+ * This is the register the arrivals + itinerary timelines share; it exists
+ * as a helper so components never call `format()` directly and never
+ * reintroduce the uppercase tracked-eyebrow anti-tell (`FRI, AUG 14`).
+ *
+ * Same error posture as `formatTripDateTime`: log + return the raw iso so
+ * one malformed timestamp never blows up the timeline render.
+ */
+export function formatTripDayHeader(iso: string, tripTimezone: string): string {
+  const date = parseISO(iso);
+  if (!isValid(date)) {
+    console.error("[format-trip-tz] formatTripDayHeader failed:", {
+      iso,
+      tripTimezone,
+      err: new Error("invalid ISO string"),
+    });
+    return iso;
+  }
+
+  try {
+    return formatInTimeZone(date, tripTimezone, "EEE d").toLowerCase();
+  } catch (err) {
+    console.error("[format-trip-tz] formatTripDayHeader failed:", {
+      iso,
+      tripTimezone,
+      err,
+    });
+    return iso;
+  }
+}
+
+/**
  * Parse the YYYY-MM-DDTHH:mm value from `<input type="datetime-local">` —
  * which is a wall-clock time in the trip's timezone — and return an
  * ISO-8601 UTC string.

@@ -23,16 +23,25 @@
  *     time (#382)
  */
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { parseISO } from "date-fns";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { resolveMemberName } from "@/lib/utils/member-display";
 import { computeRideShareClusters } from "@/lib/utils/ride-share";
+import { formatTripDayHeader } from "@/lib/utils/format-trip-tz";
 import { TravelLegCard } from "./travel-leg-card";
+import { TravelLegRow } from "./travel-leg-row";
+import { ViewToggle, type ArrivalsView } from "./view-toggle";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TripMember } from "@/lib/db/types";
+
+// #579 — the Compact|Full choice persists across visits. Device/user-local
+// (localStorage), read in useEffect so first paint is always the deterministic
+// default (Compact) and never mismatches SSR (the #254 hydration lesson).
+const ARRIVALS_VIEW_STORAGE_KEY = "pt:arrivalsView";
 
 export interface ArrivalsManifestProps {
   tripId: string;
@@ -71,8 +80,10 @@ function groupInboundByDay(
       const date = parseISO(leg.arrive_at);
       try {
         key = formatInTimeZone(date, tripTimezone, "yyyy-MM-dd");
-        // Design-system date register: weekday + month + day, no year.
-        label = formatInTimeZone(date, tripTimezone, "EEE, MMM d");
+        // Design-system day-header tier (#211, #579): lowercase mono `fri 14`.
+        // Replaces the pre-#579 uppercase `Fri, Aug 14` eyebrow (an anti-tell)
+        // — both views now share this register.
+        label = formatTripDayHeader(leg.arrive_at, tripTimezone);
       } catch {
         // Unparseable stored timestamp — fall through to the TBD bucket.
       }
@@ -98,6 +109,33 @@ export function ArrivalsManifest({
   tripEndsAt,
 }: ArrivalsManifestProps) {
   const router = useRouter();
+
+  // #579 — Compact (default) vs Full density. Default Compact on first paint;
+  // hydrate the persisted preference after mount so SSR and CSR agree.
+  const [view, setView] = useState<ArrivalsView>("compact");
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(ARRIVALS_VIEW_STORAGE_KEY);
+      if (stored === "full" || stored === "compact") {
+        // Intentional post-hydration setState: the preference is client-only
+        // (localStorage), so it MUST be applied after mount. A render-time
+        // initializer would render "full" on the client while SSR rendered
+        // the default "compact" → the #254 hydration-mismatch class.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setView(stored);
+      }
+    } catch {
+      // Private-mode / disabled storage — just keep the default.
+    }
+  }, []);
+  const handleViewChange = (next: ArrivalsView) => {
+    setView(next);
+    try {
+      window.localStorage.setItem(ARRIVALS_VIEW_STORAGE_KEY, next);
+    } catch {
+      // Non-fatal — the choice just won't persist to the next visit.
+    }
+  };
 
   const handleMutated = () => {
     router.refresh();
@@ -151,9 +189,16 @@ export function ArrivalsManifest({
   // arrive_at ASC (nulls last), which is the right order for inbound;
   // outbound is re-sorted by depart_at.
   const inboundLegs = legs.filter((leg) => leg.direction === "inbound");
+  // Sort outbound by depart_at ASC; legs with no depart_at sort LAST (a bare
+  // "" sorts before any real time, which would float unknown-time departures
+  // to the top). #579.
   const outboundLegs = [
     ...legs.filter((leg) => leg.direction === "outbound"),
-  ].sort((a, b) => (a.depart_at ?? "").localeCompare(b.depart_at ?? ""));
+  ].sort((a, b) => {
+    if (!a.depart_at) return b.depart_at ? 1 : 0;
+    if (!b.depart_at) return -1;
+    return a.depart_at.localeCompare(b.depart_at);
+  });
 
   const dayGroups = groupInboundByDay(inboundLegs, tripTimezone);
   const rideShareClusters = computeRideShareClusters(inboundLegs);
@@ -186,8 +231,33 @@ export function ArrivalsManifest({
     />
   );
 
+  // #579 — compact read-only glance row. Pending co-traveler tags render as
+  // normal rows here (no "unconfirmed" marker in the glance); confirm/dismiss
+  // still lives on the Full card.
+  const renderRow = (leg: TravelLeg) => (
+    <TravelLegRow
+      key={leg.id}
+      leg={leg}
+      ownerName={resolveMemberName(memberNameMap, leg.trip_member_id)}
+      tripTimezone={tripTimezone}
+    />
+  );
+
+  const isCompact = view === "compact";
+  // Shared lowercase-mono day-header register (#211, #579) for both views.
+  const dayHeaderClass = "text-muted-foreground font-mono text-xs lowercase";
+  // The toggle only earns its place once there's something to reshape.
+  const hasAnyLeg = inboundLegs.length > 0 || outboundLegs.length > 0;
+
   return (
     <div className="flex flex-col gap-6">
+      {/* #579 — density switch; the single control (no per-row expand). */}
+      {hasAnyLeg ? (
+        <div className="flex justify-end">
+          <ViewToggle value={view} onChange={handleViewChange} />
+        </div>
+      ) : null}
+
       {/* Inbound — "Who's landing when" is the page <h1> */}
       <div className="flex flex-col gap-4">
         {/* Ride-share nudge: one quiet static line per cluster (#477) */}
@@ -210,10 +280,12 @@ export function ArrivalsManifest({
         ) : (
           dayGroups.map((group) => (
             <section key={group.key} className="flex flex-col gap-3">
-              <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                {group.label}
-              </h2>
-              {group.legs.map(renderCard)}
+              <h2 className={dayHeaderClass}>{group.label}</h2>
+              {isCompact ? (
+                <ul className="flex flex-col">{group.legs.map(renderRow)}</ul>
+              ) : (
+                group.legs.map(renderCard)
+              )}
             </section>
           ))
         )}
@@ -225,7 +297,11 @@ export function ArrivalsManifest({
           <h2 className="text-muted-foreground text-sm font-medium">
             {M3_UI_STRINGS.arrivals_section_outbound_heading}
           </h2>
-          {outboundLegs.map(renderCard)}
+          {isCompact ? (
+            <ul className="flex flex-col">{outboundLegs.map(renderRow)}</ul>
+          ) : (
+            outboundLegs.map(renderCard)
+          )}
         </section>
       ) : null}
 

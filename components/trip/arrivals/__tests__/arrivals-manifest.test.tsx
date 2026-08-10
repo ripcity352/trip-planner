@@ -105,6 +105,12 @@ const makeMember = (overrides: Partial<TripMember> = {}): TripMember => ({
   ...overrides,
 });
 
+// #579 — the view toggle persists to localStorage; clear it between tests so
+// a test that flips to Full doesn't leak the preference into the next.
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 describe("ArrivalsManifest", () => {
   beforeEach(() => {
     mockRefresh.mockReset();
@@ -144,6 +150,12 @@ describe("ArrivalsManifest", () => {
         tripEndsAt={null}
       />
     );
+    // Cards only render in Full view (#579 — Compact is the default glance).
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_full,
+      })
+    );
     fireEvent.click(screen.getByTestId("card-mutated-leg-1"));
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
@@ -168,7 +180,7 @@ describe("ArrivalsManifest", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders a TravelLegCard for each leg", () => {
+  it("renders a TravelLegCard for each leg in Full view", () => {
     const legs = [
       makeLeg({ id: "leg-1", trip_member_id: "member-1" }),
       makeLeg({ id: "leg-2", trip_member_id: "member-2" }),
@@ -191,8 +203,149 @@ describe("ArrivalsManifest", () => {
       />
     );
 
+    // #579 — Compact is the default: no cards until Full is selected.
+    expect(screen.queryAllByTestId("travel-leg-card")).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_full,
+      })
+    );
     const cards = screen.getAllByTestId("travel-leg-card");
     expect(cards).toHaveLength(2);
+  });
+
+  // #579 — Compact is the default density: read-only rows, no detail cards.
+  it("defaults to Compact — renders rows with time · name (airport), not cards", () => {
+    const legs = [
+      makeLeg({
+        id: "leg-1",
+        trip_member_id: "member-1",
+        arrive_at: "2026-08-14T17:30:00Z",
+        airport: "LAX",
+      }),
+    ];
+    const members = [makeMember({ id: "member-1", display_name: "Dave" })];
+
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={legs}
+        myTripMemberId="member-1"
+        tripMembers={members}
+        tripTimezone="America/Los_Angeles"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+
+    expect(screen.queryAllByTestId("travel-leg-card")).toHaveLength(0);
+    expect(screen.getByText("Dave")).toBeInTheDocument();
+    expect(screen.getByText("(LAX)")).toBeInTheDocument();
+    expect(screen.getByText("10:30 am")).toBeInTheDocument();
+  });
+
+  // #579 — a persisted "full" preference is applied AFTER mount (SSR-safe:
+  // first paint is the default Compact, the effect then hydrates from
+  // localStorage). Guards against a regression to a render-time initializer.
+  it("hydrates the persisted Full preference from localStorage on mount", () => {
+    window.localStorage.setItem("pt:arrivalsView", "full");
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[makeLeg({ id: "leg-1" })]}
+        myTripMemberId="member-1"
+        tripMembers={[makeMember()]}
+        tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+    // No toggle click — the stored preference alone must yield Full (cards).
+    expect(screen.getAllByTestId("travel-leg-card")).toHaveLength(1);
+  });
+
+  // #579 — flipping the toggle persists the choice for the next visit.
+  it("persists the chosen view to localStorage on toggle", () => {
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[makeLeg({ id: "leg-1" })]}
+        myTripMemberId="member-1"
+        tripMembers={[makeMember()]}
+        tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_full,
+      })
+    );
+    expect(window.localStorage.getItem("pt:arrivalsView")).toBe("full");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_compact,
+      })
+    );
+    expect(window.localStorage.getItem("pt:arrivalsView")).toBe("compact");
+  });
+
+  // #579 — the day header adopts the lowercase-mono register (`fri 14`),
+  // replacing the pre-#579 uppercase `Fri, Aug 14` eyebrow (an anti-tell).
+  it("renders day headers in the lowercase-mono register, not the uppercase eyebrow", () => {
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[makeLeg({ arrive_at: "2026-08-14T17:30:00Z" })]}
+        myTripMemberId="member-1"
+        tripMembers={[makeMember()]}
+        tripTimezone="America/Los_Angeles"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+    expect(screen.getByText("fri 14")).toBeInTheDocument();
+    expect(screen.queryByText("Fri, Aug 14")).not.toBeInTheDocument();
+  });
+
+  // #579 (operator call) — unconfirmed co-traveler tags render as normal
+  // compact rows: no "unconfirmed" marker in the glance.
+  it("renders a pending co-traveler tag as a normal compact row (no 'unconfirmed' marker)", () => {
+    const legs = [
+      makeLeg({
+        id: "leg-1",
+        trip_member_id: "member-2",
+        written_by_trip_member_id: "member-1",
+        arrive_at: "2026-08-14T17:30:00Z",
+        airport: "LAX",
+      }),
+    ];
+    const members = [
+      makeMember({ id: "member-1", display_name: "Dave" }),
+      makeMember({ id: "member-2", display_name: "Pete" }),
+    ];
+
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={legs}
+        myTripMemberId="member-9"
+        tripMembers={members}
+        tripTimezone="America/Los_Angeles"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+      />
+    );
+
+    expect(screen.getByText("Pete")).toBeInTheDocument();
+    expect(screen.queryByText(/unconfirmed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/added by/i)).not.toBeInTheDocument();
   });
 
   it("renders the 'Add a leg' CTA", () => {
@@ -364,15 +517,15 @@ describe("ArrivalsManifest — two sections (#477)", () => {
       />
     );
 
-  it("renders inbound legs under trip-local day headings", () => {
+  it("renders inbound legs under trip-local day headings (lowercase-mono register)", () => {
     renderManifest([
       legFor(1, { arrive_at: "2026-08-14T10:00:00Z" }),
       legFor(2, { arrive_at: "2026-08-14T18:00:00Z" }),
       legFor(3, { arrive_at: "2026-08-15T09:00:00Z" }),
     ]);
 
-    expect(screen.getByText("Fri, Aug 14")).toBeInTheDocument();
-    expect(screen.getByText("Sat, Aug 15")).toBeInTheDocument();
+    expect(screen.getByText("fri 14")).toBeInTheDocument();
+    expect(screen.getByText("sat 15")).toBeInTheDocument();
   });
 
   it('renders the "Heading home" section only when outbound legs exist', () => {
@@ -395,6 +548,12 @@ describe("ArrivalsManifest — two sections (#477)", () => {
     expect(
       screen.getByText(M3_UI_STRINGS.arrivals_section_outbound_heading)
     ).toBeInTheDocument();
+    // Card assertions need Full view (#579 — Compact renders rows).
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_full,
+      })
+    );
     const cards = screen.getAllByTestId("travel-leg-card");
     expect(cards.map((c) => c.getAttribute("data-leg-id"))).toEqual(
       expect.arrayContaining(["leg-1", "leg-2"])
@@ -482,6 +641,12 @@ describe("ArrivalsManifest — two sections (#477)", () => {
       />
     );
 
+    // add-candidates live on the Full card (#579 — Compact rows are read-only).
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_full,
+      })
+    );
     const jusCard = screen
       .getAllByTestId("travel-leg-card")
       .find((el) => el.getAttribute("data-leg-id") === "leg-jus")!;

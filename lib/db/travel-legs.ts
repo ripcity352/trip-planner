@@ -38,7 +38,10 @@ export async function getTravelLegsByTrip(
     .from("travel_legs_manifest")
     .select(TRAVEL_LEG_COLUMNS)
     .eq("trip_id", tripId)
-    .order("arrive_at", { ascending: true, nullsFirst: false });
+    .order("arrive_at", { ascending: true, nullsFirst: false })
+    // #579: stable secondary sort so same-instant legs and the null-arrive
+    // ("Landing time TBD") bucket keep a deterministic order across loads.
+    .order("created_at", { ascending: true });
 
   if (error) {
     throw new Error(`getTravelLegsByTrip failed: ${error.message}`);
