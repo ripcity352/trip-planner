@@ -168,6 +168,15 @@ export default async function RosterPage({ params }: PageProps) {
         viewerIsOrganizer={isOrganizerRole(viewer.role)}
       />
 
+      {/* #550 — organizer-only "set someone's days" editor. Sits directly
+          under the read-only "Who's around when" block (the data it edits)
+          so an organizer finds it where they'd look to change a member's
+          days, not buried below the whole roster. The block itself stays
+          read-only; this is the separate write surface (rule #11). */}
+      {viewerIsOrganizer ? (
+        <OrganizerMemberDaysPanel tripId={trip.id} targets={onBehalfTargets} />
+      ) : null}
+
       <RosterList
         members={members}
         tripName={trip.name}
@@ -175,12 +184,6 @@ export default async function RosterPage({ params }: PageProps) {
         tripId={trip.id}
         viewerRole={viewer.role}
       />
-
-      {/* #550 — organizer-only "set someone's days" editor. Never on the
-          read-only DayHeadcount above; a separate collapsible surface. */}
-      {viewerIsOrganizer ? (
-        <OrganizerMemberDaysPanel tripId={trip.id} targets={onBehalfTargets} />
-      ) : null}
 
       {/* #549 — organizer-only "confirm someone's RSVP" sender. The member
           confirms with their own tap on the dashboard; this only sends the
