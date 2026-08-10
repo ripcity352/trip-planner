@@ -168,6 +168,10 @@ export function TravelLegForm({
   const [selectedTagIds, setSelectedTagIds] = React.useState<
     ReadonlyArray<string>
   >([]);
+  // #574 follow-up — "whose flight is this?" ("" = yours; else a member id).
+  // Picking a member logs the whole flight on their behalf (attributed, they
+  // confirm) instead of creating your own leg. Add-mode + flight only.
+  const [forMemberId, setForMemberId] = React.useState("");
   // If the self-leg saved but the tag fan-out failed, the form stays open;
   // this records the saved leg's id so a retry UPDATES it (no duplicate own
   // leg) rather than inserting a second one.
@@ -178,6 +182,13 @@ export function TravelLegForm({
   const tagIdemKeyRef = React.useRef<string | null>(null);
   if (tagIdemKeyRef.current === null) {
     tagIdemKeyRef.current = crypto.randomUUID();
+  }
+  // #574 follow-up — the on-behalf ("whose flight") write gets its OWN stable
+  // key, independent of the co-traveler fan-out, so the two paths never share
+  // an idempotency key for the same target (which could replay-skip a write).
+  const behalfIdemKeyRef = React.useRef<string | null>(null);
+  if (behalfIdemKeyRef.current === null) {
+    behalfIdemKeyRef.current = crypto.randomUUID();
   }
 
   const {
@@ -227,6 +238,37 @@ export function TravelLegForm({
     const carrier = values.carrier || null;
     const airlineIata = isFlight ? values.airlineIata || null : null;
     const flightNumber = isFlight ? values.flightNumber || null : null;
+
+    // #574 follow-up — logging a whole flight on another member's behalf.
+    // Route the leg to them via the attributed on-behalf path (they confirm)
+    // instead of creating a self-leg. Flight-only + add-mode. No PNR/notes go
+    // on-behalf (#505). The zod resolver already enforced the required time.
+    if (!isEditMode && isFlight && forMemberId !== "") {
+      const behalfResult = await callAction(() =>
+        tagCoTravelersAction(
+          {
+            tripId,
+            targetTripMemberIds: [forMemberId],
+            kind: "flight",
+            direction,
+            departAt,
+            arriveAt,
+            airport,
+            originLabel,
+            carrier,
+            airlineIata,
+            flightNumber,
+          },
+          behalfIdemKeyRef.current as string
+        )
+      );
+      if (!behalfResult.ok) {
+        setServerErrorKey(behalfResult.errorKey);
+        return;
+      }
+      onSuccess();
+      return;
+    }
 
     // #574: on retry after a tag failure, savedLegId updates the already-
     // saved own leg rather than inserting a duplicate.
@@ -317,11 +359,31 @@ export function TravelLegForm({
 
   const kind = watch("kind");
 
-  // #574: the co-traveler picker shows only for a NEW flight with candidates
-  // (editing an existing leg re-shares nothing; non-flights are out of MVP
-  // scope). `canTag` also gates the fan-out in onSubmit.
-  const canTag =
-    !isEditMode && kind === "flight" && (tagCandidates?.length ?? 0) > 0;
+  // On-behalf is flight-only; if the kind switches off flight, drop any
+  // "whose flight" selection so a stale value can't misroute a non-flight leg.
+  React.useEffect(() => {
+    if (kind !== "flight") setForMemberId("");
+  }, [kind]);
+
+  // Drop the selection if the candidate set ever stops including it, so a
+  // stale id can never reach the action (server would reject anyway).
+  React.useEffect(() => {
+    if (forMemberId && !tagCandidates?.some((c) => c.id === forMemberId)) {
+      setForMemberId("");
+    }
+  }, [forMemberId, tagCandidates]);
+
+  const hasCandidates = (tagCandidates?.length ?? 0) > 0;
+  // #574 follow-up — the "whose flight?" selector (add-mode flight w/ members).
+  const canChooseOwner = !isEditMode && kind === "flight" && hasCandidates;
+  // Logging someone else's flight → the confirmation/notes and the "anyone
+  // else" picker don't apply (single attributed leg for that member).
+  const isForSomeoneElse = canChooseOwner && forMemberId !== "";
+
+  // #574: the co-traveler picker shows only when logging YOUR OWN new flight
+  // (editing re-shares nothing; non-flights are out of scope; when it's
+  // someone else's flight the whole leg is theirs). Also gates the fan-out.
+  const canTag = canChooseOwner && forMemberId === "";
 
   const toggleTag = (id: string) => {
     setSelectedTagIds((prev) =>
@@ -344,6 +406,30 @@ export function TravelLegForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      {/* #574 follow-up — whose flight this is. Default "Yours"; picking a
+          member logs the whole flight on their behalf (they confirm). */}
+      {canChooseOwner ? (
+        <div>
+          <label htmlFor="leg-whose" className={labelClass}>
+            {M3_UI_STRINGS.arrivals_leg_form_whose_label}
+          </label>
+          <select
+            id="leg-whose"
+            value={forMemberId}
+            onChange={(e) => setForMemberId(e.target.value)}
+            disabled={isBusy}
+            className={inputClass}
+          >
+            <option value="">{M3_UI_STRINGS.arrivals_leg_form_whose_you}</option>
+            {tagCandidates?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+
       {/* Trip-city-side time — the one required field per direction */}
       <div>
         <label htmlFor="leg-time" className={labelClass}>
@@ -509,39 +595,46 @@ export function TravelLegForm({
         </fieldset>
       ) : null}
 
-      {/* Confirmation code */}
-      <div>
-        <label htmlFor="leg-confirmation" className={labelClass}>
-          {M3_UI_STRINGS.arrivals_leg_form_confirmation_label}
-        </label>
-        <input
-          id="leg-confirmation"
-          type="text"
-          aria-describedby="leg-confirmation-hint"
-          {...register("confirmationCode")}
-          disabled={isBusy}
-          className={inputClass}
-        />
-        {/* #505: the code is owner-only (travel_legs_manifest view nulls it
-            for the rest of the trip) — tell the person typing it. */}
-        <p id="leg-confirmation-hint" className="text-muted-foreground text-xs">
-          {M3_UI_STRINGS.arrivals_leg_form_confirmation_hint}
-        </p>
-      </div>
+      {/* Confirmation code + Notes — omitted when logging on someone else's
+          behalf: the PNR is theirs to enter (#505) and notes are personal. */}
+      {!isForSomeoneElse ? (
+        <>
+          <div>
+            <label htmlFor="leg-confirmation" className={labelClass}>
+              {M3_UI_STRINGS.arrivals_leg_form_confirmation_label}
+            </label>
+            <input
+              id="leg-confirmation"
+              type="text"
+              aria-describedby="leg-confirmation-hint"
+              {...register("confirmationCode")}
+              disabled={isBusy}
+              className={inputClass}
+            />
+            {/* #505: the code is owner-only (travel_legs_manifest view nulls
+                it for the rest of the trip) — tell the person typing it. */}
+            <p
+              id="leg-confirmation-hint"
+              className="text-muted-foreground text-xs"
+            >
+              {M3_UI_STRINGS.arrivals_leg_form_confirmation_hint}
+            </p>
+          </div>
 
-      {/* Notes */}
-      <div>
-        <label htmlFor="leg-notes" className={labelClass}>
-          {M3_UI_STRINGS.arrivals_leg_form_notes_label}
-        </label>
-        <textarea
-          id="leg-notes"
-          rows={2}
-          {...register("notes")}
-          disabled={isBusy}
-          className={cn(inputClass, "resize-none")}
-        />
-      </div>
+          <div>
+            <label htmlFor="leg-notes" className={labelClass}>
+              {M3_UI_STRINGS.arrivals_leg_form_notes_label}
+            </label>
+            <textarea
+              id="leg-notes"
+              rows={2}
+              {...register("notes")}
+              disabled={isBusy}
+              className={cn(inputClass, "resize-none")}
+            />
+          </div>
+        </>
+      ) : null}
 
       {/* Server error */}
       {serverErrorKey ? (

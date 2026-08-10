@@ -115,6 +115,19 @@ and on non-flight legs. code-reviewer APPROVE after fixing 2 real bugs
 around the gap by typing co-travelers into the leg NOTES field ("Jar Jus Mend")
 — a strong signal the friction was real.
 
+**Follow-up — "Whose flight is this?" (PR #578):** completes the on-behalf
+story — logging a WHOLE new flight for another member from scratch (for a flight
+nobody's logged, so there's no card to add to). A selector in the add-flight
+form (default "Yours"); picking a member routes the leg through the attributed
+on-behalf path (`tagCoTravelersAction([member])`, they confirm) instead of a
+self-leg. confirmation_code/notes hidden + omitted (#505); the "anyone else"
+co-traveler picker is suppressed (single owner). Reuses the existing member list
+(`tagCandidates`) — ZERO new action/migration/RLS. code-review APPROVE; separate
+idempotency key per path + a candidate-validity effect added from review. Three
+surfaces now cover the space: tag-on-your-own-flight (in-form multi-select),
+add-to-an-existing-flight (card `AddToFlight`), and log-a-whole-flight-for-
+someone (this selector).
+
 **Reviews:** security-reviewer + code-reviewer both APPROVE, no CRITICAL/HIGH.
 17-assertion live psql RLS harness passes (forge both directions incl. the
 silent-assertion case, anti-forgery, writer-binding, cross-tenant both ways,
