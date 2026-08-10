@@ -97,6 +97,19 @@ duplicate-safe on a tag-failure retry: `savedLegId` routes the retry through the
 own-leg UPDATE branch (no dup) and a session-stable tag idempotency key replays
 the fan-out.
 
+**Follow-up (same day) — "log a flight the crew's on":** a standalone surface
+(`CrewFlightForm` + collapsible `CrewFlightPanel`) mounted on BOTH the arrivals
+page and the roster, letting ANY member record a shared flight they may NOT be on
+and pick the passengers. Reuses the shipped primitives with ZERO new server
+action / migration / RLS: it splits the picked passengers — the viewer, if
+picked, gets a normal self-leg (`upsertTravelLeg`), everyone else gets an
+attributed pending tag (`tagCoTravelersAction`). No confirmation_code/notes
+collected (#505). Stable idempotency keys make a partial-failure retry replay
+cleanly. Any-member (not organizer-gated) — same rationale as the tag scope. The
+panel hides when the only candidate is the viewer (use the normal add-a-flight
+flow for yourself). code-reviewer APPROVE (no CRITICAL/HIGH); no fresh security
+review needed (the RLS + action boundary is unchanged from the reviewed #574).
+
 **Reviews:** security-reviewer + code-reviewer both APPROVE, no CRITICAL/HIGH.
 17-assertion live psql RLS harness passes (forge both directions incl. the
 silent-assertion case, anti-forgery, writer-binding, cross-tenant both ways,
