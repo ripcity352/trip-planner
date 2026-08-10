@@ -44,6 +44,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { RsvpToggle } from "@/components/trip/rsvp-toggle";
+import { RsvpConfirmBanner } from "@/components/trip/rsvp/rsvp-confirm-banner";
 import { NowNextCard } from "@/components/trip/now-next-card";
 import { TripNotesEditor } from "@/components/trip/trip-notes-editor";
 import { EditTripSheet } from "@/components/trip/edit-trip-sheet";
@@ -54,6 +55,7 @@ import {
   getRsvpCountsForTrip,
 } from "@/lib/db/rsvp";
 import { getItineraryByTrip } from "@/lib/db/itinerary";
+import { getActivePromptForMember } from "@/lib/db/rsvp-confirm-prompts";
 import { getTripNotes } from "@/lib/db/trip-notes";
 import { isDatePollDecided } from "@/lib/db/date-poll";
 import { getLatestAnnouncement } from "@/lib/db/announcements";
@@ -148,16 +150,21 @@ export default async function TripDashboardPage({ params }: PageProps) {
 
   const isOrganizer = organizerCheck.data === true;
 
-  // Organizer-only reads are gated TWICE: the page won't issue them
-  // unless `isOrganizer` is true, AND RLS (trip_members / #155 invites)
-  // hides the rows from non-organizers regardless. The double-gate is
-  // intentional defense-in-depth.
-  const [declinedCount, activeInviteCount] = isOrganizer
-    ? await Promise.all([
-        getOrganizerDeclinedCount(supabase, trip.id),
-        countActiveInvites(supabase, trip.id, now),
-      ])
-    : [0, 0];
+  // Second read batch — everything that needs the resolved viewer/organizer
+  // state from the fan-out. Kept parallel so nothing serializes here:
+  //   - #549 pending RSVP confirm-prompt for the viewer (RLS returns only
+  //     the caller's own ask);
+  //   - organizer-only counts, gated TWICE (the page won't issue them unless
+  //     isOrganizer, AND RLS hides the rows regardless — defense-in-depth).
+  const [rsvpPrompt, [declinedCount, activeInviteCount]] = await Promise.all([
+    viewer ? getActivePromptForMember(supabase, viewer.id) : Promise.resolve(null),
+    isOrganizer
+      ? Promise.all([
+          getOrganizerDeclinedCount(supabase, trip.id),
+          countActiveInvites(supabase, trip.id, now),
+        ])
+      : Promise.resolve([0, 0] as [number, number]),
+  ]);
 
   const countLine = formatRsvpCountLine({
     counts,
@@ -286,6 +293,17 @@ export default async function TripDashboardPage({ params }: PageProps) {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {M2_UI_STRINGS.dashboard_rsvp_your_rsvp_label}
             </p>
+            {/* #549 — organizer-relayed RSVP confirm-prompt. Renders only
+                when a pending ask exists for the viewer; their tap here is
+                the only thing that writes the real status. */}
+            {rsvpPrompt ? (
+              <RsvpConfirmBanner
+                tripId={trip.id}
+                proposedStatus={rsvpPrompt.proposedStatus}
+                note={rsvpPrompt.note}
+                senderName={rsvpPrompt.senderName}
+              />
+            ) : null}
             <RsvpToggle
               tripId={trip.id}
               initialStatus={myRsvp?.status ?? "pending"}

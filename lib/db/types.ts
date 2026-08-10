@@ -169,6 +169,23 @@ export interface TripMemberDay {
   written_by_trip_member_id: string | null;
 }
 
+/**
+ * #549 — a pending organizer→member RSVP confirm-prompt. Never writes
+ * `trip_members.rsvp_status`; the member's own tap (setRsvpAction) does.
+ * One active per member; deleted on confirm or dismiss.
+ */
+export interface RsvpConfirmPrompt {
+  id: string;
+  trip_id: string;
+  trip_member_id: string;
+  sent_by_trip_member_id: string;
+  /** going | maybe | declined — never 'pending' (DB CHECK enforced). */
+  proposed_status: Exclude<RsvpStatus, "pending">;
+  note: string | null;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
 // =============================================================
 // Wave 3 — Date poll (celebrant-weighted, PulsePoll)
 // =============================================================

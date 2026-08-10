@@ -117,6 +117,11 @@ export type ErrorKey =
   // #388 — day-scoped attendance. Own-day chip save failure; transient,
   // retry-framed like rsvp_save_failed (same tap-toggle surface).
   | "member_day_save_failed"
+  // #549 — organizer sending / a member acting on an RSVP confirm-prompt.
+  // Retry-framed (transient/network), distinct from rsvp_save_failed so the
+  // organizer send path doesn't borrow the member-facing "tap it again" RSVP
+  // line.
+  | "rsvp_prompt_save_failed"
   | "address_lookup_failed"
   | "datetime_invalid"
   | "places_proxy_failed"
@@ -300,6 +305,7 @@ export const ERRORS: Record<ErrorKey, string> = {
   reaction_save_failed: "Didn't stick. Give it another tap.",
   // #388 — day-scoped attendance. Same voice rules; retry-framed.
   member_day_save_failed: "That day didn't stick. Tap it again — it'll catch.",
+  rsvp_prompt_save_failed: "That didn't go through. Give it another tap.",
   // M4 error strings — same voice rules. Blame-free, specific, no corporate language.
   // "Couldn't pull" / "snoozing" / "Type the address instead" — casual, actionable.
   address_lookup_failed:

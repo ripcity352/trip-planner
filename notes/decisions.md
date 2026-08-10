@@ -5,6 +5,49 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-08-10 — #549 (RSVP confirm-prompt): organizer stays OUT of the rsvp_status write path
+
+**Status:** SHIPPED (PR pending). Migration `20260810020000_rsvp_confirm_prompts.sql`.
+security-reviewer + code-reviewer both APPROVE (no CRITICAL/HIGH); 16-assertion
+live psql RLS harness passed; `db reset` clean.
+
+**The gap / principle.** An organizer often knows a member's RSVP before the
+member taps it in ("Rob told me he's in"). The tempting shortcut — let the
+organizer write `trip_members.rsvp_status` on their behalf (the #171/#550
+direct-write-with-confirm shape) — was **rejected as the primary design**:
+`trip_members` carries `role`/`is_celebrant`/membership on the same row, so
+column-scoping an organizer write to just `rsvp_status` needs a SECURITY DEFINER
+RPC or a column trigger — more attack surface for the same member-facing outcome.
+
+**Chosen shape: a pending ASK, never a write.** New `rsvp_confirm_prompts` table
+holds a pending organizer→member prompt ("Dave heard you're in — tap to
+confirm"). The member's own tap routes through the *existing* `setRsvpAction` —
+the ONLY writer of `rsvp_status`, already `auth.uid()`-bound. No path in this
+change writes another member's status. This is the strictest reading of rule #8
+("opt into participation, not out of an assumption") and the lightest member of
+the attribution+confirm family (no member-owned row is ever mutated by the
+organizer, so there's no on-behalf-attribution to forge on the real row).
+
+**Load-bearing RLS detail (found during the harness build, not the plan).** The
+organizer needs a **trip-scoped SELECT policy** on the new table — not for the
+roster cue (that was the stated reason) but because Postgres `INSERT ... ON
+CONFLICT DO UPDATE` **rejects the update as an RLS violation unless the
+conflicting row is SELECT-visible to the caller**. The upsert-replace ("one
+active ask per member, no nudge-spam") is unimplementable with INSERT+UPDATE
+policies alone. Documented in the migration. General lesson: **any upsert under
+RLS needs a SELECT policy covering the conflict row**, or the replace silently
+42501s.
+
+**Other decisions:** one-active unique on `trip_member_id` doubles as the rule-9
+idempotency guarantee (a re-send replaces in place; no separate idempotency
+partial-unique, which would fight the single upsert conflict target); no
+organizer DELETE (the ask is the member's to keep/dismiss); `proposed_status <>
+'pending'` + no-self-ask + 500-char note CHECKs at the DB (source-of-truth);
+confirm is bound to the status the member SAW (`expectedStatus` guard) so an
+organizer replacing the ask mid-session can't silently flip the member's write.
+
+---
+
 ## 2026-08-10 — #550 (availability write-on-behalf): DROP the dormant FOR ALL, don't add beside it
 
 **Status:** SHIPPED (PR pending). Migration `20260810010000_member_days_organizer_on_behalf.sql`.
