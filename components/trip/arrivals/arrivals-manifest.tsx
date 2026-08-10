@@ -31,6 +31,7 @@ import { resolveMemberName } from "@/lib/utils/member-display";
 import { computeRideShareClusters } from "@/lib/utils/ride-share";
 import { TravelLegCard } from "./travel-leg-card";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
+import { CrewFlightPanel } from "./crew-flight-panel";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TripMember } from "@/lib/db/types";
 
@@ -113,6 +114,18 @@ export function ArrivalsManifest({
   const tagCandidates = tripMembers
     .filter((m) => m.id !== myTripMemberId && m.rsvp_status !== "declined")
     .map((m) => ({ id: m.id, name: resolveMemberName(memberNameMap, m.id) }));
+
+  // #574 follow-up — "log a flight the crew's on" passengers: all non-declined
+  // members INCLUDING the viewer (isYou → a self-leg; others → attributed tags).
+  const crewCandidates = tripMembers
+    .filter((m) => m.rsvp_status !== "declined")
+    .map((m) => ({
+      id: m.id,
+      name: resolveMemberName(memberNameMap, m.id),
+      isYou: m.id === myTripMemberId,
+    }))
+    // Same ordering as the roster mount (name A→Z).
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // #477: split the manifest by direction. `legs` arrives sorted by
   // arrive_at ASC (nulls last), which is the right order for inbound;
@@ -204,6 +217,15 @@ export function ArrivalsManifest({
         tripEndsAt={tripEndsAt}
         // #574 — co-travelers taggable onto a new shared flight.
         tagCandidates={tagCandidates}
+      />
+
+      {/* #574 follow-up — log a flight the crew's on (you may not be on it).
+          Enter once, pick passengers; each confirms. Any member. */}
+      <CrewFlightPanel
+        tripId={tripId}
+        tripTimezone={tripTimezone}
+        viewerTripMemberId={myTripMemberId}
+        candidates={crewCandidates}
       />
     </div>
   );

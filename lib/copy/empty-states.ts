@@ -465,6 +465,24 @@ export const M3_UI_STRINGS = {
   arrivals_tag_confirm_heading_template: "{name} says you're on this flight.",
   arrivals_tag_confirm_cta: "Yep, that's me",
   arrivals_tag_dismiss_cta: "Not me",
+  // #574 follow-up — "log a flight the crew's on" (a flight you may not be
+  // on yourself). Standalone form mounted on arrivals + roster; fans out an
+  // attributed pending leg to each selected passenger (they confirm).
+  crewFlight_trigger: "Log a flight the crew's on",
+  crewFlight_intro:
+    "Enter it once and pick who's on it — each of them confirms it's theirs.",
+  crewFlight_direction_group_label: "Direction",
+  crewFlight_direction_inbound: "Getting there",
+  crewFlight_direction_outbound: "Heading home",
+  crewFlight_arrive_label: "Lands",
+  crewFlight_depart_label: "Takes off",
+  crewFlight_airport_label: "Airport",
+  crewFlight_passengers_label: "Who's on this flight?",
+  crewFlight_passengers_you: "You",
+  crewFlight_time_required: "Add the time so nobody plans around it.",
+  crewFlight_passengers_required: "Pick at least one person on the flight.",
+  crewFlight_submit: "Log it",
+  crewFlight_cancel: "Cancel",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   // #533 — the roster deliberately lists ALL members (including "Can't
