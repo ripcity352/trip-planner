@@ -94,13 +94,19 @@ export default async function MePage({ params }: PageProps) {
       getMemberDays(supabase, member.id),
       getMemberLegInstants(supabase, trip.id, member.id),
     ]);
-    const statusByDate = new Map(rows.map((r) => [r.date, r.status]));
+    const rowByDate = new Map(rows.map((r) => [r.date, r]));
     dayChips = eachDayOfInterval({
       start: parseDateOnly(trip.starts_at),
       end: parseDateOnly(trip.ends_at),
     }).map((d) => {
       const iso = format(d, "yyyy-MM-dd");
-      return { date: iso, status: statusByDate.get(iso) ?? null };
+      const row = rowByDate.get(iso);
+      return {
+        date: iso,
+        status: row?.status ?? null,
+        // #550 — surface organizer-set provenance to the member.
+        writtenByOther: row?.writtenByOther ?? false,
+      };
     });
     const conflicts = deriveLegDayConflicts({
       legs: ownLegs,

@@ -6,6 +6,13 @@
  * `setMemberDayAction({ tripId, date, status }, idempotencyKey)` upserts
  * the CALLER's own `trip_member_days` row for one date.
  *
+ * `setMemberDayForAction({ tripId, targetTripMemberId, date, status },
+ * idempotencyKey)` (#550) — an ORGANIZER sets a day on another member's
+ * behalf, attributed to the organizer (`written_by_trip_member_id`). The
+ * self path stays `setMemberDayAction`; on-behalf is a separate, RLS-gated
+ * surface (organizer check enforced server-side AND in RLS), upsert-only
+ * (no organizer delete).
+ *
  * Surface contract (same as setRsvpAction / setItemRsvp): discriminated
  * union, never redirects, never throws — the optimistic chip row
  * (`components/trip/day-attendance-chips.tsx`) owns rollback.
@@ -41,7 +48,8 @@ import {
   rateLimitedAction,
 } from "@/lib/rate-limit";
 import type { ErrorKey } from "@/lib/copy/errors";
-import type { TripMemberDayStatus } from "@/lib/db/types";
+import type { TripMemberDayStatus, TripRole } from "@/lib/db/types";
+import { isOrganizerRole } from "@/lib/utils/expense-visibility";
 
 export type SettableMemberDayStatus = Exclude<TripMemberDayStatus, "maybe">;
 
@@ -196,6 +204,16 @@ export async function setMemberDayAction(
             date,
             status,
             idempotency_key: idempotencyKey,
+            // #550: a member writing their OWN day always asserts
+            // self-ownership. Two reasons this must be explicit:
+            //   1. The tightened "members write own days" RLS WITH CHECK
+            //      requires written_by NULL — on the upsert UPDATE path
+            //      (an organizer had set this day), a payload that omits
+            //      the column leaves the old organizer id in place and the
+            //      write is rls_denied.
+            //   2. It doubles as the [Keep] confirm — the member's own tap
+            //      clears any prior organizer attribution (see #550 plan).
+            written_by_trip_member_id: null,
           },
           { onConflict: "trip_member_id,date" }
         );
@@ -247,5 +265,197 @@ class MemberDayError extends Error {
     super(`member_day_error:${reason}`);
     this.name = "MemberDayError";
     this.reason = reason;
+  }
+}
+
+// ─── #550 — organizer write-on-behalf ───────────────────────────────────────
+
+const setMemberDayForSchema = z.object({
+  tripId: z.string().uuid(),
+  targetTripMemberId: z.string().uuid(),
+  date: z.string().regex(DATE_ONLY_REGEX),
+  status: z.enum(SETTABLE_STATUSES),
+});
+
+export interface SetMemberDayForInput {
+  tripId: string;
+  /** The member the day is being set FOR (never the caller). */
+  targetTripMemberId: string;
+  /** ISO date — `YYYY-MM-DD`, must be inside the trip range. */
+  date: string;
+  status: SettableMemberDayStatus;
+}
+
+/**
+ * Set one trip day for ANOTHER member on their behalf (#550). An organizer
+ * records dates a member volunteered out-of-band ("Rob texted me his
+ * dates"); the row is attributed to the organizer
+ * (`written_by_trip_member_id`) and the member keeps/removes it later on
+ * `/me`. Never assumes attendance — records what the member said.
+ *
+ * Authorization is enforced at THREE layers: the RLS on-behalf policies
+ * (source of truth — the caller must be an organizer of the trip, the
+ * writer binding pins `written_by` to the caller's own membership, and
+ * anti-forgery rejects `target == writer`), this server-side organizer
+ * check (defense-in-depth, rule #11), and the Zod schema.
+ *
+ * Upsert (INSERT ... ON CONFLICT DO UPDATE) so a maybe/pending member the
+ * seed trigger never touched inserts from empty, and a re-set overwrites.
+ * Deliberately NO delete path — an organizer cannot erase a member's own
+ * prior entries (see the migration; the dropped FOR ALL had DELETE, the
+ * new on-behalf policies do not).
+ */
+export async function setMemberDayForAction(
+  input: SetMemberDayForInput,
+  idempotencyKey: string
+): Promise<SetMemberDayResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const inputParse = setMemberDayForSchema.safeParse(input);
+  if (!inputParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { tripId, targetTripMemberId, date, status } = inputParse.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "rls_denied" };
+  }
+  const userId = authData.user.id;
+
+  // Trip lookup — RLS hides trips the caller isn't a member of, so a null
+  // here is indistinguishable from "no such trip" (no enumeration oracle).
+  let tripRange: { starts_at: string | null; ends_at: string | null };
+  try {
+    const { data, error } = await supabase
+      .from("trips")
+      .select("starts_at, ends_at")
+      .eq("id", tripId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[member-days] on-behalf trip lookup failed:", error.message);
+      return { ok: false, errorKey: "member_day_save_failed" };
+    }
+    if (!data) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    tripRange = data as { starts_at: string | null; ends_at: string | null };
+  } catch (err) {
+    console.error("[member-days] on-behalf trip lookup unexpected:", err);
+    return { ok: false, errorKey: "member_day_save_failed" };
+  }
+
+  if (
+    tripRange.starts_at === null ||
+    tripRange.ends_at === null ||
+    date < tripRange.starts_at ||
+    date > tripRange.ends_at
+  ) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  // Resolve the caller's own membership (id + role) in this trip. This is
+  // the `written_by` attribution AND the defense-in-depth organizer gate —
+  // RLS also blocks a non-organizer, but failing closed here keeps a
+  // non-organizer from ever reaching the write (rule #11: the gate is
+  // server-side; the UI simply never offers the affordance).
+  let writerMemberId: string;
+  try {
+    const { data, error } = await supabase
+      .from("trip_members")
+      .select("id, role")
+      .eq("trip_id", tripId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    const caller = data as { id: string; role: TripRole };
+    if (!isOrganizerRole(caller.role)) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    // The RLS anti-forgery clause rejects self-targeting, but reject early
+    // so the self path (setMemberDayAction) is used instead of a confusing
+    // denial.
+    if (caller.id === targetTripMemberId) {
+      return { ok: false, errorKey: "validation_failed" };
+    }
+    writerMemberId = caller.id;
+  } catch (err) {
+    console.error("[member-days] on-behalf caller lookup unexpected:", err);
+    return { ok: false, errorKey: "member_day_save_failed" };
+  }
+
+  // Tenancy (rule #6): the target must belong to THIS trip. RLS enforces
+  // the same via is_trip_organizer + writer-binding, but verifying here
+  // turns a cross-tenant attempt into a clean rls_denied rather than a
+  // constraint error.
+  try {
+    const { data, error } = await supabase
+      .from("trip_members")
+      .select("id")
+      .eq("id", targetTripMemberId)
+      .eq("trip_id", tripId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+  } catch (err) {
+    console.error("[member-days] on-behalf target lookup unexpected:", err);
+    return { ok: false, errorKey: "member_day_save_failed" };
+  }
+
+  try {
+    const result = await rateLimitedAction(
+      RATE_LIMIT_SCOPES.SET_MEMBER_DAY,
+      userId,
+      async () => {
+        const { error } = await supabase.from("trip_member_days").upsert(
+          {
+            trip_member_id: targetTripMemberId,
+            date,
+            status,
+            idempotency_key: idempotencyKey,
+            written_by_trip_member_id: writerMemberId,
+          },
+          { onConflict: "trip_member_id,date" }
+        );
+
+        if (error) {
+          if (error.code === "42501") {
+            throw new MemberDayError("rls_denied");
+          }
+          console.error("[member-days] on-behalf upsert failed:", {
+            code: error.code,
+            message: error.message,
+          });
+          throw new MemberDayError("save_failed");
+        }
+        return status;
+      }
+    );
+
+    revalidatePath("/trips", "layout");
+    return { ok: true, status: result };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    if (err instanceof MemberDayError) {
+      return {
+        ok: false,
+        errorKey:
+          err.reason === "rls_denied" ? "rls_denied" : "member_day_save_failed",
+      };
+    }
+    console.error("[member-days] setMemberDayForAction unexpected:", err);
+    return { ok: false, errorKey: "member_day_save_failed" };
   }
 }

@@ -741,6 +741,20 @@ export const MEMBER_DAYS_UI_STRINGS = {
   // toggle lives on the trip dashboard.
   memberDays_declined_line:
     "You're out for this one. If plans change, flip your RSVP and the day picker comes back.",
+  // #550 — organizer sets a member's days on their behalf (the "Rob texted
+  // me his dates" case). Organizer-only surface on the roster; recording
+  // what a member said, never assuming. Voice: plain, helpful, no nag.
+  memberDays_onbehalf_trigger: "Set someone's days",
+  memberDays_onbehalf_pick_person: "Who told you their dates?",
+  memberDays_onbehalf_heading_template: "Marking days for {name}",
+  memberDays_onbehalf_hint:
+    "They'll see you set these on their page and can change them.",
+  // #550 — /me cue when an organizer set some of your days. Marks the
+  // provenance; the member's own tap on any chip re-asserts ownership.
+  memberDays_organizer_set_cue:
+    "An organizer marked the highlighted days from what you told them. Tap any to change it.",
+  // Screen-reader suffix on an organizer-set chip.
+  memberDays_organizer_set_marker_aria: "set by an organizer",
 } as const;
 
 export type MemberDaysUIStringKey = keyof typeof MEMBER_DAYS_UI_STRINGS;

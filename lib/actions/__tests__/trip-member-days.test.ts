@@ -30,6 +30,10 @@ const tableResolvers = new Map<
   string,
   () => { data: unknown; error: unknown }
 >();
+// Captures the last payload passed to `.upsert(...)` per table so tests can
+// assert on-behalf attribution (#550). Backward-compatible: existing tests
+// that never read it are unaffected.
+const lastUpsert = new Map<string, unknown>();
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => buildClient()),
@@ -66,6 +70,12 @@ function buildClient(): unknown {
     const handler: ProxyHandler<Record<string, unknown>> = {
       get(_t, prop: string) {
         if (prop === "then") return thenable.then.bind(thenable);
+        if (prop === "upsert") {
+          return (payload: unknown) => {
+            lastUpsert.set(table, payload);
+            return proxy;
+          };
+        }
         return () => proxy;
       },
     };
@@ -114,6 +124,7 @@ describe("setMemberDayAction", () => {
   beforeEach(() => {
     getUserMock.mockReset();
     tableResolvers.clear();
+    lastUpsert.clear();
     rateLimitedActionMock.mockClear();
     revalidatePathMock.mockClear();
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -322,5 +333,264 @@ describe("setMemberDayAction", () => {
     );
     expect(first).toEqual({ ok: true, status: "declined" });
     expect(last).toEqual({ ok: true, status: "going" });
+  });
+
+  it("#550: a member self-write clears attribution (written_by NULL)", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    primeMember();
+    tableResolvers.set("trip_member_days", () => ({ data: null, error: null }));
+    const { setMemberDayAction } =
+      await import("@/lib/actions/trip-member-days");
+    await setMemberDayAction(
+      { tripId: VALID_TRIP_ID, date: "2026-08-14", status: "going" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    // The upsert must set written_by NULL so a member re-tap on an
+    // organizer-written row satisfies the tightened "members write own
+    // days" WITH CHECK (and doubles as the [Keep] confirm).
+    expect(lastUpsert.get("trip_member_days")).toMatchObject({
+      trip_member_id: VALID_MEMBER_ID,
+      written_by_trip_member_id: null,
+    });
+  });
+});
+
+// ─── #550 — organizer write-on-behalf ───────────────────────────────────────
+
+const VALID_TARGET_ID = "66666666-6666-4666-8666-666666666666";
+
+/**
+ * trip_members resolver that returns a sequence of results across calls
+ * (setMemberDayForAction queries the table twice: caller, then target).
+ */
+function primeMembersSequence(
+  results: ReadonlyArray<{ data: unknown; error: unknown }>
+) {
+  let call = 0;
+  tableResolvers.set("trip_members", () => {
+    const r = results[Math.min(call, results.length - 1)];
+    call += 1;
+    return r;
+  });
+}
+
+/** Caller = organizer (id VALID_MEMBER_ID), target exists in-trip. */
+function primeOrganizerAndTarget() {
+  primeMembersSequence([
+    { data: { id: VALID_MEMBER_ID, role: "organizer" }, error: null },
+    { data: { id: VALID_TARGET_ID }, error: null },
+  ]);
+}
+
+describe("setMemberDayForAction (organizer on-behalf)", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    lastUpsert.clear();
+    rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on a non-uuid idempotency key", async () => {
+    primeAuth(VALID_USER_ID);
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      "not-a-uuid"
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns rls_denied when not authenticated", async () => {
+    primeAuth(null);
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns rls_denied when the caller is not an organizer", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    // Caller is a plain attendee — the server-side gate (defense-in-depth
+    // over RLS) must fail closed before any write.
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID, role: "attendee" },
+      error: null,
+    }));
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(rateLimitedActionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns validation_failed when the organizer targets themselves", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    tableResolvers.set("trip_members", () => ({
+      data: { id: VALID_MEMBER_ID, role: "organizer" },
+      error: null,
+    }));
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        // Self-target — the self path is setMemberDayAction; RLS anti-forgery
+        // also rejects target == writer.
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_MEMBER_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(rateLimitedActionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns rls_denied when the target is not in the trip (cross-tenant)", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    // Caller is an organizer, but the target lookup finds no row in THIS
+    // trip — an organizer of trip A cannot set days for a trip-B member.
+    primeMembersSequence([
+      { data: { id: VALID_MEMBER_ID, role: "organizer" }, error: null },
+      { data: null, error: null },
+    ]);
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(rateLimitedActionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns validation_failed when the date is outside the trip range", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    primeOrganizerAndTarget();
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-20",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(rateLimitedActionMock).not.toHaveBeenCalled();
+  });
+
+  it("writes the day attributed to the caller and returns ok", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    primeOrganizerAndTarget();
+    tableResolvers.set("trip_member_days", () => ({ data: null, error: null }));
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true, status: "going" });
+    // Attribution is the crux: the row targets the member but is written_by
+    // the caller's own membership (RLS anti-forgery enforces target<>writer).
+    expect(lastUpsert.get("trip_member_days")).toMatchObject({
+      trip_member_id: VALID_TARGET_ID,
+      status: "going",
+      written_by_trip_member_id: VALID_MEMBER_ID,
+    });
+    expect(revalidatePathMock).toHaveBeenCalled();
+  });
+
+  it("uses the dedicated setMemberDay rate-limit scope keyed by user id", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    primeOrganizerAndTarget();
+    tableResolvers.set("trip_member_days", () => ({ data: null, error: null }));
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(rateLimitedActionMock).toHaveBeenCalledWith(
+      "setMemberDay",
+      VALID_USER_ID,
+      expect.any(Function)
+    );
+  });
+
+  it("returns rate_limit when the limiter throws", async () => {
+    primeAuth(VALID_USER_ID);
+    primeTrip();
+    primeOrganizerAndTarget();
+    tableResolvers.set("trip_member_days", () => ({ data: null, error: null }));
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("setMemberDay", {
+        reset: Date.now() + 60_000,
+        remaining: 0,
+      })
+    );
+    const { setMemberDayForAction } =
+      await import("@/lib/actions/trip-member-days");
+    const result = await setMemberDayForAction(
+      {
+        tripId: VALID_TRIP_ID,
+        targetTripMemberId: VALID_TARGET_ID,
+        date: "2026-08-14",
+        status: "going",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
   });
 });

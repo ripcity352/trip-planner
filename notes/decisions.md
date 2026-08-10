@@ -5,6 +5,54 @@ the top. Format: date, decision, rationale, alternatives considered.
 
 ---
 
+## 2026-08-10 — #550 (availability write-on-behalf): DROP the dormant FOR ALL, don't add beside it
+
+**Status:** SHIPPED (PR pending). Migration `20260810010000_member_days_organizer_on_behalf.sql`.
+security-reviewer + code-reviewer both APPROVE (no CRITICAL/HIGH); 14-assertion
+live psql RLS harness passed; `db reset` clean.
+
+**The gap this named.** `trip_member_days` shipped a **dormant** M1 policy
+`"organizers write any days for their trip"` — `FOR ALL` (incl. DELETE),
+attribution-free. That is the **#171 OR-stacking class, but worse**: a permissive
+older policy that would defeat any attribution-requiring policy added beside it,
+*and* it grants DELETE. The spec gap: additive-only thinking ("add an on-behalf
+policy") is unsafe whenever a pre-existing permissive policy offers an
+unconstrained alternate path to the same column. RLS OR-stacks `USING` and
+`WITH CHECK` **independently across policies**, so a new restrictive policy is
+worthless while an older permissive one stands.
+
+**Smallest change that closes it (NOT a patch to one call site):**
+1. **DROP** the dormant FOR ALL (verified no app consumer — the only writer,
+   `setMemberDayAction`, resolves `trip_member_id` from its own `auth.uid()`;
+   `DayHeadcount` is read-only).
+2. `written_by_trip_member_id` attribution column (FK → `trip_members`,
+   `on delete set null`) + partial index — mirrors #171.
+3. **TIGHTEN** member self-write (`members write own days`) `WITH CHECK` to
+   `written_by IS NULL` — closes forgery from the *member* direction and doubles
+   as the [Keep] confirm (a member's own tap clears prior organizer attribution;
+   `setMemberDayAction` now writes `written_by: null`).
+4. Organizer **INSERT + UPDATE** on-behalf policies (two policies, **no DELETE**)
+   with the #171 four-clause anti-forgery shape: organizer-of-day's-trip +
+   writer-binding (`written_by` = caller's own membership in that trip) +
+   `target <> writer`. The UPDATE half exists so the upsert conflict path works;
+   its `WITH CHECK` fully pins the post-state (no INSERT-guarantee bypass).
+
+**Deliberately excluded organizer DELETE.** The dropped FOR ALL had it; setting a
+date on someone's behalf must not let an organizer erase a member's own prior
+entries. Blast radius is narrower without it.
+
+**Co-organizers ARE eligible targets** (unlike #171, which excluded organizers
+because its confirm surface rendered only for non-organizers). The `/me` day
+chips render for every non-declined member, so a co-organizer who volunteered
+dates still gets a keep/remove say. Target filter excludes only self + decliners.
+
+**Load-bearing lesson (reinforces the #171 one):** on ANY additive-RLS change,
+enumerate every pre-existing policy for the same command and confirm none offers
+an unconstrained alternate path — a `FOR ALL` dormant grant is the canonical
+trap. See [[project_laggards_wave0_2026-08-09]] and the #171 ADR below.
+
+---
+
 ## 2026-08-09 — #555 (paused status): trigger-shape ADR — Shape (2), attribution+confirm
 
 **Status:** PROPOSAL, pending operator ratification. **Blocking gate** for #555

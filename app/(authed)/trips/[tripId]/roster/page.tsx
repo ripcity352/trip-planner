@@ -10,14 +10,23 @@
  */
 
 import { notFound } from "next/navigation";
+import { eachDayOfInterval, format } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
 import { getVisibleRsvpByMemberId } from "@/lib/db/rsvp";
+import { getMemberDaysByTrip } from "@/lib/db/trip-member-days";
 import { isOrganizerRole } from "@/lib/utils/expense-visibility";
+import { resolveMemberName } from "@/lib/utils/member-display";
+import { parseDateOnly } from "@/lib/utils/date-only";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { RosterList } from "@/components/trip/roster/roster-list";
 import { DayHeadcount } from "@/components/trip/day-headcount";
+import {
+  OrganizerMemberDaysPanel,
+  type OrganizerDayTarget,
+} from "@/components/trip/member-days/organizer-member-days-panel";
 import type { RosterMember } from "@/components/trip/roster/roster-list";
+import type { TripMemberDayStatus } from "@/lib/db/types";
 
 type PageProps = {
   params: Promise<{ tripId: string }>;
@@ -67,6 +76,52 @@ export default async function RosterPage({ params }: PageProps) {
     rsvp: visibleRsvp.get(m.id) ?? null,
   }));
 
+  // #550 — organizer write-on-behalf targets: eligible members an organizer
+  // may set day-availability for. Organizer-only (rule #11 — the affordance
+  // never renders for non-organizers, and setMemberDayForAction re-checks
+  // server-side + RLS). Excludes only the viewing organizer themselves (self
+  // uses their own /me chips; RLS anti-forgery also rejects target == writer)
+  // and trip-level decliners (#475 — out of the trip). Co-organizers ARE
+  // eligible targets: unlike #171 (whose confirm surface rendered only for
+  // non-organizers), the /me day chips render for every non-declined member,
+  // so a co-organizer who volunteered dates still gets a keep/remove say.
+  // Needs a dated trip to have chips to render.
+  const viewerIsOrganizer = isOrganizerRole(viewer.role);
+  let onBehalfTargets: OrganizerDayTarget[] = [];
+  if (viewerIsOrganizer && trip.starts_at !== null && trip.ends_at !== null) {
+    const allDays = await getMemberDaysByTrip(supabase, trip.id);
+    // Group each member's stored day rows: member id → (date → status).
+    const daysByMember = new Map<string, Map<string, TripMemberDayStatus>>();
+    for (const row of allDays) {
+      const perMember =
+        daysByMember.get(row.trip_member_id) ??
+        new Map<string, TripMemberDayStatus>();
+      perMember.set(row.date, row.status);
+      daysByMember.set(row.trip_member_id, perMember);
+    }
+
+    const memberNameMap = new Map(rawMembers.map((m) => [m.id, m]));
+    const tripDates = eachDayOfInterval({
+      start: parseDateOnly(trip.starts_at),
+      end: parseDateOnly(trip.ends_at),
+    }).map((d) => format(d, "yyyy-MM-dd"));
+
+    onBehalfTargets = rawMembers
+      .filter((m) => m.id !== viewer.id && m.rsvp_status !== "declined")
+      .map((m) => {
+        const stored = daysByMember.get(m.id);
+        return {
+          id: m.id,
+          name: resolveMemberName(memberNameMap, m.id),
+          days: tripDates.map((date) => ({
+            date,
+            status: stored?.get(date) ?? null,
+          })),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-6">
@@ -98,6 +153,12 @@ export default async function RosterPage({ params }: PageProps) {
         tripId={trip.id}
         viewerRole={viewer.role}
       />
+
+      {/* #550 — organizer-only "set someone's days" editor. Never on the
+          read-only DayHeadcount above; a separate collapsible surface. */}
+      {viewerIsOrganizer ? (
+        <OrganizerMemberDaysPanel tripId={trip.id} targets={onBehalfTargets} />
+      ) : null}
     </section>
   );
 }
