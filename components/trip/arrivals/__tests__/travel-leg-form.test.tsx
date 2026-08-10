@@ -951,8 +951,8 @@ describe("TravelLegForm — co-traveler tagging (#574)", () => {
     expect(
       screen.getByText(M3_UI_STRINGS.arrivals_tag_cotravelers_label)
     ).toBeInTheDocument();
-    expect(screen.getByText("Rob")).toBeInTheDocument();
-    expect(screen.getByText("Dana")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Rob" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Dana" })).toBeInTheDocument();
   });
 
   it("hides the picker in edit mode", () => {
@@ -1009,7 +1009,7 @@ describe("TravelLegForm — co-traveler tagging (#574)", () => {
     fireEvent.change(screen.getByLabelText("Arrive"), {
       target: { value: "2026-08-14T20:00" },
     });
-    fireEvent.click(screen.getByText("Rob"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Rob" }));
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     await waitFor(() => {
@@ -1067,7 +1067,7 @@ describe("TravelLegForm — co-traveler tagging (#574)", () => {
     fireEvent.change(screen.getByLabelText("Arrive"), {
       target: { value: "2026-08-14T20:00" },
     });
-    fireEvent.click(screen.getByText("Rob"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Rob" }));
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
 
     await waitFor(() => expect(mockTag).toHaveBeenCalledOnce());
@@ -1095,7 +1095,7 @@ describe("TravelLegForm — co-traveler tagging (#574)", () => {
     fireEvent.change(screen.getByLabelText("Arrive"), {
       target: { value: "2026-08-14T20:00" },
     });
-    fireEvent.click(screen.getByText("Rob"));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Rob" }));
 
     // First submit — own leg saves (insert, no legId), tag fails.
     fireEvent.click(screen.getByRole("button", { name: "Save it" }));
@@ -1113,5 +1113,110 @@ describe("TravelLegForm — co-traveler tagging (#574)", () => {
     expect(secondTagKey).toBe(firstTagKey);
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+  });
+});
+
+// #574 follow-up — log a whole flight on another member's behalf.
+describe("TravelLegForm — whose flight (#574 on-behalf)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockUpsert.mockReset();
+    mockTag.mockReset();
+  });
+
+  const candidates = [
+    { id: "member-2", name: "Rob" },
+    { id: "member-3", name: "Dana" },
+  ];
+
+  const renderAddFlight = (onSuccess = vi.fn()) => {
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={onSuccess}
+        onCancel={vi.fn()}
+        tagCandidates={candidates}
+      />
+    );
+    return onSuccess;
+  };
+
+  it("renders the 'Whose flight is this?' selector with Yours + members", () => {
+    renderAddFlight();
+    const select = screen.getByLabelText(
+      M3_UI_STRINGS.arrivals_leg_form_whose_label
+    ) as HTMLSelectElement;
+    expect(select).toBeInTheDocument();
+    expect(select.value).toBe(""); // Yours by default
+    expect(
+      screen.getByRole("option", {
+        name: M3_UI_STRINGS.arrivals_leg_form_whose_you,
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Rob" })).toBeInTheDocument();
+  });
+
+  it("hides the co-traveler picker + confirmation/notes when it's someone else's flight", () => {
+    renderAddFlight();
+    // Co-traveler picker + confirmation field are present for YOUR flight.
+    expect(screen.getByLabelText("Confirmation #")).toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByLabelText(M3_UI_STRINGS.arrivals_leg_form_whose_label),
+      { target: { value: "member-2" } }
+    );
+
+    // Now it's Rob's flight — confirmation/notes + the "anyone else" picker
+    // no longer apply.
+    expect(screen.queryByLabelText("Confirmation #")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Notes")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(M3_UI_STRINGS.arrivals_tag_cotravelers_label)
+    ).not.toBeInTheDocument();
+  });
+
+  it("logs the flight on the picked member's behalf (tag, not a self-leg)", async () => {
+    mockTag.mockResolvedValue({ ok: true, tagged: 1 });
+    const onSuccess = renderAddFlight();
+
+    fireEvent.change(
+      screen.getByLabelText(M3_UI_STRINGS.arrivals_leg_form_whose_label),
+      { target: { value: "member-2" } }
+    );
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:26" },
+    });
+    fireEvent.change(screen.getByLabelText("Airport"), {
+      target: { value: "PDX" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => expect(mockTag).toHaveBeenCalledOnce());
+    expect(mockUpsert).not.toHaveBeenCalled();
+    const [input] = mockTag.mock.calls[0];
+    expect(input.targetTripMemberIds).toEqual(["member-2"]);
+    expect(input.kind).toBe("flight");
+    expect(input.direction).toBe("inbound");
+    expect(input.arriveAt).toBe("2026-08-14T10:26:00.000Z");
+    expect(input.airport).toBe("PDX");
+    // #505 — the on-behalf write must never carry the tagger's PNR/notes.
+    expect(input).not.toHaveProperty("confirmationCode");
+    expect(input).not.toHaveProperty("notes");
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+  });
+
+  it("still creates a self-leg when 'Yours' is left selected", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+    renderAddFlight();
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:26" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalledOnce());
+    expect(mockTag).not.toHaveBeenCalled();
   });
 });

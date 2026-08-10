@@ -435,6 +435,11 @@ export const M3_UI_STRINGS = {
   // #382 "Times are {city} time" caption died with the old model.
   arrivals_add_inbound_cta: "Add a flight",
   arrivals_add_outbound_cta: "Add a return flight",
+  // #574 follow-up — log a whole flight on another member's behalf. Add-mode
+  // flight only; picking someone routes the leg to them (attributed, they
+  // confirm) instead of creating your own.
+  arrivals_leg_form_whose_label: "Whose flight is this?",
+  arrivals_leg_form_whose_you: "Yours",
   arrivals_section_outbound_heading: "Heading home",
   arrivals_leg_form_airport_label: "Airport",
   arrivals_leg_form_origin_label: "Coming from",
