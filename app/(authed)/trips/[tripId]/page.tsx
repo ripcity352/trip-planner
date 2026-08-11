@@ -79,7 +79,8 @@ import { formatCents } from "@/lib/utils/format-cents";
 import {
   DASHBOARD_GLANCE_STRINGS,
   EMPTY_STATES,
-  M5_UI_STRINGS, M2_UI_STRINGS, M3_UI_STRINGS } from "@/lib/copy/empty-states";
+  M5_UI_STRINGS, M2_UI_STRINGS, M3_UI_STRINGS,
+  SHOPPING_LIST_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { Trip } from "@/lib/db/types";
 
 type PageProps = {
@@ -380,6 +381,17 @@ export default async function TripDashboardPage({ params }: PageProps) {
               <CardDescription className="truncate">
                 {arrivalsLine}
               </CardDescription>
+            </CardHeader>
+          </Card>
+        </Link>
+
+        {/* Shopping list — standalone page, zero expenses coupling
+            (notes/shopping-list-exploration.md). No claimed/total
+            subtitle — a completion fraction is a hard-banned score. */}
+        <Link href={`/trips/${trip.slug}/shopping-list`} className="block">
+          <Card className="hover:bg-muted/40 transition-colors">
+            <CardHeader>
+              <CardTitle>{SHOPPING_LIST_UI_STRINGS.heading}</CardTitle>
             </CardHeader>
           </Card>
         </Link>

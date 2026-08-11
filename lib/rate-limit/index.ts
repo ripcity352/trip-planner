@@ -207,6 +207,14 @@ export const RATE_LIMIT_SCOPES = {
   // budgets. Default 30/60s; fail-OPEN on shim (a pending ask, never a
   // write to the real rsvp_status — that stays on SET_RSVP).
   SEND_RSVP_PROMPT: "sendRsvpPrompt",
+  // Shopping list — three buckets (PR1): CREATE_SHOPPING_ITEM (add item,
+  // default 30/60s), TOGGLE_SHOPPING_ITEM (high-tap: got-it/claim, bumped
+  // to 60/60s for bursty prep-phase taps), MUTATE_SHOPPING_ITEM (amend/
+  // delete, default 30/60s). Fail-OPEN on shim (ledger entry, not credential
+  // minting).
+  CREATE_SHOPPING_ITEM: "createShoppingItem",
+  TOGGLE_SHOPPING_ITEM: "toggleShoppingItem",
+  MUTATE_SHOPPING_ITEM: "mutateShoppingItem",
 } as const;
 
 export type RateLimitScope =
@@ -239,6 +247,10 @@ export const SCOPE_BUDGETS: Readonly<
   // as AUTH_PASSWORD — brute-forcing an authenticated rotation requires
   // the same tight window.
   [RATE_LIMIT_SCOPES.AUTH_CHANGE_PASSWORD]: { limit: 5, window: "15 m" },
+  // Shopping list — high-tap toggle (got-it/claim) in prep phase. 60 req / 60s
+  // per user per trip, bumped from the default 30/60s to account for
+  // coordinated checklist taps (a whole crew acking at once).
+  [RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM]: { limit: 60, window: "60 s" },
 } as const;
 
 /**

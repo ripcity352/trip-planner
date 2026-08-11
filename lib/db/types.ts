@@ -506,6 +506,35 @@ export interface RideGroupWithRiders {
 }
 
 /**
+ * A shopping-list item (standalone page, zero expenses coupling).
+ * `created_by_trip_member_id` is authorship provenance only — anyone can
+ * claim/bought/amend per RLS (rule-8: no gatekeeping on who added it).
+ * `claimed_by_trip_member_id` = who's on the hook for buying it (null =
+ * unclaimed). `bought` and `claim` are independent toggles.
+ */
+export interface ShoppingItem {
+  id: string;
+  trip_id: string;
+  created_by_trip_member_id: string | null;
+  claimed_by_trip_member_id: string | null;
+  name: string;
+  category: string | null;
+  bought: boolean;
+  cost_cents: number | null;
+  currency: string;
+  visibility: TripVisibility;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
+// Partial-patch for amend: undefined = leave unchanged; null = explicitly clear.
+export interface ShoppingItemPatch {
+  name?: string;
+  category?: string | null;
+  cost_cents?: number | null;
+}
+
+/**
  * Per-member per-item RSVP override. Absence of a row = inherited day-level
  * RSVP. Opt-outs are silent — not visible to peers.
  */

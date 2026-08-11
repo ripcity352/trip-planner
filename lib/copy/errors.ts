@@ -223,7 +223,13 @@ export type ErrorKey =
   // DETERMINISTIC rejection, same simplest-consistent-rule treatment as
   // `date_candidate_has_votes` — block on any mark, distinct key so the
   // copy can name what actually happened.
-  | "date_candidate_has_mark";
+  | "date_candidate_has_mark"
+  // Shopping list error keys (PR1). Naming follows `<feature>_<verb>_failed`
+  // (transient) and `<feature>_<verb>_rejected` (deterministic). Same voice
+  // rules — blame-free, warm, specific, no corporate language.
+  | "shopping_list_save_failed"
+  | "shopping_list_save_rejected"
+  | "shopping_list_delete_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -410,4 +416,12 @@ export const ERRORS: Record<ErrorKey, string> = {
     "Votes are already in on that one — can't pull it now.",
   date_candidate_has_mark:
     "The celebrant already weighed in on that one — can't pull it now.",
+  // Shopping list error strings. Transient-retry voice for `_failed`;
+  // no retry framing for `_rejected` (deterministic server rejection).
+  shopping_list_save_failed:
+    "That didn't save — you might be offline. Try again in a sec.",
+  shopping_list_save_rejected:
+    "That didn't go through. Give it another shot.",
+  shopping_list_delete_failed:
+    "Couldn't remove that one. Try again in a sec.",
 };

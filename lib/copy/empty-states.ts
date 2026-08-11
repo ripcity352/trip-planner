@@ -25,7 +25,8 @@ export type EmptyStateKey =
   | "polls"
   | "photos"
   | "trips_mine"
-  | "invites_for_trip";
+  | "invites_for_trip"
+  | "shopping_list_empty";
 
 export const EMPTY_STATES: Record<EmptyStateKey, string> = {
   itinerary: "Nothing booked yet. The organizers are on it.",
@@ -39,6 +40,8 @@ export const EMPTY_STATES: Record<EmptyStateKey, string> = {
     "Nothing planned yet. Start a trip and we'll figure the rest out.",
   invites_for_trip:
     "No links out yet. Mint one and start texting it around.",
+  shopping_list_empty:
+    "List's empty. Snacks, booze, sunscreen, the aux cable — throw it on before you forget.",
 };
 
 /**
@@ -928,6 +931,44 @@ export const TRIP_EDIT_UI_STRINGS = {
 } as const;
 
 export type TripEditUIStringKey = keyof typeof TRIP_EDIT_UI_STRINGS;
+
+/**
+ * Shopping list UI strings (PR1) — the dedicated arrivals-style list for
+ * shared coordination. Same voice rules as every palette (warm, irreverent,
+ * specific). Strings are kept short and greppable.
+ *
+ * Naming: `<element>` (e.g., `heading`, `addCta`, `claimCta`) — no
+ * `surface_role` prefix since all keys are scoped under the feature.
+ */
+export const SHOPPING_LIST_UI_STRINGS = {
+  heading: "Shopping list",
+  addCta: "What are we bringing?",
+  nameLabel: "What is it?",
+  namePlaceholder: "e.g. 2 handles of tequila",
+  costLabel: "Rough cost (optional)",
+  categoryLabel: "Category (optional)",
+  // gap-C — cost tag template; `formatCents` produces the amount, this
+  // template supplies the "roughly" framing. Never `formatCost` (that
+  // one appends the banned per-head `~$X/head` split).
+  costTag_template: "~{amount}",
+  surpriseToggle_template: "Surprise — hide from {name}",
+  claimCta: "I've got this",
+  claimedByYou: "You've got this one.",
+  claimedBy_template: "{name} is on it.",
+  gotIt: "Got it. One less thing.",
+  unclaim: "Off your plate.",
+  gotItDivider: "Got it",
+  categorySnacks: "snacks",
+  categoryBooze: "booze",
+  categorySupplies: "supplies",
+  categoryGear: "gear",
+  submitCta: "Add it",
+  cancelCta: "Never mind",
+  deleteCta: "Remove",
+  deleteConfirm: "Remove this? Can't undo.",
+} as const;
+
+export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;
 
 /**
  * Dashboard glance lines (glanceability sweep) — the muted one-line
