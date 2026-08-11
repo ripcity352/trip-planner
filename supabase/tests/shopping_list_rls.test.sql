@@ -57,10 +57,13 @@ insert into public.trip_members (id, trip_id, user_id, role, is_celebrant) value
   ('b1000000-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-00000000000b', '44444444-4444-4444-4444-444444444444', 'attendee', false),
   ('b1000000-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-00000000000b', '55555555-5555-5555-5555-555555555555', 'attendee', false);
 
--- shopping_list_items in trip A, both created by M
+-- shopping_list_items in trip A: two created by M, one created by the
+-- organizer (used by Case 4's chained reassign-then-delete escalation —
+-- M must never be able to delete an item M did not create).
 insert into public.shopping_list_items (id, trip_id, created_by_trip_member_id, name, visibility) values
   ('c1000000-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-00000000000a', 'a1000000-0000-0000-0000-000000000002', 'Ice (2 bags)', 'everyone'),
-  ('c1000000-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-00000000000a', 'a1000000-0000-0000-0000-000000000002', 'Stripper cake (surprise!)', 'hide_from_celebrant');
+  ('c1000000-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-00000000000a', 'a1000000-0000-0000-0000-000000000002', 'Stripper cake (surprise!)', 'hide_from_celebrant'),
+  ('c1000000-0000-0000-0000-000000000006', 'aaaaaaaa-0000-0000-0000-00000000000a', 'a1000000-0000-0000-0000-000000000001', 'Poker chips', 'everyone');
 
 -- ---- impersonation sanity check ----
 -- As member M: SELECT the everyone-visibility row should return 1 row.
@@ -212,8 +215,14 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 
 -- =============================================================
--- CASE 4: member M UPDATE ... SET created_by_trip_member_id=<self> -> DENIED
--- (created_by not in the column-scoped update grant -> immutable)
+-- CASE 4 (spec §9 #4): member M UPDATE ... SET created_by_trip_member_id=<self>
+-- -> DENIED (created_by not in the column-scoped update grant -> immutable),
+-- THEN M's DELETE of another member's item -> DENIED (0 rows). This chains
+-- the full escalation the spec describes: M tries to reassign ownership of
+-- an item M did NOT create (the organizer's "Poker chips", c1000000...0006)
+-- to self, so the follow-on delete would succeed if the reassignment had
+-- gone through. Because it never applies, M is still a non-creator/
+-- non-organizer for that row when the delete is attempted.
 -- =============================================================
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', '22222222-2222-2222-2222-222222222222', 'role', 'authenticated')::text, true);
@@ -221,21 +230,33 @@ select set_config('request.jwt.claims', json_build_object('sub', '22222222-2222-
 do $$
 begin
   begin
-    -- M attempts to forge created_by on the everyone-visibility item it did
-    -- not create... wait, M DID create c1000000...0001. Use it anyway: the
-    -- column grant denies ANY write to created_by_trip_member_id, regardless
-    -- of who the current creator is.
     update public.shopping_list_items
       set created_by_trip_member_id = 'a1000000-0000-0000-0000-000000000002'
-      where id = 'c1000000-0000-0000-0000-000000000001';
+      where id = 'c1000000-0000-0000-0000-000000000006';
     raise exception 'CASE 4 FAILED: member M was able to UPDATE created_by_trip_member_id';
   exception
     when insufficient_privilege then
       if sqlerrm not ilike '%permission denied for column%' and sqlerrm not ilike '%permission denied for table%' then
         raise exception 'CASE 4 FAILED: got insufficient_privilege but wrong reason (got: %)', sqlerrm;
       end if;
-      raise notice 'CASE 4 PASSED: created_by_trip_member_id UPDATE denied (%)', sqlerrm;
+      raise notice 'CASE 4a PASSED: created_by_trip_member_id UPDATE denied (%)', sqlerrm;
   end;
+end $$;
+
+-- Chained half: the reassignment above never applied, so M is still not the
+-- creator (and not the organizer) of c1000000...0006. M's DELETE of that
+-- item must match 0 rows — the delete policy's USING clause filters it out
+-- silently (no error, just zero rows affected).
+do $$
+declare
+  affected int;
+begin
+  delete from public.shopping_list_items where id = 'c1000000-0000-0000-0000-000000000006';
+  get diagnostics affected = row_count;
+  if affected <> 0 then
+    raise exception 'CASE 4 FAILED: member M was able to DELETE an item M did not create (affected=%)', affected;
+  end if;
+  raise notice 'CASE 4b PASSED: member M''s DELETE of another member''s item affected 0 rows (reassign-then-delete escalation blocked)';
 end $$;
 
 reset role;
