@@ -366,6 +366,28 @@ export interface Announcement {
 }
 
 /**
+ * A flat-thread note on a shopping list item (P2-T3, 20260811020000).
+ *
+ * `author_trip_member_id` FKs `trip_members(id) ON DELETE SET NULL` (NOT
+ * `auth.users` like Announcement.created_by) — a departed member's rows
+ * stay in the thread with a null author. `authorDisplayName` is NOT a DB
+ * column — resolved post-fetch by `enrichComments` (lib/db/shopping-item-
+ * comments.ts) against a trip_member_id-keyed map. null/missing resolves
+ * to M3_UI_STRINGS.announcements_author_fallback ("Someone") at the UI
+ * boundary, not "Guest" (resolveMemberName's roster fallback).
+ */
+export interface ShoppingItemComment {
+  id: string;
+  item_id: string;
+  trip_id: string;
+  author_trip_member_id: string | null;
+  body: string;
+  idempotency_key: string | null;
+  created_at: string;
+  authorDisplayName?: string;
+}
+
+/**
  * A fixed-set emoji ack on an announcement (#389).
  *
  * Visibility is INHERITED from the parent announcement (rule-7 exception —
