@@ -38,6 +38,7 @@ logging it is fine.
 ### Deferred (noted, not built)
 - Organizer **claim-on-behalf** (needs the rule-#8 consent/attribution path).
 - Realtime live surface (MVP uses `router.refresh` on mutate, like the app).
+- Optimistic got-it/claim toggle (MVP accepts the one round-trip lag).
 - Edit attribution / history.
 - One-tap "log the spend → prefill AddExpense" bridge (explicitly out of scope).
 - Per-person packing lists (a second content type — deliberate cut).
@@ -86,15 +87,38 @@ create table public.shopping_list_items (
   idempotency_key uuid,
   created_at timestamptz not null default now(),
   constraint shopping_list_items_name_not_blank
-    check (length(btrim(name)) > 0)
+    check (length(btrim(name)) > 0),
+  -- DB is the floor, not zod: members hold raw INSERT/UPDATE grants, so a direct
+  -- PostgREST call bypasses the app-layer caps. (RLS-agent LOW-5.)
+  constraint shopping_list_items_name_len   check (length(name) <= 200),
+  constraint shopping_list_items_category_len
+    check (category is null or length(category) <= 80)
 );
+-- FOOTGUN (mirrors the ride_groups migration note): this table has TWO FKs into
+-- trip_members (created_by + claimed_by). NEVER add a bare `trip_members(...)`
+-- PostgREST embed to SHOPPING_ITEM_COLUMNS — it returns HTTP 300. Both ids stay
+-- scalar; names resolve app-side via resolveMemberName. (I4 stays a no-op.)
 
 create unique index shopping_list_items_idempotency
   on public.shopping_list_items (trip_id, created_by_trip_member_id, idempotency_key)
   where idempotency_key is not null;
 ```
 
-### RLS (simplest that holds tenancy + visibility — bachelor-party threat model)
+### RLS + grants (revised after adversarial review — the UPDATE surface was the one real defect)
+
+**Design correction.** The first draft granted full-table UPDATE with an
+`is_trip_member`-only policy. That is broken, and it broke the feature's
+differentiator: because RLS is the source of truth (rule #5), a member hitting
+PostgREST directly could `SET visibility='everyone'` to **spoil a surprise**
+(rule #7 is the whole point), forge `created_by` to **bypass the delete gate**,
+or move `trip_id` to **hijack a row across trips**. Within-trip *claim* forgery
+stays out of the threat model (friction-vs-security) — but visibility/ownership/
+tenancy do not. WITH CHECK can't pin a column to its OLD value, so the correct
+tool is a **column-scoped UPDATE grant**: Postgres denies any UPDATE touching a
+column outside the list at the privilege layer, before RLS runs. This makes
+`id`, `trip_id`, `created_by_trip_member_id`, `visibility`, `idempotency_key`,
+and `created_at` **immutable after insert** — exactly the columns no action
+mutates — and closes all three findings by construction.
 
 ```sql
 alter table public.shopping_list_items enable row level security;
@@ -104,7 +128,7 @@ create policy shopping_list_items_select on public.shopping_list_items
   for select to authenticated
   using (public.can_see_content(trip_id, visibility));
 
--- insert: writer-binding + tenancy
+-- insert: writer-binding + tenancy (unchanged — attacked and held)
 create policy shopping_list_items_insert on public.shopping_list_items
   for insert to authenticated
   with check (
@@ -115,12 +139,13 @@ create policy shopping_list_items_insert on public.shopping_list_items
     )
   );
 
--- update: any trip member (got-it toggle / self-claim / amend are reversible
--- ops on a shared list; within-trip claim forgery is not in the threat model)
+-- update: gate SYMMETRIC with read (can_see_content, not is_trip_member) so the
+-- write gate matches the read gate for hide_from_celebrant rows by construction.
+-- Column scope (below) is what actually pins visibility/created_by/trip_id.
 create policy shopping_list_items_update on public.shopping_list_items
   for update to authenticated
-  using (public.is_trip_member(trip_id))
-  with check (public.is_trip_member(trip_id));
+  using (public.can_see_content(trip_id, visibility))
+  with check (public.can_see_content(trip_id, visibility));
 
 -- delete: creator OR organizer escape hatch (destructive → tighter than edit)
 create policy shopping_list_items_delete on public.shopping_list_items
@@ -135,11 +160,15 @@ create policy shopping_list_items_delete on public.shopping_list_items
   );
 ```
 
-### Grants (item #361 hygiene — local `db reset` grants ALL at create)
+### Grants (item #361 hygiene — local `db reset` grants ALL at create; re-assert)
 
 ```sql
 revoke all on public.shopping_list_items from public, anon, authenticated;
-grant select, insert, update, delete on public.shopping_list_items to authenticated;
+grant select, insert, delete on public.shopping_list_items to authenticated;
+-- COLUMN-SCOPED update: only the mutable coordination columns. Omitting
+-- visibility/trip_id/created_by/idempotency_key/id makes them immutable-after-insert.
+grant update (name, category, bought, claimed_by_trip_member_id, cost_cents, currency)
+  on public.shopping_list_items to authenticated;
 ```
 
 Migration filename: next timestamp after `20260811000000`
@@ -149,6 +178,11 @@ Migration filename: next timestamp after `20260811000000`
 
 - `SHOPPING_ITEM_COLUMNS` — flat select string listing **every** column the
   actions write (I1). Includes both scalar member id columns; **no embed**.
+  **Load-bearing for I1:** `name, category, bought, claimed_by_trip_member_id,
+  cost_cents, currency, visibility` are NOT in the checker's `GLOBAL_EXEMPT`
+  set, so each must appear in this projection or the data-loss gate fails.
+  (`trip_id, created_by_trip_member_id, idempotency_key, created_at` are exempt
+  but include them anyway.)
 - `getShoppingItems(supabase, tripId): Promise<ShoppingItem[]>` — select by
   `trip_id`, order `created_at` asc (add-order = group-chat feel), throws on
   `error`.
@@ -165,8 +199,10 @@ matching the `Announcement` precedent.
 
 `"use server"`. Template = `lib/actions/ride-groups.ts`. Each returns
 `{ ok: true; ... } | { ok: false; errorKey: ErrorKey }`. Client calls via
-`callAction` + `router.refresh()` — **no `revalidatePath`, no `redirect()`**
-(I12).
+`callAction` + `router.refresh()`. **CI note (I12):** the gate only enforces
+that `callAction` never wraps a `redirect()` action — the `router.refresh` half
+is convention, not statically checked, so don't rely on CI to catch a missing
+refresh. No `revalidatePath`, no `redirect()`.
 
 - `addShoppingItem(input, idempotencyKey)` — validate key + zod input → auth →
   resolve creator `trip_member` id (null ⇒ `rls_denied`) → `rateLimitedAction`
@@ -176,55 +212,127 @@ matching the `Announcement` precedent.
 - `toggleBought(itemId, bought)` — `{ count: "exact" }` update; no-row sentinel.
 - `setClaim(itemId, claimed: boolean)` — server resolves acting member id;
   sets `claimed_by_trip_member_id` to self (claim) or `null` (unclaim).
-- `amendItem(itemId, patch)` — patch of `{ name?, category?, costCents?,
-  currency? }`; zod-validated; `{ count: "exact" }`.
+- `amendItem(itemId, patch)` — patch of `{ name?, category?, costCents? }`;
+  zod-validated; `{ count: "exact" }`. **Partial-patch discipline (gap-A, a
+  guaranteed bug otherwise):** build the update object from **only the keys
+  present in the patch** — `undefined` means "leave unchanged", `null` means
+  "explicitly clear" (`category`/`cost_cents` are nullable). Never send a full
+  object with `undefined` fields (would null out `category`/`cost` when someone
+  edits only the name). Test: "amend name only leaves category and cost intact."
 - `deleteShoppingItem(itemId)` — RLS-gated no-op delete; `42501` ⇒ `rls_denied`.
 
-Add rate-limit scopes in `lib/rate-limit/index.ts`:
-`CREATE_SHOPPING_ITEM: "createShoppingItem"`,
-`MUTATE_SHOPPING_ITEM: "mutateShoppingItem"`.
+Add rate-limit scopes in `lib/rate-limit/index.ts`. Prep is bursty (a "got-it
+everything" spree across a 20-item list), so **split** the mutate buckets rather
+than sharing one 30/60s default:
+`CREATE_SHOPPING_ITEM: "createShoppingItem"` (default 30/60s — fine for adds),
+`TOGGLE_SHOPPING_ITEM: "toggleShoppingItem"` (high-tap: got-it/claim — bump to
+~60/60s in `SCOPE_BUDGETS`),
+`MUTATE_SHOPPING_ITEM: "mutateShoppingItem"` (amend/delete — default is fine).
 
 Input validation zod schemas (rule: validate all input):
 `name` `z.string().trim().min(1).max(120)`, `category`
-`z.string().trim().max(40).nullable().optional()`, `costCents`
-`z.number().int().min(0).max(100_000_00).nullable().optional()`, `currency`
-`z.string().length(3).optional()`, `tripId`/`itemId` `z.string().uuid()`.
+`z.string().trim().max(40).transform(v => v || null).nullable().optional()`
+(coerce whitespace-only `""` → `null` — gap-H, avoids storing an empty chip),
+`costCents` `z.number().int().min(0).max(100_000_00).nullable().optional()`,
+`tripId`/`itemId` `z.string().uuid()`. **Currency is USD-fixed in the MVP UI**
+(no currency field in `AddItemSheet`) so the action does not accept a
+client-supplied `currency` — the column default `'USD'` stands. (Dropping it
+from the input also dodges the `Intl.NumberFormat` `RangeError`-on-bad-code
+path — gap-H.)
 
 ## 7. UI
 
+**Entry point** (was underspecified). The route is reached by a **dashboard
+`<Link>` card** on `app/(authed)/trips/[tripId]/page.tsx`, exactly like the
+arrivals card — **not** a BottomTabBar tab (that's a fixed 5-tab set). The card
+label is static ("Shopping list"); its subtitle, **if any**, is a neutral item
+count only ("7 things"). **Never** a claimed/total fraction ("3 claimed",
+"3 of 7") — that's a disguised completion score / social-pressure counter and is
+hard-banned (CLAUDE.md; brief §3). When in doubt, no subtitle.
+
 Route `app/(authed)/trips/[tripId]/shopping-list/page.tsx` (mirror
-`arrivals/page.tsx`) + `loading.tsx`. Server component: resolve trip by slug →
-`getUser` → `getViewerMember` → parallel-load items + trip members → build
-`memberMap` → render.
+`arrivals/page.tsx`) + `loading.tsx`. Server component: resolve trip by slug
+(`getTripBySlug` → pass **`trip.id`**, never the raw route param) → inline
+`auth.getUser()` → `getViewerMember` → parallel-load (`Promise.all`) items + trip
+members → pass `tripMembers` down; the **client component builds the `memberMap`**
+(matches the arrivals manifest — the page does not build it).
 
 Components under `components/trip/shopping-list/`:
-- `ShoppingList.tsx` (client) — active items list + a struck **"Got it"**
-  section below a divider; empty state from copy; renders `AddItemSheet`.
-- `ShoppingItemCard.tsx` — name, optional category chip, optional `~$X` cost
-  tag, claim affordance (`resolveMemberName(memberMap, claimed_by)` →
-  "You've got this one." / "Marcus is on it."), got-it toggle, delete (author/
-  organizer only — a micro-affordance, not a gate message). Names **always** via
-  `resolveMemberName`, **never** `.email` (I6).
-- `AddItemSheet.tsx` — RHF + zod, idempotency key generated **at submit**,
-  fields: name (no asterisk), optional category (chips), optional cost. A
+- `ShoppingList.tsx` (client) — partitions items into **active** + a struck
+  **"Got it"** section below a divider (no count on the divider). Renders
+  `AddItemSheet`. **Empty state (gap-D):** the "throw something on" copy shows
+  only when **zero items exist at all** — not when active is empty but bought
+  items remain (else it prints above a full struck list). Optional one-line
+  "all got" treatment when every item is bought.
+- `ShoppingItemCard.tsx` — name, optional category chip, optional cost tag, claim
+  affordance (`resolveMemberName(memberMap, claimed_by)` → "You've got this
+  one." / "Marcus is on it."), got-it toggle, delete (author/organizer only — an
+  **absent** affordance for others, never a gate message). Names **always** via
+  `resolveMemberName`, **never** `.email` (I6). **Got-it × claim (gap-E):**
+  `bought` and `claimed_by` are independent columns — marking got-it **preserves
+  the claim**; under the Got-it divider the claim line renders **read-only** (no
+  unclaim control). **Cost rendering (gap-C, important):** use **`formatCents`**
+  — **never** `formatCost` (it appends a banned `~$X/head` per-head split when
+  `inCount ≥ 2`, violating the broke-friend guardrail). The "~" prefix + whole-
+  dollar trim come from a shopping-specific copy template (`shoppingList_cost_tag`
+  = `~{amount}`), not from a formatter. Each item renders its own cost; there is
+  no per-list total, so mixed currencies are a non-issue.
+- `AddItemSheet.tsx` — RHF + zod. **Idempotency key (gap-B):** generated **once
+  per sheet-open** via `useRef` (seeded when the sheet opens), reused across
+  retries of the same logical add, rotated **only after a confirmed `ok:true`**.
+  This protects the exact rule-#9 scenario (submit succeeds, response lost, user
+  taps again → same key → 23505 replay, no dup) that a submit-time key misses.
+  Also disable the submit button on `isSubmitting`. Fields: name (no asterisk),
+  optional category (chips), optional cost (no currency field — USD-fixed). A
   **"surprise — hide from {celebrant}"** toggle rendered **only for
   non-celebrant** viewers, sets `visibility='hide_from_celebrant'`, default off.
+  **Note (gap-K): this toggle is a client-only guard** — the INSERT policy does
+  not constrain `visibility`, so RLS does not enforce "only non-celebrants create
+  surprises." A celebrant crafting a request could insert a row they then can't
+  see (self-inflicted, harmless, out of threat model). The column-scoped UPDATE
+  grant *does* prevent post-hoc visibility flips (RLS-agent HIGH-1).
+
+**Interaction decisions named (so QA doesn't read them as bugs):**
+- **Got-it/claim taps lag one server round-trip** (`callAction` + `router.refresh`,
+  no optimistic state) — accepted for MVP on the flaky-signal target; optimistic
+  toggle is a fast-follow (gap-I).
+- **Concurrent amends are last-writer-wins**, per-column (no version guard);
+  acceptable for a shared scratchpad, mitigation deferred with edit-history (gap-G).
+- **Dangling FKs** (`on delete set null`): when a claimer leaves the trip the item
+  **silently unclaims** back to the pool (no "was Marcus's" copy — left silent by
+  design). When an author leaves, `created_by` nulls → the item is then
+  deletable **only by an organizer** (amend still open to any member). Both are
+  intended escape-hatch outcomes (gap-F).
 
 Copy: new keys only, no inline literals.
 - `lib/copy/empty-states.ts`: empty + CTA (brief §6 strings).
 - `lib/copy/errors.ts`: `shopping_list_save_failed | shopping_list_save_rejected
   | shopping_list_delete_failed` (+ reuse `network`, `rls_denied`, `rate_limit`).
-- A `shoppingList_*` block in the `*_UI_STRINGS` bag (claimed/got-it/unclaim/
-  amend/CTA strings from brief §6).
+  **Offline-error copy fix:** the brief's *"It'll go through when you're back"*
+  is a **false promise** (no offline queue in MVP) — use *"That didn't save —
+  you might be offline. Try again in a sec."* (warm, true).
+- A **dedicated `SHOPPING_LIST_UI_STRINGS` bag** (`as const` + `keyof typeof`),
+  **not** appended to a milestone bag — no `M6_UI_STRINGS` exists and the current
+  convention for a standalone feature is its own named bag (e.g.
+  `TRIP_EDIT_UI_STRINGS`). Holds claimed/got-it/unclaim/amend/CTA + the
+  `shoppingList_cost_tag` template, strings from brief §6.
 
 ## 8. CI invariant gates (must be green from day one)
 
-- **I1** — every written column appears in `SHOPPING_ITEM_COLUMNS`.
+All checkers **auto-enroll** a new table/action file from source — no manual
+registry (verified against the meta-extractors). Requirements:
+- **I1** — every non-exempt written column appears in `SHOPPING_ITEM_COLUMNS`
+  (see §5 — the six non-exempt columns are load-bearing).
 - **I2** — idempotency column + partial unique index present; add writes the key.
-- **I3** — actions inspect `error.code` (23505 / 42501 split).
-- **I6** — names rendered via `resolveMemberName`, never `.email`.
-- **I12** — client mutations via `callAction` + `router.refresh`; add action
-  does not `redirect()`.
+- **I3** — the action file inspects `error.code` (23505 / 42501 split); one
+  split in `shopping-list.ts` satisfies the file.
+- **I4** — no-op: PostgREST embed-trap gate fires only on `trip_members`/
+  `profiles` embeds; the flat scalar-id design has none (see the migration
+  footgun comment).
+- **I6** — names rendered via `resolveMemberName`, never `?? …email` (scans
+  `components/**`).
+- **I12** — asserts only that `callAction` never wraps a `redirect()` action.
+  The `router.refresh` property is **not** CI-checked (convention only).
 - **I5** — no-op: no new SECURITY DEFINER fn (reuse `can_see_content`).
 - **I7 / I8** — N/A (not a travel table; no date-only column).
 
@@ -238,9 +346,19 @@ Data-layer + action tests are mandatory (CLAUDE.md). Write tests first:
 - `lib/db/shopping-list` — column completeness, no-row sentinel, order.
 - `lib/actions/shopping-list` — idempotent add (fresh + 23505 replay),
   error.code split (42501 ⇒ rls_denied), self-claim resolves acting member,
-  toggle/amend/delete envelopes, redirect-free (I12), zod rejection.
-- RLS harness — member can add/claim/toggle/amend; non-member blocked; celebrant
-  cannot see `hide_from_celebrant` rows; delete creator-or-organizer only.
+  toggle/amend/delete envelopes, redirect-free (I12), zod rejection, and
+  **amend-name-only leaves category + cost intact** (gap-A regression guard).
+- **RLS harness (adversarial — each RED before the grant fix, GREEN after):**
+  1. member add/claim/toggle/amend succeeds; non-member fully blocked.
+  2. celebrant cannot SELECT a `hide_from_celebrant` row.
+  3. non-celebrant `UPDATE … SET visibility='everyone'` on a surprise row →
+     **denied** (permission-denied-for-column via the column-scoped grant).
+  4. member `UPDATE … SET created_by_trip_member_id=<self>` then DELETE of
+     another member's item → **denied** (created_by is immutable).
+  5. dual-trip member `UPDATE … SET trip_id=<other trip>` → **denied**.
+  6. celebrant `UPDATE … RETURNING` on a surprise row → **zero rows**.
+  7. two members, same idempotency UUID → **two rows** (no false 23505).
+  8. delete: creator-or-organizer only; plain member denied.
 - One e2e: add → claim → got-it → undo on a local build.
 
 ## 10. Persona guardrails (brief §3 — assert in review)
