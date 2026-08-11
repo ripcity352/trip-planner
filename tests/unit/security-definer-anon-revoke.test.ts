@@ -80,6 +80,6 @@ describe("I5 — SECURITY DEFINER anon-revoke", () => {
       const f = funcs.find((x) => x.name === name);
       expect(f?.securityDefiner, `${name} must be a real SECURITY DEFINER fn`).toBe(true);
     }
-    expect(Object.keys(INTENTIONAL_ANON_ALLOWLIST).length).toBeLessThanOrEqual(3);
+    expect(Object.keys(INTENTIONAL_ANON_ALLOWLIST).length).toBeLessThanOrEqual(2);
   });
 });

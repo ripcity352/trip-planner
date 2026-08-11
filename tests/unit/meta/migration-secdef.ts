@@ -36,6 +36,19 @@ function migrationFiles(dir: string): string[] {
     .map((f) => join(dir, f));
 }
 
+/**
+ * Read a migration with SQL line comments stripped. Load-bearing: prose in a
+ * `-- ...` comment that mentions "create policy" or "revoke execute on function
+ * ..." would otherwise be scanned as real SQL and poison the exemption /
+ * revoke sets (a false negative — a comment saying "derived from CREATE POLICY
+ * references" spuriously exempted `accept_invite`). We only scan headers /
+ * revokes / policy references, never dollar-quoted bodies, so blanket line-
+ * comment stripping is safe.
+ */
+function readSqlStripped(file: string): string {
+  return readFileSync(file, "utf8").replace(/--[^\n]*/g, "");
+}
+
 // A function's header is everything from `create ... function public.name(...)`
 // up to the body delimiter `as $...$` (or `as '...'`). SECURITY DEFINER and
 // RETURNS both live in the header, so we never parse the dollar-quoted body.
@@ -78,7 +91,7 @@ export function extractSecDefFunctions(dir: string): SecDefFunction[] {
   };
 
   for (const file of migrationFiles(dir)) {
-    const sql = readFileSync(file, "utf8");
+    const sql = readSqlStripped(file);
     const base = file.split("/").slice(-1)[0];
 
     CREATE_FN_RE.lastIndex = 0;
@@ -129,7 +142,7 @@ const CREATE_POLICY_RE = /create\s+policy\b[\s\S]*?;/gi;
 export function functionsReferencedInPolicies(dir: string): Set<string> {
   const referenced = new Set<string>();
   for (const file of migrationFiles(dir)) {
-    const sql = readFileSync(file, "utf8");
+    const sql = readSqlStripped(file);
     CREATE_POLICY_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = CREATE_POLICY_RE.exec(sql)) !== null) {
