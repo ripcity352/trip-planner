@@ -264,6 +264,8 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "cancelCta",
   "deleteCta",
   "deleteConfirm",
+  "openDetail_template",
+  "likeAria",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {
@@ -290,5 +292,6 @@ describe("SHOPPING_LIST_UI_STRINGS", () => {
       "{name}"
     );
     expect(SHOPPING_LIST_UI_STRINGS.claimedBy_template).toContain("{name}");
+    expect(SHOPPING_LIST_UI_STRINGS.openDetail_template).toContain("{name}");
   });
 });

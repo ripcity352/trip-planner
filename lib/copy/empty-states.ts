@@ -966,6 +966,12 @@ export const SHOPPING_LIST_UI_STRINGS = {
   cancelCta: "Never mind",
   deleteCta: "Remove",
   deleteConfirm: "Remove this? Can't undo.",
+  // P2-T5 — row social affordances. openDetail_template drives the
+  // whole-row-tap aria-label (a11y name for the overlay button); likeAria
+  // is a static label (aria-pressed communicates the toggle state, so no
+  // template needed).
+  openDetail_template: "Open {name}",
+  likeAria: "Like",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

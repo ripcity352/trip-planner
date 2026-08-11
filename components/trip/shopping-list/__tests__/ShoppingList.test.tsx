@@ -33,6 +33,10 @@ vi.mock("@/lib/actions/shopping-list", () => ({
   deleteShoppingItem: vi.fn(),
 }));
 
+vi.mock("@/lib/actions/shopping-item-reactions", () => ({
+  toggleShoppingReaction: vi.fn(),
+}));
+
 const TRIP_ID = "11111111-1111-4111-8111-111111111111";
 const MEMBER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MEMBER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
