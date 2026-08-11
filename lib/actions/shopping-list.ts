@@ -114,6 +114,7 @@ function mapDbError(
     }
     return { ok: false, errorKey: err.code ? rejectedKey : failedKey };
   }
+  console.error("[shopping-list] mapDbError unexpected:", err);
   return { ok: false, errorKey: failedKey };
 }
 
@@ -353,6 +354,12 @@ export async function amendShoppingItem(
     dbPatch.cost_cents = parsed.data.costCents ?? null;
   }
 
+  // An empty patch (no keys survived validation) has nothing to write —
+  // reject before hitting the db rather than issuing a no-op `update({})`.
+  if (Object.keys(dbPatch).length === 0) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
   try {
     await rateLimitedAction(RATE_LIMIT_SCOPES.MUTATE_SHOPPING_ITEM, userId, () =>
       amendItem(supabase, itemId, dbPatch)
@@ -365,7 +372,17 @@ export async function amendShoppingItem(
 
 // ---- deleteShoppingItem --------------------------------------------
 
-/** Delete a shopping-list item. RLS-gated no-op delete for a stale target. */
+/**
+ * Delete a shopping-list item. RLS-gated no-op delete for a stale target.
+ *
+ * Idempotent on double-tap (rule 9 — drunk-user-on-bad-signal): a second
+ * delete of an already-deleted row hits `SHOPPING_ITEM_NO_ROW` in the Task 2
+ * db layer. Unlike `toggleBought`/`setClaim`/`amendShoppingItem` (where a
+ * no-row match is genuinely ambiguous between "already handled" and "you
+ * can't see this"), a delete's no-row case has only one honest reading —
+ * the desired end state (gone) is already true — so it's treated as
+ * success, not folded into `mapDbError`'s shared `rls_denied` collapse.
+ */
 export async function deleteShoppingItem(
   itemId: string
 ): Promise<ToggleShoppingItemResult> {
@@ -384,6 +401,11 @@ export async function deleteShoppingItem(
     );
     return { ok: true };
   } catch (err) {
+    // Already gone — a double-tapped delete converges to success rather
+    // than falling into mapDbError's shared NO_ROW->rls_denied collapse.
+    if (err instanceof ShoppingListDbError && err.code === SHOPPING_ITEM_NO_ROW) {
+      return { ok: true };
+    }
     return mapDbError(
       err,
       "shopping_list_delete_failed",

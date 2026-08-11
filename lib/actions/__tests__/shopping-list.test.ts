@@ -367,6 +367,17 @@ describe("amendShoppingItem", () => {
     const res = await amendShoppingItem(ITEM, { name: "" });
     expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
   });
+
+  it("rejects an empty patch before hitting the db (no-op update guard)", async () => {
+    primeAuth(USER);
+    const res = await amendShoppingItem(ITEM, {});
+    expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update).toBeUndefined();
+  });
 });
 
 describe("deleteShoppingItem", () => {
@@ -386,24 +397,29 @@ describe("deleteShoppingItem", () => {
     expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
   });
 
-  it("returns rls_denied when the delete matches no row", async () => {
+  it("is idempotent on double-tap: a no-row match (SHOPPING_ITEM_NO_ROW) converges to ok:true", async () => {
     primeAuth(USER);
+    // count:0 drives the real db layer's runCounted() to throw
+    // ShoppingListDbError(SHOPPING_ITEM_NO_ROW) — the item is already gone,
+    // which is the desired end state, so a second delete is a no-op success
+    // rather than the shared rls_denied collapse (rule 9).
     tableQueues.set("shopping_list_items", [{ data: null, error: null, count: 0 }]);
     const res = await deleteShoppingItem(ITEM);
-    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(res).toEqual({ ok: true });
   });
 });
 
 // I12: no shopping-list action calls redirect() — router.refresh() is the
 // caller's job, per notes on the callAction contract.
 describe("no action calls redirect (I12)", () => {
-  it("never invokes next/navigation redirect across the surface", async () => {
+  it("never invokes next/navigation redirect across the surface (all 5 mutations)", async () => {
     primeAuth(USER);
     tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
     tableQueues.set("shopping_list_items", [{ data: mockItem, error: null, count: 1 }]);
 
     await addShoppingItem({ tripId: TRIP, name: "Sunscreen" }, KEY);
     await toggleBought(ITEM, true);
+    await setClaim(ITEM, true);
     await amendShoppingItem(ITEM, { name: "New name" });
     await deleteShoppingItem(ITEM);
 
