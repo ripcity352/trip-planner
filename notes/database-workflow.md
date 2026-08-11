@@ -314,6 +314,26 @@ RLS for retargeted tables uses `is_trip_member_by_member_id(p_member_id)`
 instead of `is_trip_member(trip_id)` since the table no longer carries
 `trip_id` directly.
 
+#### 2nd-FK PostgREST embed trap (#550 / I4)
+
+Adding a **second** FK from table A to table B silently breaks every
+pre-existing bare `B!inner(...)` embed in A's `lib/db` reads: PostgREST can
+no longer pick a join and returns **HTTP 300** → the read crashes in prod
+(#550: a 2nd FK `trip_member_days → trip_members` took down the crew page).
+Mocked db tests and the psql RLS harness both miss it — neither exercises
+PostgREST.
+
+**Rule:** when you add any FK to a table that is already embedded anywhere,
+grep every `<that_table>!` embed and pin the join with an explicit
+`!<fk_column>` hint (e.g. `trip_members!trip_member_id!inner(...)`). Embeds of
+the identity tables `trip_members` / `profiles` must **always** carry the hint
+— those accumulate FKs (writer / sender / creator / recipient).
+
+The I4 checker (`tests/unit/postgrest-embed-resolution.test.ts`) enforces both:
+a static guard (bare identity-table embed → fails in CI at author time) and a
+live REST smoke test against local `supabase_rest` (any ambiguous embed → 300,
+fails locally).
+
 ### Idempotency-key scope
 
 Every mutation server action accepts a client-generated
