@@ -126,6 +126,12 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "shopping_list_delete_failed",
   "shopping_list_save_failed",
   "shopping_list_save_rejected",
+  // Shopping list social layer error keys (PR2 — reactions + Notes)
+  "shopping_reaction_save_failed",
+  "shopping_comment_save_failed",
+  "shopping_comment_save_rejected",
+  "shopping_comment_delete_failed",
+  "shopping_item_gone",
 ];
 
 // Toasts are dismissed on a glance; over ~120 chars and the user

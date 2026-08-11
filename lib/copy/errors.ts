@@ -229,7 +229,19 @@ export type ErrorKey =
   // rules — blame-free, warm, specific, no corporate language.
   | "shopping_list_save_failed"
   | "shopping_list_save_rejected"
-  | "shopping_list_delete_failed";
+  | "shopping_list_delete_failed"
+  // Shopping list social layer (PR2 — reactions + Notes thread). Same
+  // `<feature>_<verb>_failed` (transient) / `<feature>_<verb>_rejected`
+  // (deterministic) split as the PR1 keys above.
+  | "shopping_reaction_save_failed"
+  | "shopping_comment_save_failed"
+  | "shopping_comment_save_rejected"
+  | "shopping_comment_delete_failed"
+  // #12.6 — a comment/reaction target that vanished between sheet-open and
+  // the tap (item deleted elsewhere mid-session). Deterministic, distinct
+  // from the generic rls_denied so the sheet can close instead of blaming
+  // the user's access.
+  | "shopping_item_gone";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -424,4 +436,13 @@ export const ERRORS: Record<ErrorKey, string> = {
     "That didn't go through. Give it another shot.",
   shopping_list_delete_failed:
     "Couldn't remove that one. Try again in a sec.",
+  // Shopping list social layer (PR2). Same transient/deterministic split.
+  shopping_reaction_save_failed: "Didn't stick. Give it another tap.",
+  shopping_comment_save_failed:
+    "That note didn't save — you might be offline. Try again in a sec.",
+  shopping_comment_save_rejected:
+    "That note didn't go through. Give it another shot.",
+  shopping_comment_delete_failed:
+    "Couldn't remove that note. Try again in a sec.",
+  shopping_item_gone: "That one's already gone from the list.",
 };
