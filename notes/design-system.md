@@ -1900,3 +1900,30 @@ surface. No per-row accordion (that would be a second density control for
 one job). Toggle choice persists to `localStorage` (`pt:arrivalsView`),
 read in `useEffect` so first paint is deterministic (Compact) and never
 mismatches SSR.
+
+## Ride-group register (#581)
+
+**Gap named.** The ride-share nudge only *counted* people at an airport; there
+was no register for a *persisted ride* — who's sharing a car, in either
+direction — on the arrivals surface. Rides borrow the compact arrivals-row
+register (#579) and the provisional-provenance idea from #574, but neither
+covered "a shared roster with per-row provenance."
+
+**The register.**
+
+| Element | Spec |
+|---|---|
+| Compact ride line | one mono line per ride: `ride · PDX · You, Rob +2` — literal lowercase `ride` token (NOT an emoji/car glyph — a glyph here is a vibecoded anti-tell against the mono register), airport code, then rider names (first 2, `+N` for the rest). Middot `·` (U+00B7) separators. Read-only — every ride action lives on the Full card. |
+| Rider name overflow | the name list gets `min-w-0 truncate` + `+N`; the airport token never truncates (the coordination fact), matching the #579 row discipline. |
+| Full ride card | airport header (`ride from PDX` / `ride to PDX` by direction), one rider per line. |
+| Provenance | a self-joined rider (`written_by NULL`) renders plain (`Rob`); an added rider renders `Rob — added by Dave` in muted ink. NEVER an alarm/"action needed"/badge treatment — a ride tag is provisional, not an error (the #209 ink register, not the error surface). No "waiting on X" / holdout framing anywhere (banned nudge pattern). |
+| Member gesture | a quiet `leave` link (muted) on your own row — the only member gesture (opt-out = delete own row; there is no confirm). |
+| Owner gesture | `remove ride` (muted, card-footer) — creator or organizer only. |
+| Add | `+ add riders` chip multiselect (mirrors `AddToFlight`, #574) of non-declined members not already in this ride. |
+| Direction | arrival rides live in the inbound section, departure rides in the "heading home" section — each section carries its own nudge + persistent "start a ride" affordance. |
+
+**Nudge → ride.** The direction-specific ride-share nudge stays a quiet line
+but becomes actionable ("start a ride"); once a ride covers that airport the
+nudge suppresses (its job is done). A persistent, low-emphasis "start a ride"
+affordance also sits near each section's add-CTA so a manual ride (no cluster —
+the free-text-airport miss, the un-logged flight) always has an entry point.

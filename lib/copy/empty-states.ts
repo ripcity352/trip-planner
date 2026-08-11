@@ -463,6 +463,10 @@ export const M3_UI_STRINGS = {
   // stays open). {count} distinct people, {airport} free text.
   arrivals_ride_share_template:
     "{count} of you land at {airport} within an hour — split a ride?",
+  // #581 — outbound-phrased sibling (people leaving together share a ride TO
+  // the airport). Same "split a ride?" close.
+  arrivals_ride_share_template_outbound:
+    "{count} of you fly out of {airport} around then — split a ride?",
   // Card origin label, inbound only. {origin} is free text ("JFK", "Ohio").
   arrivals_card_from_template: "from {origin}",
   // #574 — co-traveler tagging (shared flights). The picker on the add-a-
@@ -485,6 +489,36 @@ export const M3_UI_STRINGS = {
   addToFlight_label: "Who else is on it?",
   addToFlight_submit: "Add them",
   addToFlight_cancel: "Cancel",
+  // #581 — ride groups. Recommend (the nudge CTA) → add who you're riding
+  // with. No confirm gesture: added riders show "added by X" and opt out.
+  rideGroup_startCta: "start a ride",
+  // Persistent manual entry per direction (a ride with no cluster to seed).
+  rideGroup_manualCta_inbound: "sorting out a ride from the airport?",
+  rideGroup_manualCta_outbound: "sorting out a ride to the airport?",
+  // Card heading. {airport} free text; TBD fallback when airport is blank.
+  rideGroup_card_heading_inbound: "ride from {airport}",
+  rideGroup_card_heading_outbound: "ride to {airport}",
+  rideGroup_card_heading_inbound_tbd: "ride from the airport",
+  rideGroup_card_heading_outbound_tbd: "ride to the airport",
+  // Provenance on an added rider row. {name} = who added them. Quiet, never
+  // an alarm — a ride tag is provisional, not an error (no "waiting on X").
+  rideGroup_added_by_template: "added by {name}",
+  // Row + card controls.
+  rideGroup_leave: "leave",
+  rideGroup_remove: "clear this ride",
+  rideGroup_addRiders_trigger: "add riders",
+  rideGroup_addRiders_label: "Who else is riding?",
+  rideGroup_addRiders_submit: "Add them",
+  rideGroup_cancel: "Cancel",
+  // Start-a-ride sheet.
+  rideGroup_sheet_title: "Start a ride",
+  rideGroup_sheet_airport_label_inbound: "From",
+  rideGroup_sheet_airport_label_outbound: "To",
+  rideGroup_sheet_riders_label: "Who's riding?",
+  rideGroup_sheet_submit: "Start ride",
+  // Compact glance line token (mono register — NEVER an emoji) + self label.
+  rideGroup_compact_token: "ride",
+  rideGroup_self_label: "You",
   // Roster + contacts (#39, #40, Wave 4b)
   roster_pageTitle: "Roster",
   // #533 — the roster deliberately lists ALL members (including "Can't

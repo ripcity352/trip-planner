@@ -4336,3 +4336,124 @@ riding with), the ride-share unconfirmed-count fix, and a "who hasn't
 logged travel" count (high persona value but risks the banned
 completion-score/nag pattern — needs its own microcopy review). #580
 (airport-code typeahead picker) pairs with this but ships independently.
+
+## 2026-08-10 — #581 ride groups (recommend → add who you're riding with)
+
+**Gap named.** `computeRideShareClusters` only *counts* ("3 of you land at
+PDX within an hour — split a ride?") and stops at the suggestion; the crew
+then coordinates the actual ride in the group chat — the exact labor this
+app exists to remove (#118 Deliverable 1, its buildable slice). The spec
+gap: there is no *persisted ride primitive*. Arrivals has legs (per-person
+transport facts) but no way to record **who is sharing a car**, in either
+direction. Closing it needs a new content type, not a patch to the nudge.
+
+**Decision — a persisted ride group, provenance-only (no confirm).** Two
+new tables reusing the #574 write-on-behalf + forgery-proof-attribution
+pattern, applied to a *new entity* (a ride is not a leg — it has no
+pre-existing row to attribute onto, and members without a logged flight
+must be addable). **Both directions** (operator call 2026-08-10): an
+**arrival ride** shares a car *from* the airport (inbound legs), a
+**departure ride** shares a car *to* the airport (outbound legs).
+
+```
+ride_group_trip_id(uuid) → uuid   -- SECURITY DEFINER helper; resolves a
+                                     group's trip_id so child-table policies
+                                     never double-RLS on ride_groups (F8)
+ride_groups
+  id, trip_id → trips ON DELETE CASCADE,
+  created_by_trip_member_id → trip_members ON DELETE SET NULL,
+  airport text,                        -- sole identifier (AirportPicker #580)
+  direction text check (direction in ('inbound','outbound')) not null,
+  visibility trip_visibility not null default 'everyone',   -- rule #7
+  idempotency_key uuid, created_at,
+  partial unique (trip_id, created_by_trip_member_id, idempotency_key)  -- rule #9
+ride_group_members
+  ride_group_id → ride_groups ON DELETE CASCADE,
+  trip_member_id → trip_members ON DELETE CASCADE,           -- remove-from-trip cleans up
+  written_by_trip_member_id → trip_members ON DELETE SET NULL,  -- provenance
+  created_at, PK(ride_group_id, trip_member_id)
+```
+
+**Load-bearing calls (two-round adversarial subagent design review —
+R1: mobile-UI / party-planning / organizer-persona; R2: simplicity /
+interaction / correctness-RLS):**
+
+- **No confirm gesture (drop the #574 confirm half).** `written_by` is
+  *permanent provenance*, never cleared: a self-joined rider (creator, or
+  someone who added themselves) is born `written_by NULL` and reads plain;
+  an added rider carries `— added by X` for good. The **only** member
+  gesture is **opt-out = delete your own row**. Rationale: a ride is a
+  *shared coordination note*, not a personal record (party-planning R1),
+  so the anti-conscription consent that made #574's confirm load-bearing
+  doesn't apply — the blast radius of being added is a visible, one-tap-
+  removable line, not a forged personal record. Matches the operator's
+  #579 stance ("assume unconfirmed tags are fine"). Bonus: with no confirm,
+  `ride_group_members` has **no UPDATE surface at all** (`revoke update`),
+  which closes the correctness review's "confirm-UPDATE can repoint
+  trip_member_id" HIGH finding by construction.
+- **Any member can create/add; creator need not be a rider.** Relaxes the
+  first-cut "only someone in the ride can add" to match #574 exactly and,
+  for free, covers the organizer's real job — arranging the groom's airport
+  pickup (a ride the organizer isn't in). `created_by` is the delete
+  authority; creator-as-rider is **not** an invariant (organizer-arranged
+  ride = created_by set, no self membership — a legit state, not corruption).
+- **Membership keyed on `trip_member_id` only — no `travel_legs`
+  dependency** (party-planning R1). The rider picker lists *all* non-
+  declined members, not just those with a logged flight: the guy renting a
+  car, the un-logged flight, the "PDX" vs "Portland" free-text miss are
+  exactly where group-chat labor lives. Gating on legs would rebuild the
+  nudge's blind spot.
+- **`airport` is the sole identifier** (simplicity R2). Cut `label` (a
+  superset of airport — redundant now that #580 shipped `AirportPicker`)
+  and `note` (a freetext note quietly re-imports the group chat the feature
+  exists to drain).
+- **No new cluster API.** Seed the create form from the existing client-side
+  cluster computation (airport + pre-checked members); the ride stores no
+  time (the "~6pm" is display-only in the nudge). `computeRideShareClusters`
+  is generalized to take a direction (inbound=arrive_at, outbound=depart_at).
+
+**RLS (mirrors the #574 forgery-proofing verbatim; all tenancy via the
+definer helper):**
+- `ride_groups` SELECT `can_see_content(trip_id, visibility)`; INSERT
+  `created_by` = caller's own membership; UPDATE/DELETE creator **or**
+  `is_trip_organizer(trip_id)` (so a SET-NULL-orphaned group stays
+  cleanable).
+- `ride_group_members` SELECT members of the group's trip; INSERT self-join
+  pins `trip_member_id` to `auth.uid()` **and** `written_by IS NULL`; INSERT
+  on-behalf binds `written_by` to the caller's membership in the *group's*
+  trip, target in the *group's* trip, `target <> writer`. Target tenancy is
+  bound to the group's trip_id (NOT `is_trip_member_by_member_id`, which
+  would admit a cross-trip target for a dual-trip user — R2 F4). **`revoke
+  update` entirely.** DELETE own row (opt-out).
+- **2nd-FK PostgREST trap** ([[feedback_postgrest_embed_second_fk]]):
+  `ride_group_members` has TWO FKs to `trip_members`. **No embeds** — a
+  `ride_group_manifest` security-invoker view exposes `trip_member_id` /
+  `written_by_trip_member_id` as *plain scalars*; names resolve app-side via
+  `resolveMemberName`. Verified with a real curl to local `supabase_rest`
+  (bare embed → 300, we never write one). Grant hygiene: revoke public/anon,
+  grant authenticated; re-assert after #361 grant-repair.
+
+**Server actions (4):** `createRideGroupWithRiders` (insert group + fan-out
+riders; idempotent + self-healing — parent-23505 re-selects the group AND
+re-runs the member fan-out so a mid-crash replay backfills missing riders),
+`addRidersToRide`, `leaveRide` (delete own row; if it empties the group,
+delete the group — no zero-rider ghost card), `deleteRideGroup`
+(creator/organizer, cascade). Each takes `idempotency_key`, reuses the
+`tagCoTravelersAction` per-row 42501-skip / 23505-replay loop and a new
+rate-limit scope.
+
+**Surface.** A persistent quiet "start a ride" affordance per direction
+section (pre-seeds airport + clustered members when the tapper is in a
+cluster); the direction-specific nudge suppresses for an airport once a ride
+covers it. Full view: a ride card (airport header + rider list, added rows
+`— added by X`, own row a quiet `leave`, creator/organizer `remove ride`).
+Compact: one read-only mono line per ride `ride · PDX · You, Rob +2` — **no
+emoji** (operator: a car glyph violates the mono/hairline register — a
+vibecoded anti-tell). No push, no "waiting on X" framing (no-nag guardrail).
+
+**Deferred to v2 (schema-ready, UI-later):** custom / `hide_from_celebrant`
+ride visibility (the column ships and RLS respects it; only the authoring UI
+waits — the surprise-groom-pickup case), a celebrant no-confirm "arranged"
+drawer read, granular nudge-suppression ("2 more of you land then — join
+Dave's ride" for the un-covered subset of a cluster), capacity/seats, and an
+owner/booker role (all cut as scope creep or group-chat's job).

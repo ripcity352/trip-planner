@@ -1,10 +1,10 @@
 /**
- * Tests for `lib/utils/ride-share.ts` (#477).
+ * Tests for `lib/utils/ride-share.ts` (#477 / #581).
  *
- * The manifest renders one quiet static line per cluster of inbound legs
- * that land at the same (non-empty) airport within 60 minutes. There is
- * NO matching engine and NO persistence (#118 stays open) — this is a
- * pure computed label.
+ * The manifest renders one quiet static line per cluster of legs that share
+ * the same (non-empty) airport within 60 minutes, and (#581) seeds the
+ * "start a ride" form from the cluster's `memberIds`. Both directions:
+ * inbound clusters on arrival, outbound on departure.
  */
 
 import { describe, expect, it } from "vitest";
@@ -36,14 +36,16 @@ function makeLeg(overrides: Partial<TravelLeg> = {}): TravelLeg {
   };
 }
 
-describe("computeRideShareClusters", () => {
+describe("computeRideShareClusters — inbound", () => {
   it("clusters 2+ inbound legs at the same airport within 60 minutes", () => {
     const clusters = computeRideShareClusters([
-      makeLeg({ arrive_at: "2026-08-14T18:00:00.000Z" }),
-      makeLeg({ arrive_at: "2026-08-14T18:45:00.000Z" }),
-      makeLeg({ arrive_at: "2026-08-14T19:00:00.000Z" }),
+      makeLeg({ trip_member_id: "a", arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({ trip_member_id: "b", arrive_at: "2026-08-14T18:45:00.000Z" }),
+      makeLeg({ trip_member_id: "c", arrive_at: "2026-08-14T19:00:00.000Z" }),
     ]);
-    expect(clusters).toEqual([{ airport: "LAX", count: 3 }]);
+    expect(clusters).toEqual([
+      { airport: "LAX", count: 3, memberIds: ["a", "b", "c"] },
+    ]);
   });
 
   it("does not cluster legs at different airports even within the window", () => {
@@ -64,17 +66,18 @@ describe("computeRideShareClusters", () => {
 
   it("includes a leg exactly 60 minutes after the first", () => {
     const clusters = computeRideShareClusters([
-      makeLeg({ arrive_at: "2026-08-14T18:00:00.000Z" }),
-      makeLeg({ arrive_at: "2026-08-14T19:00:00.000Z" }),
+      makeLeg({ trip_member_id: "a", arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({ trip_member_id: "b", arrive_at: "2026-08-14T19:00:00.000Z" }),
     ]);
-    expect(clusters).toEqual([{ airport: "LAX", count: 2 }]);
+    expect(clusters).toEqual([
+      { airport: "LAX", count: 2, memberIds: ["a", "b"] },
+    ]);
   });
 
-  it("ignores outbound legs entirely", () => {
+  it("ignores outbound legs entirely when computing inbound", () => {
     const clusters = computeRideShareClusters([
       makeLeg({ direction: "outbound", depart_at: "2026-08-14T18:00:00.000Z" }),
       makeLeg({ direction: "outbound", depart_at: "2026-08-14T18:30:00.000Z" }),
-      // even an outbound leg with a stray arrive_at must not count
       makeLeg({ direction: "outbound" }),
       makeLeg({ direction: "inbound" }),
     ]);
@@ -100,52 +103,31 @@ describe("computeRideShareClusters", () => {
 
   it("matches airports case-insensitively and ignores surrounding whitespace", () => {
     const clusters = computeRideShareClusters([
-      makeLeg({ airport: "lax", arrive_at: "2026-08-14T18:00:00.000Z" }),
-      makeLeg({ airport: " LAX ", arrive_at: "2026-08-14T18:30:00.000Z" }),
+      makeLeg({ trip_member_id: "a", airport: "lax", arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({ trip_member_id: "b", airport: " LAX ", arrive_at: "2026-08-14T18:30:00.000Z" }),
     ]);
     expect(clusters).toHaveLength(1);
     expect(clusters[0].count).toBe(2);
+    expect(clusters[0].memberIds).toEqual(["a", "b"]);
   });
 
   it("counts people, not legs — two legs by the same member are one person", () => {
     const clusters = computeRideShareClusters([
-      makeLeg({
-        trip_member_id: "member-same",
-        arrive_at: "2026-08-14T18:00:00.000Z",
-      }),
-      makeLeg({
-        trip_member_id: "member-same",
-        arrive_at: "2026-08-14T18:30:00.000Z",
-      }),
+      makeLeg({ trip_member_id: "member-same", arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({ trip_member_id: "member-same", arrive_at: "2026-08-14T18:30:00.000Z" }),
     ]);
     expect(clusters).toEqual([]);
   });
 
-  it("excludes unconfirmed co-traveler tags (#574 written_by set) from the count", () => {
-    // A pending tag asserts someone's flight before they've opted in — it must
-    // not inflate the ride-share count (rule #8: recommend, don't assume).
-    // Mirrors getArrivalTimesByTrip's `.is("written_by_trip_member_id", null)`.
+  it("dedupes memberIds when a member has two legs in the same window", () => {
     const clusters = computeRideShareClusters([
-      makeLeg({ arrive_at: "2026-08-14T18:00:00.000Z" }),
-      makeLeg({
-        arrive_at: "2026-08-14T18:30:00.000Z",
-        // tagged by member-1 onto this member's row, not yet confirmed
-        written_by_trip_member_id: "tagger-1",
-      }),
+      makeLeg({ trip_member_id: "a", arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({ trip_member_id: "b", arrive_at: "2026-08-14T18:20:00.000Z" }),
+      makeLeg({ trip_member_id: "a", arrive_at: "2026-08-14T18:40:00.000Z" }),
     ]);
-    // Only the one confirmed (self-logged) leg remains — no cluster of 2.
-    expect(clusters).toEqual([]);
-  });
-
-  it("counts a confirmed (adopted) tag — written_by cleared to null", () => {
-    const clusters = computeRideShareClusters([
-      makeLeg({ arrive_at: "2026-08-14T18:00:00.000Z" }),
-      makeLeg({
-        arrive_at: "2026-08-14T18:30:00.000Z",
-        written_by_trip_member_id: null,
-      }),
+    expect(clusters).toEqual([
+      { airport: "LAX", count: 2, memberIds: ["a", "b"] },
     ]);
-    expect(clusters).toEqual([{ airport: "LAX", count: 2 }]);
   });
 
   it("emits one cluster per airport when both qualify", () => {
@@ -158,5 +140,79 @@ describe("computeRideShareClusters", () => {
     expect(clusters).toHaveLength(2);
     const airports = clusters.map((c) => c.airport).sort();
     expect(airports).toEqual(["BUR", "LAX"]);
+  });
+
+  it("excludes unconfirmed co-traveler tags (#574 written_by set) from the count", () => {
+    // A pending tag asserts someone's flight before they've opted in — it must
+    // not inflate the ride-share count (rule #8). Mirrors getArrivalTimesByTrip.
+    const clusters = computeRideShareClusters([
+      makeLeg({ arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({
+        arrive_at: "2026-08-14T18:30:00.000Z",
+        written_by_trip_member_id: "tagger-1",
+      }),
+    ]);
+    expect(clusters).toEqual([]);
+  });
+
+  it("counts a confirmed (adopted) tag — written_by cleared to null", () => {
+    const clusters = computeRideShareClusters([
+      makeLeg({ trip_member_id: "a", arrive_at: "2026-08-14T18:00:00.000Z" }),
+      makeLeg({
+        trip_member_id: "b",
+        arrive_at: "2026-08-14T18:30:00.000Z",
+        written_by_trip_member_id: null,
+      }),
+    ]);
+    expect(clusters).toEqual([
+      { airport: "LAX", count: 2, memberIds: ["a", "b"] },
+    ]);
+  });
+});
+
+describe("computeRideShareClusters — outbound", () => {
+  it("clusters 2+ outbound legs at the same airport within 60 minutes (by depart_at)", () => {
+    const clusters = computeRideShareClusters(
+      [
+        makeLeg({
+          trip_member_id: "a",
+          direction: "outbound",
+          arrive_at: null,
+          depart_at: "2026-08-18T06:00:00.000Z",
+        }),
+        makeLeg({
+          trip_member_id: "b",
+          direction: "outbound",
+          arrive_at: null,
+          depart_at: "2026-08-18T06:40:00.000Z",
+        }),
+      ],
+      "outbound"
+    );
+    expect(clusters).toEqual([
+      { airport: "LAX", count: 2, memberIds: ["a", "b"] },
+    ]);
+  });
+
+  it("ignores inbound legs when computing outbound", () => {
+    const clusters = computeRideShareClusters(
+      [
+        makeLeg({ direction: "inbound", arrive_at: "2026-08-14T18:00:00.000Z" }),
+        makeLeg({ direction: "inbound", arrive_at: "2026-08-14T18:30:00.000Z" }),
+      ],
+      "outbound"
+    );
+    expect(clusters).toEqual([]);
+  });
+
+  it("ignores outbound legs with no departure time", () => {
+    const clusters = computeRideShareClusters(
+      [
+        makeLeg({ direction: "outbound", arrive_at: null, depart_at: null }),
+        makeLeg({ direction: "outbound", arrive_at: null, depart_at: null }),
+      ],
+      "outbound"
+    );
+    expect(clusters).toEqual([]);
   });
 });
