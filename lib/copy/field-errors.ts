@@ -27,6 +27,9 @@ export const FIELD_ERRORS = {
   expense_amount_required: "How much? Pop in an amount over $0.",
   expense_amount_invalid: "How much? Pop in an amount over $0.",
 
+  // Add shopping-list item sheet
+  shopping_item_name_required: "Give it a name — what to grab?",
+
   // Dashboard-header trip edit sheet
   trip_name_required: "The trip needs a name — even a working title.",
   trip_name_too_long: "That's a mouthful. Trim the name down a bit.",

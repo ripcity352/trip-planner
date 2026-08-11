@@ -943,8 +943,14 @@ export type TripEditUIStringKey = keyof typeof TRIP_EDIT_UI_STRINGS;
 export const SHOPPING_LIST_UI_STRINGS = {
   heading: "Shopping list",
   addCta: "What are we bringing?",
+  nameLabel: "What is it?",
   namePlaceholder: "e.g. 2 handles of tequila",
   costLabel: "Rough cost (optional)",
+  categoryLabel: "Category (optional)",
+  // gap-C — cost tag template; `formatCents` produces the amount, this
+  // template supplies the "roughly" framing. Never `formatCost` (that
+  // one appends the banned per-head `~$X/head` split).
+  costTag_template: "~{amount}",
   surpriseToggle_template: "Surprise — hide from {name}",
   claimCta: "I've got this",
   claimedByYou: "You've got this one.",
@@ -956,6 +962,10 @@ export const SHOPPING_LIST_UI_STRINGS = {
   categoryBooze: "booze",
   categorySupplies: "supplies",
   categoryGear: "gear",
+  submitCta: "Add it",
+  cancelCta: "Never mind",
+  deleteCta: "Remove",
+  deleteConfirm: "Remove this? Can't undo.",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

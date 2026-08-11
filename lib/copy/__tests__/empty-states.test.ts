@@ -12,8 +12,10 @@ import {
   DASHBOARD_GLANCE_STRINGS,
   M2_UI_STRINGS,
   M3_UI_STRINGS,
+  SHOPPING_LIST_UI_STRINGS,
   type EmptyStateKey,
   type AttendeeCountBucketLabelKey,
+  type ShoppingListUiStringKey,
 } from "@/lib/copy/empty-states";
 
 const EXPECTED_KEYS: readonly EmptyStateKey[] = [
@@ -234,5 +236,59 @@ describe("DASHBOARD_GLANCE_STRINGS", () => {
     expect(DASHBOARD_GLANCE_STRINGS.glance_polls_open_other_template).toContain(
       "{count}"
     );
+  });
+});
+
+// Shopping-list UI strings (Task 6) — enumerates every key so a bag
+// addition (e.g. costTag_template, gap-C) fails loudly if forgotten here.
+const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
+  "heading",
+  "addCta",
+  "nameLabel",
+  "namePlaceholder",
+  "costLabel",
+  "categoryLabel",
+  "costTag_template",
+  "surpriseToggle_template",
+  "claimCta",
+  "claimedByYou",
+  "claimedBy_template",
+  "gotIt",
+  "unclaim",
+  "gotItDivider",
+  "categorySnacks",
+  "categoryBooze",
+  "categorySupplies",
+  "categoryGear",
+  "submitCta",
+  "cancelCta",
+  "deleteCta",
+  "deleteConfirm",
+];
+
+describe("SHOPPING_LIST_UI_STRINGS", () => {
+  it("covers every key in ShoppingListUiStringKey", () => {
+    for (const key of SHOPPING_LIST_EXPECTED_KEYS) {
+      expect(SHOPPING_LIST_UI_STRINGS).toHaveProperty(key);
+    }
+    expect(Object.keys(SHOPPING_LIST_UI_STRINGS).sort()).toEqual(
+      [...SHOPPING_LIST_EXPECTED_KEYS].sort()
+    );
+  });
+
+  it("has a non-empty string for every key", () => {
+    for (const key of SHOPPING_LIST_EXPECTED_KEYS) {
+      const value = SHOPPING_LIST_UI_STRINGS[key];
+      expect(typeof value).toBe("string");
+      expect(value.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("templates carry their placeholders", () => {
+    expect(SHOPPING_LIST_UI_STRINGS.costTag_template).toContain("{amount}");
+    expect(SHOPPING_LIST_UI_STRINGS.surpriseToggle_template).toContain(
+      "{name}"
+    );
+    expect(SHOPPING_LIST_UI_STRINGS.claimedBy_template).toContain("{name}");
   });
 });

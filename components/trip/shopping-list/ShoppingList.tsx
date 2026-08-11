@@ -4,12 +4,24 @@
  * `<ShoppingList>` — client component rendered by
  * `/trips/[tripId]/shopping-list`.
  *
- * PLACEHOLDER (Task 5) — renders a bare item-name list so the route
- * compiles. Task 6 replaces this with the real claim/bought/notes UI
- * (add form, category grouping, claim CTA, reaction bar, notes thread,
- * detail sheet — see docs/superpowers/specs/2026-08-11-shopping-list-design.md).
+ * Builds the `memberMap` from `tripMembers` (matches the arrivals
+ * manifest — the page hands down raw members, the client component
+ * builds the lookup). Partitions items into active vs. bought
+ * ("got it") and renders:
+ *   1. the active list,
+ *   2. a `gotItDivider` (no count — CLAUDE.md hard-bans completion
+ *      scores) + struck bought items when any exist,
+ *   3. the empty state (gap-D) only when there are ZERO items total —
+ *      never when active is merely empty but bought items remain,
+ *   4. `<AddItemSheet>`.
  */
 
+import * as React from "react";
+
+import { EMPTY_STATES, SHOPPING_LIST_UI_STRINGS } from "@/lib/copy/empty-states";
+import { resolveMemberName } from "@/lib/utils/member-display";
+import { AddItemSheet } from "./AddItemSheet";
+import { ShoppingItemCard } from "./ShoppingItemCard";
 import type { ShoppingItem, TripMember } from "@/lib/db/types";
 import type { ViewerMember } from "@/lib/db/trips";
 
@@ -20,33 +32,75 @@ export interface ShoppingListProps {
   viewer: ViewerMember;
 }
 
-export function ShoppingList({ items, tripMembers }: ShoppingListProps) {
-  if (items.length === 0) {
-    // Placeholder-only copy — Task 6 wires this through
-    // lib/copy/empty-states.ts (rule: don't inline copy literals).
-    return (
-      <p className="text-muted-foreground text-sm">Nothing on the list yet.</p>
-    );
-  }
+const ORGANIZER_ROLES = new Set(["organizer", "co_organizer"]);
 
-  const memberNameById = new Map(
-    tripMembers.map((member) => [member.id, member.display_name])
+export function ShoppingList({ items, tripMembers, tripId, viewer }: ShoppingListProps) {
+  const memberMap = React.useMemo(
+    () => new Map(tripMembers.map((member) => [member.id, member])),
+    [tripMembers]
   );
 
+  const celebrantName = React.useMemo(() => {
+    const celebrant = tripMembers.find((member) => member.is_celebrant);
+    return celebrant ? resolveMemberName(memberMap, celebrant.id) : null;
+  }, [tripMembers, memberMap]);
+
+  const isViewerOrganizer = ORGANIZER_ROLES.has(viewer.role);
+
+  const active = items.filter((item) => !item.bought);
+  const bought = items.filter((item) => item.bought);
+
+  const canDelete = (item: ShoppingItem) =>
+    isViewerOrganizer || item.created_by_trip_member_id === viewer.id;
+
   return (
-    <ul className="divide-border divide-y">
-      {items.map((item) => (
-        <li key={item.id} className="py-3">
-          <span className={item.bought ? "line-through" : undefined}>
-            {item.name}
-          </span>
-          {item.claimed_by_trip_member_id ? (
-            <span className="text-muted-foreground ml-2 text-sm">
-              {memberNameById.get(item.claimed_by_trip_member_id) ?? "Someone"}
-            </span>
+    <div className="flex flex-col gap-6">
+      {items.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          {EMPTY_STATES.shopping_list_empty}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {active.length > 0 ? (
+            <ul>
+              {active.map((item) => (
+                <ShoppingItemCard
+                  key={item.id}
+                  item={item}
+                  memberMap={memberMap}
+                  viewerMemberId={viewer.id}
+                  canDelete={canDelete(item)}
+                  claimReadOnly={false}
+                />
+              ))}
+            </ul>
           ) : null}
-        </li>
-      ))}
-    </ul>
+
+          {bought.length > 0 ? (
+            <>
+              {/* gotItDivider carries no count — a claimed/total fraction
+                  is a disguised completion score (CLAUDE.md hard-ban). */}
+              <p className="text-muted-foreground mt-4 mb-1 text-xs font-medium tracking-wide uppercase">
+                {SHOPPING_LIST_UI_STRINGS.gotItDivider}
+              </p>
+              <ul>
+                {bought.map((item) => (
+                  <ShoppingItemCard
+                    key={item.id}
+                    item={item}
+                    memberMap={memberMap}
+                    viewerMemberId={viewer.id}
+                    canDelete={canDelete(item)}
+                    claimReadOnly
+                  />
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      <AddItemSheet tripId={tripId} viewer={viewer} celebrantName={celebrantName} />
+    </div>
   );
 }
