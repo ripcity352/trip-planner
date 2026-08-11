@@ -34,10 +34,11 @@ logging it is fine.
 - **Surprise items**: `hide_from_celebrant` visibility → **fully absent** to the
   celebrant (no "1 hidden item" teaser). Enforced by existing RLS for free.
 - Idempotent add (rule #9 — drunk double-tap on bad signal).
-- **Reactions (👍/👎)** and **Notes (comment thread)** per item — the glanceable
-  row shows only tiny indicators; the full interaction lives in a tap-in detail
-  **bottom sheet**. Full design in **§12** (this is a meaningful scope increase:
-  two child tables + two action files + the detail sheet).
+- **Reactions + Notes** per item, shipped as **PR2 stacked on the core-list PR1**
+  (§12). The glanceable **row surfaces only the positive 👍 like** + a note-count;
+  the **downvote (👎), the fuller emoji set, and the Notes thread live in the
+  tap-in detail bottom sheet.** Aggregate-only is DB-enforced (no reactor identity
+  ever leaves the DB). Full design in **§12**.
 
 ### Deferred (noted, not built)
 - Organizer **claim-on-behalf** (needs the rule-#8 consent/attribution path).
@@ -388,67 +389,98 @@ a `supabase_migrations.schema_migrations` bookkeeping row to
 `POST /v1/projects/bonvqazcqwkrowtkdmuq/database/query`, then verify (re-query
 `shopping_list_items`, `shopping_item_reactions`, `shopping_item_comments` exist,
 RLS on; advisors + login healthy). MCP `apply_migration` is classifier-blocked —
-use the direct curl. (Reactions + comments ship in the **same** migration as the
-items table, or a second timestamped migration in the same PR — either way all
-three tables + their RLS land together before the feature is reachable.)
+use the direct curl. **PR1** applies the `shopping_list_items` migration (verify
+that table + RLS). **PR2** applies its own migration — `shopping_item_reactions`,
+`shopping_item_comments`, and the `shopping_item_reaction_facts` view — after PR2
+merges (verify all three exist, RLS on, base-table SELECT on reactions revoked,
+advisors + login healthy). Each PR's migration is local-`db reset`-green before
+the curl.
 
 ## 12. Reactions + Notes (comment thread) — the social layer
 
-Decided with the operator: **👍/👎 reactions** (not like-only — the operator's
-call, against the research default) and a **flat Notes thread** per item, both
-reached by tapping a row to open a **detail bottom sheet**. Grounded in
-`announcement_reactions` (the shipped reaction engine, #389/#417) and the
-`ride_groups` member-write template. Prior art: Instacart "note to shopper" +
-Todoist thread, iMessage-tapback tone.
+**Ships as PR2, stacked on the core-list PR1** (operator's sequencing call — the
+social layer + the first-ever hand-rolled bottom sheet roughly doubles the build,
+so PR1 gets the coordination MVP to prod, PR2 layers this on). PR2 has its own
+timestamped migration (the two child tables + the reaction facts view) applied to
+prod after PR2 merges, per §11.
 
-### 12.1 The dislike-toxicity mitigations (load-bearing — this is why 👎 is OK here)
+**Reaction model (operator's reframe):** the **glanceable row surfaces only the
+positive "like" (👍)** — you can like inline from the row, and see the like count.
+The **downvote and the richer emoji set live only in the tap-in detail sheet.**
+This keeps 👎 off the front-and-center scan (lowers social temperature) while
+still offering it deliberately. A **flat Notes thread** per item also lives in the
+detail sheet. Grounded in `announcement_reactions` (the shipped 6-emoji engine,
+#389/#417) and the `ride_groups` member-write template.
 
-A 👎 on a friend's item is socially risky on a shared list. It is acceptable
-**only** with all of these, which are hard requirements, not nice-to-haves:
-- **Aggregate-only, never per-name.** The UI shows `👎 1` but **never who**
-  disliked. `summarize*` folds drop `trip_member_id` from output (exactly like
-  `summarizeReactions` — honors `killed-and-deferred.md:50` "no per-name
-  going/declining by default"). This single rule defuses "who downvoted my
-  tequila." Only the viewer's **own** reaction state is individuated (to render
-  the toggle), never anyone else's.
-- **Never an ordering key.** The list is **never** sorted by reaction count / net
-  score. Reactions are display-only metadata (a stray `ORDER BY reaction_count`
-  manufactures a leaderboard — call it out in query review).
-- **No per-person totals, no net score, no "most-wanted" view, no "you reacted to
-  5 items" streak.** Counts are per-item and local only.
-- **Mutual exclusivity is soft (action-enforced), UI-guided.** Tapping 👎 clears
-  your 👍 (and vice-versa) via the desired-state action; the DB does not hard-bar
-  holding both (mirrors the announcement engine's insert/delete model). Low stakes.
+### 12.1 Reaction vocabulary + the two-surface split
 
-### 12.2 Schema — two child tables (same migration/PR as items)
+- **Fixed set incl 👎, ≤6 (honors the reaction-inflation cap):**
+  `SHOPPING_REACTION_EMOJI = ['👍','👎','❤️','🔥','😂','🍻'] as const` (drops the
+  announcement set's 🫡 to fit 👎 within six; adjustable — it's one const + the DB
+  CHECK, changed together in a migration).
+- **Independent toggles, NO mutual exclusivity** — exact clone of the announcement
+  engine (a member may hold any subset; insert/delete per emoji). This is a
+  deliberate simplification from the earlier draft: it removes the 👍/👎
+  opposite-clear race entirely. 👍+👎 held together is allowed, rare, harmless.
+- **Row = 👍 only** (interactive like + count). **Detail sheet = full set incl 👎.**
+  The row never renders 👎/❤️/etc.; discovery of dislike/other reactions requires
+  the tap-in.
 
-Both **inherit the parent item's visibility** (a note/reaction on a surprise item
-is hidden from the celebrant for free) by an inline `EXISTS` on
-`shopping_list_items` calling `can_see_content(i.trip_id, i.visibility)` — **no
-new SECURITY DEFINER fn** (I5 stays no-op), mirroring `announcement_reactions`
-RLS exactly. `trip_id` is denormalized onto both children for scoping/indexing.
+### 12.2 Aggregate-only enforced at the DB (the load-bearing 👎 mitigation)
+
+The promise "you see `👎 3`, never *who*" is a **hard requirement** (rule #5: RLS
+is the source of truth; an app-layer fold is insufficient). The prior draft
+leaked: `grant select` on the reactions table exposes `trip_member_id`, so a
+member could `GET /shopping_item_reactions?emoji=eq.👎&select=trip_member_id` and
+enumerate downvoters. Fix — enforce identity-hiding at the data layer:
+
+- **Revoke base-table SELECT.** `shopping_item_reactions` grants only
+  `insert, delete` to `authenticated` (writes bind to own seat; DELETE by
+  predicate needs no SELECT). No client/server path reads `trip_member_id`.
+- **Reads go through a facts surface that never returns `trip_member_id`:** a
+  view `shopping_item_reaction_facts` exposing `(id, item_id, trip_id, emoji,
+  is_mine)` where `is_mine = (trip_member_id ∈ my seats)`. Because base SELECT is
+  revoked, this is a **`security definer` view** that **re-implements the parent
+  visibility filter itself** (`exists … can_see_content(i.trip_id, i.visibility)`)
+  and computes `is_mine` via `auth.uid()`; `revoke all from public, anon,
+  service_role; grant select to authenticated`. (A definer *view* is not a
+  definer *function*, so the I5 function-scanner does not flag it — but the
+  anon-oracle rule still applies: revoke anon. **Pair `security-reviewer` on this
+  view specifically** — it's the one place visibility is hand-re-implemented.)
+- Counts + `mine` are derived from this view; `trip_member_id` never leaves the DB.
+- **Never an ordering key**, no per-person totals, no net score, no "most-wanted"
+  view/streak (add a unit test asserting the list renders in `created_at` order
+  regardless of reaction counts — the only CI guard against a stray `ORDER BY`).
+
+Comments carry no such secrecy need (authorship is the point), so
+`shopping_item_comments` keeps a normal `grant select`.
+
+### 12.3 Schema — two child tables + the facts view (PR2 migration)
+
+Both children **inherit the parent's visibility** via an inline `EXISTS` on
+`shopping_list_items` calling `can_see_content(i.trip_id, i.visibility)` **AND
+pinning the denormalized `trip_id` to the parent** (`i.trip_id = <child>.trip_id`
+— the announcement template has this pin; the earlier draft dropped it, letting a
+dual-trip member insert a child row whose `trip_id` ≠ its parent's). No new
+SECURITY DEFINER **function** (I5 stays no-op; the facts view is the only definer
+object and is view-scoped).
 
 ```sql
--- REACTIONS: clone announcement_reactions. Natural-key idempotency (no
--- idempotency_key column — the unique constraint IS the guarantee). 👍/👎 only.
 create table public.shopping_item_reactions (
   id             uuid primary key default gen_random_uuid(),
   item_id        uuid not null references public.shopping_list_items(id) on delete cascade,
   trip_id        uuid not null references public.trips(id) on delete cascade,
   trip_member_id uuid not null references public.trip_members(id) on delete cascade,
-  emoji          text not null check (emoji in ('👍','👎')),
+  emoji          text not null check (emoji in ('👍','👎','❤️','🔥','😂','🍻')),
   created_at     timestamptz not null default now(),
-  unique (item_id, trip_member_id, emoji)   -- natural key; insert/delete toggle
+  unique (item_id, trip_member_id, emoji)   -- natural-key idempotency; insert/delete toggle
 );
 
--- NOTES (comments): fresh, ride_groups member-write template. ONE member FK
--- (author) → NO 2nd-FK trap (on-behalf deferred). Real idempotency_key (append
--- create). Immutable body (edit deferred).
 create table public.shopping_item_comments (
   id                     uuid primary key default gen_random_uuid(),
   item_id                uuid not null references public.shopping_list_items(id) on delete cascade,
   trip_id                uuid not null references public.trips(id) on delete cascade,
-  author_trip_member_id  uuid references public.trip_members(id) on delete set null, -- keep note, fall back to Guest
+  author_trip_member_id  uuid references public.trip_members(id) on delete set null, -- keep note; author→"Someone"
   body                   text not null,
   idempotency_key        uuid,
   created_at             timestamptz not null default now(),
@@ -460,102 +492,151 @@ create unique index shopping_item_comments_idempotency
   where idempotency_key is not null;
 ```
 
-**RLS (both, `to authenticated`; parent-visibility inline `EXISTS`):**
-- SELECT: `exists (select 1 from shopping_list_items i where i.id = item_id and public.can_see_content(i.trip_id, i.visibility))`.
-- INSERT with-check: the same parent-visible `EXISTS` **AND** own seat —
-  `trip_member_id`/`author_trip_member_id in (select tm.id from trip_members tm where tm.trip_id = <this>.trip_id and tm.user_id = auth.uid())`.
-- DELETE: reactions → own row only (`trip_member_id` is mine). comments →
-  author (`author_trip_member_id` is mine) **OR** `is_trip_organizer(trip_id)`.
-- **No UPDATE policy** on either (reactions toggle via insert/delete; comments
-  immutable). **Grants:** `revoke all from public, anon, authenticated;
-  grant select, insert, delete to authenticated;` (both tables — #361 hygiene,
-  re-assert after db reset).
+**RLS (both tables, `to authenticated`; the `EXISTS` includes the `trip_id` pin):**
+- SELECT: `exists (select 1 from shopping_list_items i where i.id = item_id and i.trip_id = <child>.trip_id and public.can_see_content(i.trip_id, i.visibility))`.
+- INSERT with-check: the same parent-visible+pinned `EXISTS` **AND** own seat
+  (`trip_member_id`/`author_trip_member_id in (select tm.id from trip_members tm where tm.trip_id = <child>.trip_id and tm.user_id = auth.uid())`).
+- DELETE: reactions → own row (`trip_member_id` is mine). comments → author **OR**
+  `is_trip_organizer(trip_id)`. (After author leaves, `author_trip_member_id`
+  nulls → orphaned comment is **organizer-delete-only** — intended escape hatch,
+  same shape as item gap-F.)
+- **No UPDATE policy on either** — reactions toggle via insert/delete; comments
+  are immutable. *The absence of an UPDATE policy is the load-bearing immutability
+  guarantee* (survives a #361 blanket grant-repair, since RLS default-denies with
+  no permissive UPDATE policy — note it in the migration, mirroring the
+  `ride_group_members` R2 note).
 
-### 12.3 Data layer
+**Grants:** `revoke all from public, anon, authenticated;` then —
+reactions: `grant insert, delete to authenticated` (**no base SELECT** — §12.2);
+comments: `grant select, insert, delete to authenticated`. Facts view: definer,
+`grant select to authenticated` only. Re-assert after db reset (#361).
 
-- `lib/reactions/shopping-constants.ts`: `SHOPPING_REACTION_EMOJI = ['👍','👎'] as const`
-  + `type` + guard (client-importable, outside `lib/actions/` — the
-  `lib/reactions/constants.ts` precedent). DB CHECK mirrors it; changing the set
-  = new migration.
-- `lib/db/shopping-item-reactions.ts`: `getReactionsForTrip(supabase, tripId)`
-  (flat trip-scoped select) + pure `summarizeItemReactions(rows, myMemberId):
-  Record<itemId, { counts: Record<emoji, n>; mine: emoji[] }>` — **drops member
-  ids** (aggregate-only). Cloned from `summarizeReactions`.
-- `lib/db/shopping-item-comments.ts`: `COMMENT_COLUMNS` (scalar `author_trip_member_id`,
-  **no embed**), `getCommentsForTrip(supabase, tripId)` (all visible comments for
-  the trip's items — powers row `💬n` counts AND the detail thread at MVP scale),
-  order `created_at` asc. `ShoppingCommentDbError` + no-row sentinel.
-- `lib/db/types.ts`: `ShoppingItemReaction`, `ShoppingItemComment` (+ non-DB
+### 12.4 Data layer
+
+- `lib/reactions/shopping-constants.ts`: `SHOPPING_REACTION_EMOJI` (above) +
+  `ROW_LIKE_EMOJI = '👍'` + type + guard (client-importable, outside
+  `lib/actions/`). DB CHECK mirrors the set.
+- `lib/db/shopping-item-reactions.ts`: `getReactionFactsForTrip(supabase, tripId)`
+  reads the **facts view** (never the base table) → rows `(item_id, emoji,
+  is_mine)`; pure `summarizeItemReactions(rows): Record<itemId, { counts:
+  Record<emoji, n>; mine: emoji[] }>` folds counts + `mine` from `is_mine`.
+  **No `trip_member_id` in input or output** — the enforcement is structural, not
+  a fold that could regress. **`summarizeItemReactions` runs server-side** in
+  `shopping-list/page.tsx` (mirrors `announcements/page.tsx:79`); the client
+  receives only `{ counts, mine }` per item — raw rows never cross to a client
+  component.
+- `lib/db/shopping-item-comments.ts`: `COMMENT_COLUMNS` (scalar
+  `author_trip_member_id`, **no embed**), `getCommentsForTrip(supabase, tripId)`
+  (all visible comments for the trip's items — RLS filters `hide_from_celebrant`
+  bodies AND their counts from the celebrant; order `created_at` asc). At MVP
+  scale this loads all bodies (bachelor-party scale — the `getReactionsForTrip`
+  precedent does the same, no pagination); **revisit with the deferred `/[itemId]`
+  route if it grows**. Author display name resolved at the DB boundary to the
+  **"Someone"** content-author fallback (`announcements_author_fallback`), NOT
+  `resolveMemberName`'s "Guest" (which is the roster-seat context — see
+  `announcements.ts` note). `ShoppingCommentDbError` + no-row sentinel.
+- `lib/db/types.ts`: `ShoppingItemReactionFacts`, `ShoppingItemComment` (+ non-DB
   `authorDisplayName?`).
 
-### 12.4 Actions
+### 12.5 Actions
 
 - `lib/actions/shopping-item-reactions.ts` → `toggleShoppingReaction({ itemId,
-  emoji, active })` — desired-state (not blind flip), cloned from
-  `toggleReactionAction`. Resolve the item's `trip_id` under RLS (hidden parent
-  ⇒ `rls_denied`) → resolve own member → `rateLimitedAction(TOGGLE_SHOPPING_ITEM,
-  …)` → insert-or-delete. `23505` ⇒ success (natural-key replay); `42501` ⇒
-  `rls_denied`; else `reaction_save_failed`. When activating one emoji, also
-  delete the opposite (soft mutual-exclusivity). `router.refresh`, no redirect.
+  emoji, active })` — desired-state, cloned from `toggleReactionAction`. Resolve
+  the item's `trip_id` under RLS (hidden parent ⇒ `rls_denied`) → own member →
+  `rateLimitedAction(TOGGLE_SHOPPING_ITEM, …)` → insert-or-delete-by-predicate
+  (no base SELECT needed). `23505` ⇒ success (natural-key replay); `42501` ⇒
+  `rls_denied`; else `reaction_save_failed`. **No opposite-clear** (independent
+  toggles). `router.refresh`, no redirect.
 - `lib/actions/shopping-item-comments.ts` → `addShoppingComment({ itemId, body },
-  idempotencyKey)` (idempotent insert, 23505 re-select on
-  `(item_id, author, idempotency_key)`, 42501 ⇒ rls_denied) and
+  idempotencyKey)` (idempotent insert; 23505 re-select on
+  `(item_id, author, idempotency_key)`; 42501 ⇒ rls_denied) and
   `deleteShoppingComment(commentId)` (RLS no-op delete, author/organizer).
   Envelope + `callAction` + `router.refresh`; **no redirect** (I12). zod:
   `body z.string().trim().min(1).max(500)`, ids `.uuid()`.
-- Reuse rate scopes: reactions on `TOGGLE_SHOPPING_ITEM`; comment add/delete on
+- Rate scopes: reactions on `TOGGLE_SHOPPING_ITEM`; comment add/delete on
   `MUTATE_SHOPPING_ITEM`.
 
-### 12.5 UI — glanceable row + detail bottom sheet
+### 12.6 UI — glanceable row + detail bottom sheet
 
-**Row (`ShoppingItemCard`) — stays dumb.** Adds three **read-only** indicators,
-each shown **only when ≥1**: `👍n` `👎n` `💬n`. They are **not** independent tap
-targets — the got-it checkbox is the only left control; tapping **anywhere else**
-on the row opens the detail sheet (big forgiving one-handed target). Never `👍 0`
-(absence, not zero). No color/traffic-light states.
+**Row (`ShoppingItemCard`).** One inline **👍 like** control (tap to like/unlike,
+optimistic + ref-guard) + its count, plus a read-only `💬n` note-count — **each
+shown only when ≥1** (never `👍 0`; row shows *nothing* in the meta slot when
+like=notes=0, no placeholder). **No 👎 or other emoji on the row.** The got-it
+checkbox is the other control; tapping **anywhere else** (incl. a struck/bought
+row — social stays reachable after got-it) opens the detail sheet. Row `💬n` /
+`👍n` **lag one `router.refresh`** after a mutation (consistent with the MVP
+"taps lag one round-trip" decision); optimistic thread rows dedupe by
+`idempotency_key` so a refresh doesn't double them. *Rationale for allowing the
+row count at all (vs. the banned header count): the row glyph is a glanceable
+**discovery** indicator ("tap — there's a note"), not a score you're graded on.*
 
-**Detail (`ShoppingItemSheet`) — hand-rolled bottom-sheet panel** (the app has no
-shadcn Sheet/Dialog; clone the `add-expense-sheet` conditional-render + the
-arrivals compact/full panel convention; ~90% height over a dimmed list, swipe/✕
-to dismiss, composer pinned above the keyboard — verify at 375px). Contents:
-- Header: name, `Added by {resolveMemberName} · {relTime}`, claim CTA, optional
-  cost tag (`formatCents`, never `formatCost` — §7 gap-C).
-- **Reaction strip:** the 👍 and 👎 pills, **own-state tinted** when it's yours,
-  count shown only when ≥1, tap toggles yours (optimistic + ref-guard, cloned
-  from `reaction-row.tsx`). aria `role="group"`, each pill `aria-pressed`,
-  44px targets.
-- **Notes thread:** header is the plain word "Notes" (**not** "Notes (2)" — a
-  header count is a soft score). Flat, newest-at-bottom, `{name} · {relTime}` +
-  body via `resolveMemberName` (**never** `.email` — I6); author/organizer sees a
-  delete affordance on their own line (absent for others). Empty state:
-  *"Nothing here yet. Drop a note if there's something the buyer should know."*
-- **Composer:** single-line, placeholder `Add a note…`, no label, no asterisk;
-  idempotency key **once per sheet-open** (`useRef`, rotate only after `ok:true`),
-  submit disabled while pending; optimistic append + `router.refresh`.
+**Detail (`ShoppingItemSheet`) — hand-rolled bottom-sheet panel** (no shadcn
+Sheet; clone the `add-expense-sheet` conditional-render + arrivals compact/full
+convention; ~90% height over a dimmed list, swipe/✕ dismiss, composer pinned
+above the keyboard — verify at 375px). **Freshness:** renders from page props
+filtered by `itemId`; refreshes on the **viewer's own** mutation (`router.refresh`)
+but **not passively** — others' new reactions/notes appear only after the viewer
+acts or reloads (no realtime; fast-follow). Contents:
+- Header: name, `Added by {Someone-fallback name} · {relTime}` (relTime via
+  `date-fns formatDistanceToNow`, the announcement-thread precedent; pass server
+  `now` for loaded rows, `new Date()` for an optimistic append), claim CTA,
+  optional cost tag (`formatCents`, never `formatCost` — §7 gap-C).
+- **Reaction strip:** all six pills, each a **tappable ghost when count 0**,
+  tinted when it's yours, count shown only when ≥1; tap toggles yours (optimistic
+  + per-emoji ref-guard; on `rate_limit`/failure roll back + surface copy). aria
+  `role="group"`; **neutral per-pill aria-labels** ("thumbs up" / "thumbs down" /
+  "heart" … — never "dislike"/"downvote", which would smuggle the toxic frame to
+  screen readers); `aria-pressed`; 44px targets.
+- **Notes thread:** header is the plain word "Notes" (never "Notes (2)"). Flat,
+  newest-at-bottom, `{name} · {relTime}` + body via `resolveMemberName`/"Someone"
+  (**never** `.email` — I6); author/organizer sees a delete affordance on their
+  own line (absent for others — rule #11). Empty: *"Nothing here yet. Drop a note
+  if there's something the buyer should know."*
+- **Composer:** single-line, placeholder `Add a note…`, no label/asterisk. Submit
+  disabled while pending. **Idempotency key is per-logical-comment:** seed
+  `keyRef = crypto.randomUUID()` and **rotate it to a fresh UUID on every
+  confirmed `ok:true`** (NOT once per sheet-open — otherwise a second note in the
+  same open sheet reuses the key → 23505 replay → silently dropped). Optimistic
+  append + `router.refresh`.
+- **Item delete with a live thread:** `deleteShoppingItem` requires a confirm when
+  the item carries ≥1 comment/reaction (cascade nukes the thread). If the sheet is
+  open when the item is deleted elsewhere, the next comment/reaction returns
+  `rls_denied` (parent `EXISTS` fails) → treat "rls_denied on an item present at
+  open" as **gone**: close the sheet, surface a distinct `shopping_item_gone`
+  copy ("That one's already gone from the list."), not the generic access error.
 
-**Copy** (all new keys in `SHOPPING_LIST_UI_STRINGS` / `ERRORS`): reaction aria
-labels, "Notes", `Add a note…`, empty-thread, comment-delete confirm/undo;
+**Copy** (all keys in `SHOPPING_LIST_UI_STRINGS` / `ERRORS`, no inline literals):
+reaction aria labels (neutral), "Notes", `Add a note…`, empty-thread,
+comment-delete confirm/undo, item-delete confirm, `shopping_item_gone`;
 `shopping_comment_save_failed | shopping_comment_save_rejected |
 shopping_comment_delete_failed | shopping_reaction_save_failed` (+ reuse
-`network`, `rls_denied`, `rate_limit`, `validation_failed`). No inline literals.
+`network`, `rls_denied`, `rate_limit`, `validation_failed`).
 
-### 12.6 CI gates + tests (additions)
+### 12.7 CI gates + tests (PR2 additions)
 
-- **I1** — reaction/comment `*_COLUMNS` list every written column.
+- **I1** — reaction/comment `*_COLUMNS` (and the facts-view columns) list every
+  written/read column.
 - **I2** — comments carry `idempotency_key` + partial index + the add writes it.
-  Reactions use **natural-key** idempotency (no column) exactly like
-  `announcement_reactions`; if the checker flags the column-less table, add it to
-  the same exemption `announcement_reactions` uses (verify against
-  `meta/migration-idempotency.ts`).
+  **Reactions are column-less (natural-key) and are structurally out of I2 scope —
+  the checker only enrolls tables that declare an `idempotency_key` column, so
+  `shopping_item_reactions` passes with NO action** (there is no
+  `announcement_reactions` "exemption" to add to; adding a column-less table to
+  `NO_INDEX_EXEMPT_TABLES` in `tests/unit/idempotency-coverage.test.ts` would
+  *break* the gate).
 - **I3** — both new action files inspect `error.code` (23505/42501).
-- **I5** — still no-op: inline `EXISTS`, no new SECURITY DEFINER fn.
-- **I6** — comment authors via `resolveMemberName`; reactions render **no names**
-  at all (aggregate-only).
+- **I5** — still no-op for **functions**; the facts view is a definer *view*
+  (security-reviewer-audited), not a function.
+- **I6** — comment authors via `resolveMemberName`/"Someone"; reactions render
+  **no names** at all (aggregate-only, structurally).
 - **I12** — both new client mutations via `callAction`, no `redirect()`.
-- **RLS harness (additions):** celebrant cannot SELECT reactions/comments on a
-  `hide_from_celebrant` item; non-member fully blocked on both; comment
-  author-or-organizer delete only; reaction own-row delete only;
-  `summarizeItemReactions` output contains **no** `trip_member_id` (aggregate-only
-  regression guard); two members same comment idempotency UUID ⇒ two rows.
-- **Action tests:** reaction toggle on/off + opposite-clear; hidden-parent ⇒
-  `rls_denied`; comment idempotent add (fresh + replay); comment delete envelope.
+- **RLS harness (additions):** celebrant cannot read reactions/comments on a
+  `hide_from_celebrant` item (via the facts view AND comments); non-member fully
+  blocked; comment author-or-organizer delete only; reaction own-row delete only;
+  a plain member **cannot** read `trip_member_id` (base SELECT revoked — direct
+  PostgREST on the base table denied); the facts view exposes **no**
+  `trip_member_id`; child `trip_id` cannot diverge from the parent (pin holds);
+  two members same comment idempotency UUID ⇒ two rows.
+- **Action/UI tests:** reaction toggle on/off (independent, no opposite-clear);
+  hidden-parent ⇒ `rls_denied`; two sequential comments in one open sheet ⇒ two
+  rows (key-rotation regression); comment delete envelope; list renders in
+  `created_at` order regardless of reaction counts (no-leaderboard guard).
