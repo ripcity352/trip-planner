@@ -325,6 +325,11 @@ export interface AmendShoppingItemInput {
  * unchanged"; `null` (on category/costCents) means "explicitly clear".
  * Never forward an `undefined` field, or amending just the name would null
  * out category/cost (gap-A).
+ *
+ * NOTE: shipped in PR1 (action + tests) but intentionally not yet wired to a
+ * UI affordance — PR1's ShoppingItemCard is claim/got-it/delete only (spec §7).
+ * The edit gesture lands in the PR2 tap-in detail sheet (spec §12.6). Do not
+ * treat as dead code.
  */
 export async function amendShoppingItem(
   itemId: string,
