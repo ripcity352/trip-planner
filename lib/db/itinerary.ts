@@ -19,8 +19,15 @@ import type {
   LodgingAssignment,
 } from "./types";
 
+// I1 read/write completeness (read-write-completeness.test.ts): this
+// projection must ⊇ every column createItineraryItem / updateItineraryItem
+// (lib/actions/itinerary.ts) writes, or the edit-form prefill hydrates the
+// omitted column as `undefined` and the next save's `|| null` nulls it.
+// address_place_id / address_provider were the drift (added 2026-08-11):
+// the update path wrote + selected them, but this read omitted them, so any
+// edit (even a title change) nulled the place link.
 const ITINERARY_ITEM_COLUMNS =
-  "id, trip_id, day, start_time, end_time, end_day, title, location, address, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key";
+  "id, trip_id, day, start_time, end_time, end_day, title, location, address, address_place_id, address_provider, notes, cost_cents, currency, created_by, created_at, updated_at, visibility, kind, activity_tag, dress_code, idempotency_key";
 
 /**
  * Return all itinerary items for a trip, ordered by day ASC then
