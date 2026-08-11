@@ -685,6 +685,95 @@ describe("<LoginForm /> — inviteSurface create-account-first", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Journey 0 — defaultIntent="create" (the /signup route). Shares ALL of the
+// invite create-first machinery (create primary, new-password autocomplete,
+// account-exists flip) but WITHOUT the invite-specific inline header — the
+// /signup card title carries the framing instead. /login is unaffected.
+// ---------------------------------------------------------------------------
+
+describe("<LoginForm /> — defaultIntent='create' (Journey 0 /signup)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function renderSignupPasswordMode() {
+    render(<LoginForm defaultIntent="create" />);
+    await advanceToPasswordMode("stranger@example.com");
+  }
+
+  it("leads with the 'Create account' primary (not 'Sign in')", async () => {
+    await renderSignupPasswordMode();
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signUpButton })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: AUTH_COPY.signInButton })
+    ).not.toBeInTheDocument();
+  });
+
+  it("uses new-password autocomplete in create mode", async () => {
+    await renderSignupPasswordMode();
+    expect(screen.getByLabelText(AUTH_COPY.passwordFieldLabel)).toHaveAttribute(
+      "autocomplete",
+      "new-password"
+    );
+  });
+
+  it("does NOT render the invite-specific inline header", async () => {
+    render(<LoginForm defaultIntent="create" />);
+    expect(
+      screen.queryByText(AUTH_COPY.inviteAuthHeaderCreate)
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(AUTH_COPY.inviteAuthHeaderSignIn)
+    ).not.toBeInTheDocument();
+  });
+
+  it("submitting create mode calls signUpAction with email, password AND next", async () => {
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: true };
+    });
+    render(<LoginForm next="/trips/new" defaultIntent="create" />);
+    await advanceToPasswordMode("stranger@example.com");
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    await clickAndSettle(
+      screen.getByRole("button", { name: AUTH_COPY.signUpButton })
+    );
+    expect(signUpActionMock).toHaveBeenCalledWith({
+      email: "stranger@example.com",
+      password: "supersecret",
+      next: "/trips/new",
+    });
+    expect(signInWithPasswordActionMock).not.toHaveBeenCalled();
+  });
+
+  it("auth_account_exists flips the signup surface to the sign-in branch", async () => {
+    signUpActionMock.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      return { ok: false, errorKey: "auth_account_exists" };
+    });
+    await renderSignupPasswordMode();
+    fireEvent.change(screen.getByLabelText(AUTH_COPY.passwordFieldLabel), {
+      target: { value: "supersecret" },
+    });
+    await clickAndSettle(
+      screen.getByRole("button", { name: AUTH_COPY.signUpButton })
+    );
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.auth_account_exists)).toBeInTheDocument();
+    });
+    // Primary flips to sign-in; email preserved for a one-password retry.
+    expect(
+      screen.getByRole("button", { name: AUTH_COPY.signInButton })
+    ).toBeInTheDocument();
+    expect(screen.getByText("stranger@example.com")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Rejected server actions (2026-07-11 incident #4) — a middleware-edge 429
 // (raw JSON, not an action result) or a network drop REJECTS the awaited
 // action inside startTransition. Without a catch the button silently dies;

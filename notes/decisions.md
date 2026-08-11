@@ -4457,3 +4457,36 @@ waits — the surprise-groom-pickup case), a celebrant no-confirm "arranged"
 drawer read, granular nudge-suppression ("2 more of you land then — join
 Dave's ride" for the un-covered subset of a cluster), capacity/seats, and an
 owner/booker role (all cut as scope creep or group-chat's job).
+
+---
+
+## Journey 0 — cold self-serve front door (reliability-hardening loop opener, 2026-08-11)
+
+**Gap (CLAUDE.md rule #2).** The landing + login surface encoded an
+*invite-only* mental model — "you already have a trip, sign in to it." A cold
+stranger with no invite and no account had no signposted path: `app/page.tsx`
+offered a single "Sign in to your trip" CTA, and `<LoginForm>` (login default)
+leads with SIGN-IN, revealing "Create account instead" only *after* a
+wrong-password or no-account error. The machinery to self-serve
+(`signUpAction`, `/trips/new`) existed; the front door never pointed at it.
+The missing axis: the auth surface had an *invite* create-first intent
+(`inviteSurface`) but no generic **self-serve create intent**.
+
+**Decision (operator sign-off before build).** Smallest change that closes the
+class, not a patch to one surface:
+- **Dual-CTA landing** (`app/page.tsx`): primary "Start a trip" -> `/signup`;
+  secondary "Already have one? Sign in" -> `/login`. Invite line unchanged.
+- **Dedicated `/signup` route** (operator chose this over a `?intent=create`
+  param — cleaner shareable URL). Same card shell as `/login`; renders
+  `<LoginForm defaultIntent="create">`.
+- **`defaultIntent` prop** generalizes the invite create-first machinery:
+  `createFirst = inviteSurface || defaultIntent === "create"` now drives every
+  *behavioral* branch (initial intent, revealed create affordance,
+  new-password autocomplete, toggle-to-sign-in, account-exists flip). Only the
+  invite-specific *inline header* stays gated on `inviteSurface` — `/signup`
+  carries its framing via the card title instead. No new state machine, no new
+  action; `signUpAction` already threads `next`.
+
+`/signup` is public (not in middleware `AUTHED_PREFIXES`), mirrors `/login`.
+ZERO schema / server-action / RLS change — gate-safe, does NOT lift the M6
+gate.

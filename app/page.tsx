@@ -28,12 +28,24 @@ export default async function Home() {
         </p>
       </header>
 
-      <Link
-        href="/login"
-        className="inline-flex h-11 items-center justify-center rounded-xs bg-zinc-900 px-6 text-base font-medium text-white shadow transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:focus-visible:ring-zinc-300"
-      >
-        Sign in to your trip
-      </Link>
+      <div className="flex flex-col items-start gap-3">
+        {/* Primary: cold self-serve — a stranger with no invite starts here
+            (Journey 0). Routes to the create-first /signup surface. */}
+        <Link
+          href="/signup"
+          className="inline-flex h-11 items-center justify-center rounded-xs bg-zinc-900 px-6 text-base font-medium text-white shadow transition-colors hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:focus-visible:ring-zinc-300"
+        >
+          {AUTH_COPY.landingStartTripCta}
+        </Link>
+
+        {/* Secondary: returning user who already has a trip. */}
+        <Link
+          href="/login"
+          className="text-muted-foreground text-sm underline-offset-2 hover:text-foreground hover:underline"
+        >
+          {AUTH_COPY.landingSignInLink}
+        </Link>
+      </div>
 
       <p className="text-muted-foreground text-sm">
         {AUTH_COPY.landingInviteAffordance}
