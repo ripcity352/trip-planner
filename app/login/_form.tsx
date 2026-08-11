@@ -78,33 +78,50 @@ type LoginFormProps = {
    * page default) keeps the sign-in-first, post-wrong-password reveal.
    */
   inviteSurface?: boolean;
+  /**
+   * Journey 0 (cold self-serve): the /signup route passes "create" so the
+   * password step leads with the same create-first machinery the invite
+   * surface uses (initial intent, revealed create affordance, new-password
+   * autocomplete, toggle-to-sign-in) — WITHOUT the invite-specific inline
+   * header (the /signup card title carries the framing instead). /login
+   * omits it and keeps the sign-in-first, post-wrong-password reveal.
+   */
+  defaultIntent?: AuthIntent;
 };
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
+export function LoginForm({
+  next,
+  inviteSurface = false,
+  defaultIntent,
+}: LoginFormProps) {
   const [mode, setMode] = useState<Mode>("email-only");
   const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<ErrorKey | null>(null);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
-  // Invite surface leads with create-account (see LoginFormProps note);
-  // /login always leads with sign-in.
+  // Create-first surfaces (invite #395, and Journey-0 /signup) lead with
+  // the create-account branch; /login always leads with sign-in. The two
+  // create-first surfaces share ALL behavior — only the copy/header differs
+  // (invite header vs the /signup card title), so behavioral checks below
+  // key off `createFirst`, not `inviteSurface`.
+  const createFirst = inviteSurface || defaultIntent === "create";
   const [authIntent, setAuthIntent] = useState<AuthIntent>(
-    inviteSurface ? "create" : "sign-in",
+    createFirst ? "create" : "sign-in",
   );
   const [isPending, startTransition] = useTransition();
 
-  // #395: on the invite surface, the create-account affordance is present
-  // from the start of password mode (not gated on a prior wrong-password
-  // error) so a first-touch invitee isn't handed a guaranteed dead-end.
-  const revealCreateAccount = showCreateAccount || inviteSurface;
+  // Create-first surfaces reveal the create-account affordance from the
+  // start of password mode (not gated on a prior wrong-password error) so a
+  // first-touch user isn't handed a guaranteed dead-end (#395).
+  const revealCreateAccount = showCreateAccount || createFirst;
 
-  // Password mode leads with the create-account affordance only on the
-  // invite surface while the user hasn't toggled to sign-in.
-  const createMode = inviteSurface && authIntent === "create";
+  // Password mode leads with the create-account affordance only on a
+  // create-first surface while the user hasn't toggled to sign-in.
+  const createMode = createFirst && authIntent === "create";
 
   const emailForm = useForm<EmailOnlyValues>({
     resolver: zodResolver(emailOnlySchema),
@@ -263,7 +280,7 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
       // surface to the sign-in branch (email kept, labels/autocomplete flip
       // with the intent). Focus lands via the effect below once the
       // transition settles — the field is still disabled (isPending) here.
-      if (result.errorKey === "auth_account_exists" && inviteSurface) {
+      if (result.errorKey === "auth_account_exists" && createFirst) {
         setAuthIntent("sign-in");
       }
     });
@@ -276,13 +293,13 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
   useEffect(() => {
     if (
       !isPending &&
-      inviteSurface &&
+      createFirst &&
       serverError === "auth_account_exists" &&
       authIntent === "sign-in"
     ) {
       passwordForm.setFocus("password");
     }
-  }, [isPending, inviteSurface, serverError, authIntent, passwordForm]);
+  }, [isPending, createFirst, serverError, authIntent, passwordForm]);
 
   // Invite-surface intent toggles ("Have an account? Sign in" ⇄ "Create
   // account instead"). Pure local state — no server call.
@@ -414,7 +431,7 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
                 under a "Sign in" primary it reads as crossed labels
                 (incident #5). On /login it appears with the post-wrong-
                 password create reveal, as before. */}
-            {createMode || (!inviteSurface && showCreateAccount) ? (
+            {createMode || (!createFirst && showCreateAccount) ? (
               <p className="text-muted-foreground text-xs">{AUTH_COPY.passwordHelper}</p>
             ) : null}
           </div>
@@ -443,10 +460,10 @@ export function LoginForm({ next, inviteSurface = false }: LoginFormProps) {
               type="button"
               variant="secondary"
               disabled={isPending}
-              // On the invite surface this toggles the primary back to
-              // create (labels flip with it); on /login it submits the
-              // sign-up directly, as before.
-              onClick={inviteSurface ? handleSwitchToCreate : handleCreateAccount}
+              // On a create-first surface (invite / signup) this toggles the
+              // primary back to create (labels flip with it); on /login it
+              // submits the sign-up directly, as before.
+              onClick={createFirst ? handleSwitchToCreate : handleCreateAccount}
             >
               {AUTH_COPY.createAccountLink}
             </Button>

@@ -80,3 +80,65 @@ describe("app/page.tsx — invite affordance wiring (#263)", () => {
     expect(lower, "must not say 'register'").not.toMatch(/\bregister\b/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Journey 0 — cold self-serve dual-CTA landing (front-door design sign-off).
+// The landing now leads with a "Start a trip" primary → /signup and a
+// secondary "Already have one? Sign in" → /login. The invite line stays.
+// ---------------------------------------------------------------------------
+
+describe("AUTH_COPY — Journey 0 landing/signup keys", () => {
+  it("landingStartTripCta is voice-locked and account-language-free", () => {
+    expect(AUTH_COPY.landingStartTripCta).toBe("Start a trip");
+    const lower = AUTH_COPY.landingStartTripCta.toLowerCase();
+    expect(lower).not.toMatch(/\bsign up\b/);
+    expect(lower).not.toMatch(/\bregister\b/);
+    expect(lower).not.toContain("get started");
+  });
+
+  it("landingSignInLink is voice-locked", () => {
+    expect(AUTH_COPY.landingSignInLink).toBe("Already have one? Sign in");
+  });
+
+  it("signupPageTitle is voice-locked", () => {
+    expect(AUTH_COPY.signupPageTitle).toBe("Start a trip");
+  });
+});
+
+describe("app/page.tsx — dual-CTA wiring (Journey 0)", () => {
+  const pageSrc = readFileSync(
+    resolve(process.cwd(), "app/page.tsx"),
+    "utf-8"
+  );
+
+  it("primary CTA sources landingStartTripCta and routes to /signup", () => {
+    expect(pageSrc).toContain("AUTH_COPY.landingStartTripCta");
+    expect(pageSrc).toMatch(/href=["']\/signup["']/);
+  });
+
+  it("secondary link sources landingSignInLink and routes to /login", () => {
+    expect(pageSrc).toContain("AUTH_COPY.landingSignInLink");
+    expect(pageSrc).toMatch(/href=["']\/login["']/);
+  });
+});
+
+describe("app/signup/page.tsx — cold self-serve route (Journey 0)", () => {
+  const signupSrc = readFileSync(
+    resolve(process.cwd(), "app/signup/page.tsx"),
+    "utf-8"
+  );
+
+  it("renders LoginForm in create-first mode", () => {
+    expect(signupSrc).toContain("LoginForm");
+    expect(signupSrc).toMatch(/defaultIntent=["']create["']/);
+  });
+
+  it("titles the card from signupPageTitle (no inline literal)", () => {
+    expect(signupSrc).toContain("AUTH_COPY.signupPageTitle");
+  });
+
+  it("threads a safeNext-validated next into the form", () => {
+    expect(signupSrc).toContain("safeNext");
+    expect(signupSrc).toMatch(/next=\{nextPath\}/);
+  });
+});

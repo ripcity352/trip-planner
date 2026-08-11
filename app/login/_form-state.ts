@@ -18,11 +18,12 @@ import { passwordField } from "@/lib/auth/password-field";
 export type Mode = "email-only" | "password" | "code-verify";
 
 /**
- * Which primary affordance the password step leads with (invite surface
- * only — /login is always "sign-in"). The invite surface defaults to
- * "create": its most common persona is a never-seen invitee, and the old
- * sign-in-first labels walked brand-new users into the wrong branch
- * (2026-07-11 incident #5).
+ * Which primary affordance the password step leads with. Create-first
+ * surfaces default to "create": the invite surface (its most common
+ * persona is a never-seen invitee — the old sign-in-first labels walked
+ * brand-new users into the wrong branch, 2026-07-11 incident #5) and the
+ * Journey-0 /signup route (cold self-serve). /login is always "sign-in".
+ * Also the `defaultIntent` prop type on `<LoginForm />`.
  */
 export type AuthIntent = "create" | "sign-in";
 

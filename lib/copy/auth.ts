@@ -164,6 +164,31 @@ export const AUTH_COPY = {
    */
   landingInviteAffordance: "Got a link from a friend? Tap it — that's your way in.",
 
+  // ---------------------------------------------------------------------------
+  // Landing / signup — Journey 0 cold self-serve (front-door design sign-off)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Primary landing CTA for a cold stranger with no invite: routes to
+   * /signup (create-first). Warm, occasion-framed — "Start a trip", not
+   * SaaS "Sign up" / "Get started" / "Register" (banned by the landing
+   * voice guard). Consumers: app/page.tsx.
+   */
+  landingStartTripCta: "Start a trip",
+
+  /**
+   * Secondary landing link for a returning user who already has a trip.
+   * Routes to /login (sign-in-first). Consumers: app/page.tsx.
+   */
+  landingSignInLink: "Already have one? Sign in",
+
+  /**
+   * Card title on the dedicated /signup route. Carries the landing CTA's
+   * promise through the auth step (the form leads with create-account).
+   * Consumers: app/signup/page.tsx.
+   */
+  signupPageTitle: "Start a trip",
+
   /**
    * OG card description template for the invite preview image.
    * Consumers interpolate {Trip} and {dates} — literal placeholders here.
