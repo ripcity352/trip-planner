@@ -114,6 +114,13 @@ export const RATE_LIMIT_SCOPES = {
   // trip mutation; a bootstrapping deploy must not brick it) — and each
   // fanned-out row is idempotent, so a rate-limited retry is always safe.
   TAG_CO_TRAVELERS: "tagCoTravelers",
+  // #581 — ride groups. Create/add fan out membership rows; leave/delete are
+  // light single/cascade deletes. Two buckets so a create/add burst can't
+  // starve other budgets and vice versa. Default 30/60s; NOT in
+  // FAIL_CLOSED_ON_SHIM (authed trip mutation; each fanned-out row is
+  // idempotent via the PK, so a rate-limited retry is always safe).
+  CREATE_RIDE_GROUP: "createRideGroup",
+  MUTATE_RIDE_GROUP: "mutateRideGroup",
   ASSIGN_LODGING: "assignLodging",
   // M3 Wave 4c — issue #107: minting invite links now has its own bucket
   // separate from `ACCEPT_INVITE` so a burst of organizer mints cannot

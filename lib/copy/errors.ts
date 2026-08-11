@@ -83,6 +83,10 @@ export type ErrorKey =
   // #479 — arrive-before-leave cross-field rejection. Same rationale.
   | "travel_leg_times_reversed"
   | "travel_leg_delete_failed"
+  // #581 — ride groups. Same transient/deterministic split as travel_leg.
+  | "ride_group_save_failed"
+  | "ride_group_save_rejected"
+  | "ride_group_delete_failed"
   | "lodging_assign_failed"
   | "invite_mint_failed"
   // #397 — MINT_INVITE is fail-closed on the shim: on a deployment with
@@ -281,6 +285,12 @@ export const ERRORS: Record<ErrorKey, string> = {
   travel_leg_times_reversed:
     "That has you arriving before you leave — double-check the times.",
   travel_leg_delete_failed: "Couldn't delete that leg. Try once more.",
+  // #581 — ride groups. Transient save, deterministic reject, delete.
+  ride_group_save_failed:
+    "Ride didn't save. Tap again — your connection's flaky.",
+  ride_group_save_rejected:
+    "That ride didn't take — something's off on our end. Not your signal.",
+  ride_group_delete_failed: "Couldn't clear that ride. Try once more.",
   lodging_assign_failed:
     "Rooms didn't budge. Tap again — it'll catch.",
   invite_mint_failed:

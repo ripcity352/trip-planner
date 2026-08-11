@@ -47,6 +47,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "travel_leg_time_required",
   "travel_leg_times_reversed",
   "travel_leg_delete_failed",
+  "ride_group_save_failed",
+  "ride_group_save_rejected",
+  "ride_group_delete_failed",
   "lodging_assign_failed",
   "invite_mint_failed",
   // #397 — shim fail-closed mint denial (deployment config gap, not a

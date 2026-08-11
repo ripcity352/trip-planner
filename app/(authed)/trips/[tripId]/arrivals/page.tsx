@@ -14,6 +14,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getTripMembers } from "@/lib/db/trips";
 import { getTravelLegsByTrip } from "@/lib/db/travel-legs";
+import { getRideGroupsByTrip } from "@/lib/db/ride-groups";
 import { getMemberDays } from "@/lib/db/trip-member-days";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ArrivalsManifest } from "@/components/trip/arrivals/arrivals-manifest";
@@ -45,11 +46,17 @@ export default async function ArrivalsPage({ params }: PageProps) {
 
   // Fan out: legs + all trip members + the viewer's own day rows
   // (#525 — post-save suggestion prompt inputs) in parallel.
-  const [legs, tripMembers, myDays] = await Promise.all([
+  const [legs, tripMembers, myDays, rideGroups] = await Promise.all([
     getTravelLegsByTrip(supabase, trip.id),
     getTripMembers(supabase, trip.id),
     getMemberDays(supabase, viewer.id),
+    getRideGroupsByTrip(supabase, trip.id),
   ]);
+
+  // #581 — organizers (and co-organizers) may clear any ride (escape hatch
+  // for an orphaned group). Matches the RLS delete policy's is_trip_organizer.
+  const viewerIsOrganizer =
+    viewer.role === "organizer" || viewer.role === "co_organizer";
 
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
@@ -69,6 +76,8 @@ export default async function ArrivalsPage({ params }: PageProps) {
         myDays={myDays}
         tripStartsAt={trip.starts_at}
         tripEndsAt={trip.ends_at}
+        rideGroups={rideGroups}
+        viewerIsOrganizer={viewerIsOrganizer}
       />
     </section>
   );

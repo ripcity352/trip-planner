@@ -453,6 +453,59 @@ export interface TravelLeg {
 }
 
 /**
+ * #581 — a persisted ride group (who's sharing a car at an airport).
+ * `direction` reuses the travel-leg model: an inbound ride is FROM the
+ * airport, an outbound ride is TO the airport. `created_by` is delete
+ * authority, NOT a rider invariant (an organizer can arrange a ride they
+ * aren't in). `airport` is the sole identifier (free text / #580 picker).
+ */
+export interface RideGroup {
+  id: string;
+  trip_id: string;
+  created_by_trip_member_id: string | null;
+  airport: string | null;
+  direction: TravelLegDirection;
+  visibility: TripVisibility;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
+/**
+ * #581 — a rider in a ride group. `written_by_trip_member_id` is PERMANENT
+ * provenance (there is no confirm gesture): NULL = self-joined (reads
+ * plain), set to the adder's trip_member_id = "added by X" (never cleared).
+ * Anti-forgery RLS guarantees a set value is never equal to `trip_member_id`.
+ * Opt-out = the rider deletes their own row.
+ */
+export interface RideGroupMember {
+  ride_group_id: string;
+  trip_member_id: string;
+  written_by_trip_member_id: string | null;
+  created_at: string;
+}
+
+/** One rider as read for display — id + provenance only (names resolve app-side). */
+export interface RideGroupRider {
+  trip_member_id: string;
+  /** NULL = self-joined (plain); set = added by this member ("added by X"). */
+  written_by_trip_member_id: string | null;
+}
+
+/**
+ * #581 read shape — a ride group with its riders, assembled from the
+ * `ride_group_manifest` view (one flat row per rider). Plain scalar member
+ * ids only (the view never embeds trip_members — 2nd-FK PostgREST trap).
+ */
+export interface RideGroupWithRiders {
+  id: string;
+  trip_id: string;
+  airport: string | null;
+  direction: TravelLegDirection;
+  created_by_trip_member_id: string | null;
+  riders: RideGroupRider[];
+}
+
+/**
  * Per-member per-item RSVP override. Absence of a row = inherited day-level
  * RSVP. Opt-outs are silent — not visible to peers.
  */

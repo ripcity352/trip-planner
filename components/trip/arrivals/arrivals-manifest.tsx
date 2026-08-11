@@ -1,46 +1,48 @@
 "use client";
 
 /**
- * ArrivalsManifest — client component that renders the two travel
- * sections (#477) and the add CTAs.
+ * ArrivalsManifest — client component that renders the two travel sections
+ * (#477), the ride-share nudges + persisted ride groups (#581), and the add
+ * CTAs.
  *
- * Inbound ("Who's landing when" — the page <h1>): legs grouped by
- * trip-local landing day, plus a quiet computed ride-share line when 2+
- * people land at the same airport within an hour (no matching engine —
- * #118 stays open). Outbound: a quieter "Heading home" section, only
- * rendered when someone has logged a leg home.
+ * Inbound ("Who's landing when" — the page <h1>): legs grouped by trip-local
+ * landing day, a quiet computed ride-share nudge when 2+ people land at the
+ * same airport within an hour, and any formed ride groups. Outbound: a
+ * quieter "Heading home" section with the same treatment (rides TO the
+ * airport).
  *
- * "use client" because it needs to trigger router.refresh() after a
- * successful mutation (TravelLegFormSheet calls onMutated → refresh).
+ * Ride groups (#581): the nudge stays a quiet line but becomes actionable
+ * ("start a ride") and suppresses once a ride covers that airport; a
+ * persistent quiet "start a ride" affordance sits in each section so a manual
+ * ride (no cluster) always has an entry point.
  *
- * Consumes:
- *   - `legs` — pre-fetched by the page Server Component via `getTravelLegsByTrip`
- *   - `myTripMemberId` — resolved by the page to gate edit affordances
- *   - `tripMembers` — for display names on each card
- *   - `tripTimezone` — IANA tz string threaded to TravelLegCard so times
- *     render in trip-local time (#254), used here for day grouping, and
- *     threaded to TravelLegFormSheet so form input parses as trip-local
- *     time (#382)
+ * "use client" because it needs router.refresh() after a successful mutation.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatInTimeZone } from "date-fns-tz";
 import { parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { resolveMemberName } from "@/lib/utils/member-display";
 import { computeRideShareClusters } from "@/lib/utils/ride-share";
 import { formatTripDayHeader } from "@/lib/utils/format-trip-tz";
 import { TravelLegCard } from "./travel-leg-card";
 import { TravelLegRow } from "./travel-leg-row";
+import { RideGroupCard } from "./ride-group-card";
+import { RideGroupRow } from "./ride-group-row";
+import { RideNudgeLine } from "./ride-nudge-line";
+import { StartRideSheet } from "./start-ride-sheet";
 import { ViewToggle, type ArrivalsView } from "./view-toggle";
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import type { MemberDay } from "@/lib/db/trip-member-days";
-import type { TravelLeg, TripMember } from "@/lib/db/types";
+import type {
+  RideGroupWithRiders,
+  TravelLeg,
+  TravelLegDirection,
+  TripMember,
+} from "@/lib/db/types";
 
-// #579 — the Compact|Full choice persists across visits. Device/user-local
-// (localStorage), read in useEffect so first paint is always the deterministic
-// default (Compact) and never mismatches SSR (the #254 hydration lesson).
 const ARRIVALS_VIEW_STORAGE_KEY = "pt:arrivalsView";
 
 export interface ArrivalsManifestProps {
@@ -48,13 +50,15 @@ export interface ArrivalsManifestProps {
   legs: TravelLeg[];
   myTripMemberId: string;
   tripMembers: TripMember[];
-  /** IANA timezone string for the trip (e.g. `"America/New_York"`). */
   tripTimezone: string;
-  /** #525 — the viewer's own day rows + trip range for the post-save
-   *  suggestion prompt (suggest, don't write). */
   myDays: MemberDay[];
   tripStartsAt: string | null;
   tripEndsAt: string | null;
+  /** #581 — formed ride groups for this trip (both directions). Defaults to
+   *  none (a manifest with no rides is a valid state). */
+  rideGroups?: RideGroupWithRiders[];
+  /** #581 — viewer may clear any ride (creator OR organizer). */
+  viewerIsOrganizer?: boolean;
 }
 
 interface DayGroup {
@@ -63,11 +67,13 @@ interface DayGroup {
   legs: TravelLeg[];
 }
 
-/**
- * Group inbound legs by trip-local landing day, preserving the incoming
- * arrive_at ASC sort. Legacy inbound rows without a landing time group
- * under a trailing "Landing time TBD" bucket.
- */
+/** The open "start a ride" sheet's seed state, or null when closed. */
+interface RideSheetState {
+  direction: TravelLegDirection;
+  seedAirport?: string;
+  seedMemberIds: string[];
+}
+
 function groupInboundByDay(
   legs: TravelLeg[],
   tripTimezone: string
@@ -80,9 +86,6 @@ function groupInboundByDay(
       const date = parseISO(leg.arrive_at);
       try {
         key = formatInTimeZone(date, tripTimezone, "yyyy-MM-dd");
-        // Design-system day-header tier (#211, #579): lowercase mono `fri 14`.
-        // Replaces the pre-#579 uppercase `Fri, Aug 14` eyebrow (an anti-tell)
-        // — both views now share this register.
         label = formatTripDayHeader(leg.arrive_at, tripTimezone);
       } catch {
         // Unparseable stored timestamp — fall through to the TBD bucket.
@@ -107,20 +110,16 @@ export function ArrivalsManifest({
   myDays,
   tripStartsAt,
   tripEndsAt,
+  rideGroups = [],
+  viewerIsOrganizer = false,
 }: ArrivalsManifestProps) {
   const router = useRouter();
 
-  // #579 — Compact (default) vs Full density. Default Compact on first paint;
-  // hydrate the persisted preference after mount so SSR and CSR agree.
   const [view, setView] = useState<ArrivalsView>("compact");
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(ARRIVALS_VIEW_STORAGE_KEY);
       if (stored === "full" || stored === "compact") {
-        // Intentional post-hydration setState: the preference is client-only
-        // (localStorage), so it MUST be applied after mount. A render-time
-        // initializer would render "full" on the client while SSR rendered
-        // the default "compact" → the #254 hydration-mismatch class.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setView(stored);
       }
@@ -137,35 +136,41 @@ export function ArrivalsManifest({
     }
   };
 
+  // #581 — the open "start a ride" sheet (seeded from a nudge, or blank from
+  // the manual affordance). One sheet at a time.
+  const [rideSheet, setRideSheet] = useState<RideSheetState | null>(null);
+
   const handleMutated = () => {
     router.refresh();
   };
+  const handleRideCreated = () => {
+    setRideSheet(null);
+    router.refresh();
+  };
 
-  // Build a lookup: trip_member_id → TripMember. resolveMemberName reads
-  // display_name and falls back to "Guest" — email/id never surface in the UI.
   const memberNameMap = new Map(tripMembers.map((m) => [m.id, m]));
 
-  // #574 — who can be tagged onto a shared flight: every trip member except
-  // the viewer and trip-level decliners (#475 — don't offer to tag someone
-  // who said they're not coming). Names via resolveMemberName (never id/email).
   const tagCandidates = tripMembers
     .filter((m) => m.id !== myTripMemberId && m.rsvp_status !== "declined")
     .map((m) => ({ id: m.id, name: resolveMemberName(memberNameMap, m.id) }));
 
-  // #574 follow-up — per-card "add who's on this flight": for each flight,
-  // who could still be added. A member is a candidate for a leg unless they
-  // declined the trip, or they already have a leg on the SAME flight (same
-  // airline + flight number). Keyed lookup so each card gets its own list
-  // (the tagger adds OTHERS; the confirm gate keeps it opt-in).
-  // Candidates never include the viewer — adding yourself to a flight is the
-  // normal "log your travel" flow (and RLS rejects target == writer, rule #8).
   const nonDeclined = tripMembers.filter(
     (m) => m.rsvp_status !== "declined" && m.id !== myTripMemberId
   );
-  // flight key → set of member ids already on it. Keyed on airline + number +
-  // direction so an inbound and outbound leg sharing a number aren't merged.
-  // Legs missing the airline or number can't be matched, so only their own
-  // owner counts (unique per-leg key).
+
+  // #581 — riders selectable in the "start a ride" sheet: every non-declined
+  // member INCLUDING the viewer (shown as "You"), so a member can put
+  // themselves in the ride. Names never surface an id/email.
+  const riderOptions = tripMembers
+    .filter((m) => m.rsvp_status !== "declined")
+    .map((m) => ({
+      id: m.id,
+      name:
+        m.id === myTripMemberId
+          ? M3_UI_STRINGS.rideGroup_self_label
+          : resolveMemberName(memberNameMap, m.id),
+    }));
+
   const flightKey = (leg: TravelLeg): string =>
     leg.airline_iata && leg.flight_number
       ? `${leg.airline_iata}|${leg.flight_number}|${leg.direction}`
@@ -185,13 +190,7 @@ export function ArrivalsManifest({
       .sort((a, b) => a.name.localeCompare(b.name));
   };
 
-  // #477: split the manifest by direction. `legs` arrives sorted by
-  // arrive_at ASC (nulls last), which is the right order for inbound;
-  // outbound is re-sorted by depart_at.
   const inboundLegs = legs.filter((leg) => leg.direction === "inbound");
-  // Sort outbound by depart_at ASC; legs with no depart_at sort LAST (a bare
-  // "" sorts before any real time, which would float unknown-time departures
-  // to the top). #579.
   const outboundLegs = [
     ...legs.filter((leg) => leg.direction === "outbound"),
   ].sort((a, b) => {
@@ -201,7 +200,30 @@ export function ArrivalsManifest({
   });
 
   const dayGroups = groupInboundByDay(inboundLegs, tripTimezone);
-  const rideShareClusters = computeRideShareClusters(inboundLegs);
+
+  // #581 — rides + clusters split by direction. A cluster's nudge is
+  // suppressed once a ride at that airport exists in the same direction.
+  const inboundRides = rideGroups.filter((r) => r.direction === "inbound");
+  const outboundRides = rideGroups.filter((r) => r.direction === "outbound");
+  const rideAirportKeys = (rides: RideGroupWithRiders[]) =>
+    new Set(rides.map((r) => (r.airport ?? "").trim().toUpperCase()).filter(Boolean));
+  const inboundRideAirports = rideAirportKeys(inboundRides);
+  const outboundRideAirports = rideAirportKeys(outboundRides);
+  const inboundClusters = computeRideShareClusters(inboundLegs, "inbound").filter(
+    (c) => !inboundRideAirports.has(c.airport.trim().toUpperCase())
+  );
+  const outboundClusters = computeRideShareClusters(outboundLegs, "outbound").filter(
+    (c) => !outboundRideAirports.has(c.airport.trim().toUpperCase())
+  );
+
+  // Members already on a ride can't be added again to it.
+  const addCandidatesForRide = (ride: RideGroupWithRiders) => {
+    const onRide = new Set(ride.riders.map((r) => r.trip_member_id));
+    return nonDeclined
+      .filter((m) => !onRide.has(m.id))
+      .map((m) => ({ id: m.id, name: resolveMemberName(memberNameMap, m.id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  };
 
   const renderCard = (leg: TravelLeg) => (
     <TravelLegCard
@@ -209,31 +231,21 @@ export function ArrivalsManifest({
       leg={leg}
       myTripMemberId={myTripMemberId}
       ownerName={resolveMemberName(memberNameMap, leg.trip_member_id)}
-      // #574: only set for an unconfirmed tag (written_by set & != owner).
       taggerName={
         leg.written_by_trip_member_id &&
         leg.written_by_trip_member_id !== leg.trip_member_id
           ? resolveMemberName(memberNameMap, leg.written_by_trip_member_id)
           : null
       }
-      // #574 follow-up — who this viewer can still add to this flight.
       addCandidates={addCandidatesFor(leg)}
       tripTimezone={tripTimezone}
-      // #452: without this, the per-card edit sheet's save/delete left
-      // stale legs on screen until a manual reload.
       onMutated={handleMutated}
-      // #525 — only the viewer's own card can open the edit sheet, so
-      // the suggestion inputs are only meaningful there; forwarding to
-      // every card is harmless (non-owners never mount the sheet).
       myDays={myDays}
       tripStartsAt={tripStartsAt}
       tripEndsAt={tripEndsAt}
     />
   );
 
-  // #579 — compact read-only glance row. Pending co-traveler tags render as
-  // normal rows here (no "unconfirmed" marker in the glance); confirm/dismiss
-  // still lives on the Full card.
   const renderRow = (leg: TravelLeg) => (
     <TravelLegRow
       key={leg.id}
@@ -244,15 +256,83 @@ export function ArrivalsManifest({
   );
 
   const isCompact = view === "compact";
-  // Shared lowercase-mono day-header register (#211, #579) for both views.
   const dayHeaderClass = "text-muted-foreground font-mono text-xs lowercase";
-  // The toggle only earns its place once there's something to reshape.
-  const hasAnyLeg = inboundLegs.length > 0 || outboundLegs.length > 0;
+  // The density toggle earns its place once there's anything to reshape — legs
+  // OR rides (a ride can exist with no logged legs, #581).
+  const hasAnyContent =
+    inboundLegs.length > 0 ||
+    outboundLegs.length > 0 ||
+    rideGroups.length > 0;
+
+  // #581 — a ride rendered per view density.
+  const renderRide = (ride: RideGroupWithRiders) =>
+    isCompact ? (
+      <RideGroupRow
+        key={ride.id}
+        ride={ride}
+        myTripMemberId={myTripMemberId}
+        memberNameMap={memberNameMap}
+      />
+    ) : (
+      <RideGroupCard
+        key={ride.id}
+        ride={ride}
+        myTripMemberId={myTripMemberId}
+        memberNameMap={memberNameMap}
+        addCandidates={addCandidatesForRide(ride)}
+        canRemove={
+          ride.created_by_trip_member_id === myTripMemberId || viewerIsOrganizer
+        }
+        onMutated={handleMutated}
+      />
+    );
+
+  // #581 — the quiet "start a ride" affordances (nudge CTA + manual link).
+  const openSeeded = (
+    direction: TravelLegDirection,
+    airport: string,
+    memberIds: string[]
+  ) => setRideSheet({ direction, seedAirport: airport, seedMemberIds: memberIds });
+  const openManual = (direction: TravelLegDirection) =>
+    setRideSheet({ direction, seedMemberIds: [myTripMemberId] });
+
+  const startCtaClass =
+    "text-muted-foreground hover:text-foreground self-start text-xs font-medium focus-visible:ring-ring rounded-xs focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none";
+
+  // Formed rides for a section, in the current density (compact list / full
+  // cards). Shared by both direction sections.
+  const ridesBlock = (rides: RideGroupWithRiders[]) =>
+    rides.length === 0 ? null : isCompact ? (
+      <ul className="flex flex-col">{rides.map(renderRide)}</ul>
+    ) : (
+      <div className="flex flex-col gap-3">{rides.map(renderRide)}</div>
+    );
+
+  const rideSheetFor = (direction: TravelLegDirection) =>
+    rideSheet && rideSheet.direction === direction ? (
+      <StartRideSheet
+        tripId={tripId}
+        direction={direction}
+        seedAirport={rideSheet.seedAirport}
+        seedMemberIds={rideSheet.seedMemberIds}
+        riderOptions={riderOptions}
+        onCreated={handleRideCreated}
+        onCancel={() => setRideSheet(null)}
+      />
+    ) : null;
+
+  const manualStartAffordance = (direction: TravelLegDirection) =>
+    rideSheet && rideSheet.direction === direction ? null : (
+      <button type="button" onClick={() => openManual(direction)} className={startCtaClass}>
+        {direction === "outbound"
+          ? M3_UI_STRINGS.rideGroup_manualCta_outbound
+          : M3_UI_STRINGS.rideGroup_manualCta_inbound}
+      </button>
+    );
 
   return (
     <div className="flex flex-col gap-6">
-      {/* #579 — density switch; the single control (no per-row expand). */}
-      {hasAnyLeg ? (
+      {hasAnyContent ? (
         <div className="flex justify-end">
           <ViewToggle value={view} onChange={handleViewChange} />
         </div>
@@ -260,18 +340,22 @@ export function ArrivalsManifest({
 
       {/* Inbound — "Who's landing when" is the page <h1> */}
       <div className="flex flex-col gap-4">
-        {/* Ride-share nudge: one quiet static line per cluster (#477) */}
-        {rideShareClusters.map((cluster, i) => (
-          <p
-            // Same airport can emit multiple time-window clusters — index disambiguates
+        {/* Ride-share nudges: one quiet actionable line per (uncovered) cluster */}
+        {inboundClusters.map((cluster, i) => (
+          <RideNudgeLine
             key={`${cluster.airport}-${i}`}
-            className="text-muted-foreground text-sm"
-          >
-            {M3_UI_STRINGS.arrivals_ride_share_template
-              .replace("{count}", String(cluster.count))
-              .replace("{airport}", cluster.airport)}
-          </p>
+            cluster={cluster}
+            direction="inbound"
+            onStart={(airport, memberIds) =>
+              openSeeded("inbound", airport, memberIds)
+            }
+          />
         ))}
+
+        {rideSheetFor("inbound")}
+
+        {/* Formed inbound rides */}
+        {ridesBlock(inboundRides)}
 
         {inboundLegs.length === 0 ? (
           <p className="text-muted-foreground text-sm">
@@ -289,6 +373,9 @@ export function ArrivalsManifest({
             </section>
           ))
         )}
+
+        {/* Manual "start a ride" — always an entry point (rule #8) */}
+        {manualStartAffordance("inbound")}
       </div>
 
       {/* Outbound — quieter section, only when someone's logged a leg home */}
@@ -297,11 +384,29 @@ export function ArrivalsManifest({
           <h2 className="text-muted-foreground text-sm font-medium">
             {M3_UI_STRINGS.arrivals_section_outbound_heading}
           </h2>
+
+          {outboundClusters.map((cluster, i) => (
+            <RideNudgeLine
+              key={`out-${cluster.airport}-${i}`}
+              cluster={cluster}
+              direction="outbound"
+              onStart={(airport, memberIds) =>
+                openSeeded("outbound", airport, memberIds)
+              }
+            />
+          ))}
+
+          {rideSheetFor("outbound")}
+
+          {ridesBlock(outboundRides)}
+
           {isCompact ? (
             <ul className="flex flex-col">{outboundLegs.map(renderRow)}</ul>
           ) : (
             outboundLegs.map(renderCard)
           )}
+
+          {manualStartAffordance("outbound")}
         </section>
       ) : null}
 
@@ -313,7 +418,6 @@ export function ArrivalsManifest({
         myDays={myDays}
         tripStartsAt={tripStartsAt}
         tripEndsAt={tripEndsAt}
-        // #574 — co-travelers taggable onto a new shared flight.
         tagCandidates={tagCandidates}
       />
     </div>

@@ -581,7 +581,9 @@ describe("ArrivalsManifest — two sections (#477)", () => {
     expect(screen.queryByText(/split a ride/)).not.toBeInTheDocument();
   });
 
-  it("does not render a ride-share line for outbound legs", () => {
+  it("renders an outbound-phrased ride-share line for outbound legs (#581)", () => {
+    // #581 added departure rides: outbound legs sharing an airport + window
+    // now cluster too, with outbound wording ("fly out of", not "land at").
     renderManifest([
       legFor(1, {
         direction: "outbound",
@@ -597,7 +599,148 @@ describe("ArrivalsManifest — two sections (#477)", () => {
       }),
     ]);
 
-    expect(screen.queryByText(/split a ride/)).not.toBeInTheDocument();
+    expect(screen.getByText(/fly out of LAX around then — split a ride/)).toBeInTheDocument();
+    // The inbound "land at" phrasing must NOT be used for a departure ride.
+    expect(screen.queryByText(/land at LAX/)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #581 — ride groups
+// ---------------------------------------------------------------------------
+
+describe("ArrivalsManifest — ride groups (#581)", () => {
+  const member = (n: number): TripMember =>
+    makeMember({ id: `member-${n}`, display_name: `Member ${n}` });
+
+  const ride = (overrides: Partial<import("@/lib/db/types").RideGroupWithRiders> = {}) => ({
+    id: "ride-1",
+    trip_id: "trip-1",
+    airport: "PDX",
+    direction: "inbound" as const,
+    created_by_trip_member_id: "member-1",
+    riders: [
+      { trip_member_id: "member-1", written_by_trip_member_id: null },
+      { trip_member_id: "member-2", written_by_trip_member_id: "member-1" },
+    ],
+    ...overrides,
+  });
+
+  const renderWithRides = (
+    rides: import("@/lib/db/types").RideGroupWithRiders[],
+    legs: TravelLeg[] = [],
+    viewerIsOrganizer = false
+  ) =>
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={legs}
+        myTripMemberId="member-1"
+        tripMembers={[member(1), member(2), member(3)]}
+        tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+        rideGroups={rides}
+        viewerIsOrganizer={viewerIsOrganizer}
+      />
+    );
+
+  const toFull = () =>
+    fireEvent.click(
+      screen.getByRole("button", { name: M3_UI_STRINGS.arrivals_view_toggle_full })
+    );
+
+  it("renders a compact ride line with the airport and riders (no emoji)", () => {
+    renderWithRides([ride()]);
+    // Compact is the default. "You" (viewer) leads the rider label; airport shows.
+    expect(screen.getByText("PDX")).toBeInTheDocument();
+    expect(screen.getByText("You, Member 2")).toBeInTheDocument();
+    // No car glyph / emoji in the compact register.
+    expect(document.body.textContent).not.toMatch(/🚗/);
+  });
+
+  it("puts the viewer ('You') first in the compact line even when not the ride creator", () => {
+    // Viewer is member-2, the SECOND rider (creator is member-1). "You" must
+    // still lead so the viewer finds their ride at a glance and isn't pushed
+    // past the +N cap.
+    render(
+      <ArrivalsManifest
+        tripId="trip-1"
+        legs={[]}
+        myTripMemberId="member-2"
+        tripMembers={[member(1), member(2), member(3)]}
+        tripTimezone="UTC"
+        myDays={[]}
+        tripStartsAt={null}
+        tripEndsAt={null}
+        rideGroups={[ride()]}
+        viewerIsOrganizer={false}
+      />
+    );
+    expect(screen.getByText("You, Member 1")).toBeInTheDocument();
+  });
+
+  it("renders the Full ride card with the direction heading and 'added by X' provenance", () => {
+    renderWithRides([ride()]);
+    toFull();
+    expect(screen.getByText("ride from PDX")).toBeInTheDocument();
+    // The added rider carries permanent provenance; no confirm control.
+    expect(screen.getByText(/added by Member 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/that's me/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the viewer a 'leave' control on their own rider row", () => {
+    renderWithRides([ride()]);
+    toFull();
+    expect(
+      screen.getByRole("button", { name: M3_UI_STRINGS.rideGroup_leave })
+    ).toBeInTheDocument();
+  });
+
+  it("shows 'clear this ride' to the ride creator", () => {
+    renderWithRides([ride({ created_by_trip_member_id: "member-1" })]);
+    toFull();
+    expect(
+      screen.getByRole("button", { name: M3_UI_STRINGS.rideGroup_remove })
+    ).toBeInTheDocument();
+  });
+
+  it("hides 'clear this ride' from a non-creator, non-organizer", () => {
+    renderWithRides([ride({ created_by_trip_member_id: "member-2" })]);
+    toFull();
+    expect(
+      screen.queryByRole("button", { name: M3_UI_STRINGS.rideGroup_remove })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows 'clear this ride' to an organizer who didn't create it", () => {
+    renderWithRides([ride({ created_by_trip_member_id: "member-2" })], [], true);
+    toFull();
+    expect(
+      screen.getByRole("button", { name: M3_UI_STRINGS.rideGroup_remove })
+    ).toBeInTheDocument();
+  });
+
+  it("suppresses the ride-share nudge for an airport once a ride covers it", () => {
+    const legs = [
+      makeLeg({ id: "l1", trip_member_id: "member-1", airport: "PDX", arrive_at: "2026-08-14T10:00:00Z" }),
+      makeLeg({ id: "l2", trip_member_id: "member-2", airport: "PDX", arrive_at: "2026-08-14T10:30:00Z" }),
+    ];
+    // No ride yet → nudge shows.
+    const { unmount } = renderWithRides([], legs);
+    expect(screen.getByText(/land at PDX/)).toBeInTheDocument();
+    unmount();
+    // A PDX ride exists → nudge suppressed.
+    renderWithRides([ride({ airport: "PDX" })], legs);
+    expect(screen.queryByText(/land at PDX/)).not.toBeInTheDocument();
+  });
+
+  it("always offers a manual 'start a ride' entry point", () => {
+    renderWithRides([]);
+    expect(
+      screen.getByText(M3_UI_STRINGS.rideGroup_manualCta_inbound)
+    ).toBeInTheDocument();
   });
 
   // #574 follow-up — a flight card's "add who's on this" candidates exclude
