@@ -307,6 +307,9 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "quickAddPlaceholder",
   "pasteAddConfirm_template",
   "addDetailsCta",
+  // Task 7b — inline amend/edit
+  "editCta",
+  "editSave",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {

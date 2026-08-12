@@ -53,6 +53,11 @@ vi.mock("@/lib/actions/shopping-item-comments", () => ({
     deleteShoppingCommentMock(...args),
 }));
 
+const amendShoppingItemMock = vi.fn();
+vi.mock("@/lib/actions/shopping-list", () => ({
+  amendShoppingItem: (...args: unknown[]) => amendShoppingItemMock(...args),
+}));
+
 const TRIP_ID = "11111111-1111-4111-8111-111111111111";
 const MEMBER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"; // viewer
 const MEMBER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"; // author
@@ -173,6 +178,7 @@ describe("<ShoppingItemSheet />", () => {
     toggleShoppingReactionMock.mockReset();
     addShoppingCommentMock.mockReset();
     deleteShoppingCommentMock.mockReset();
+    amendShoppingItemMock.mockReset();
   });
 
   // ---- (a) neutral reaction aria labels -----------------------------
@@ -542,5 +548,196 @@ describe("<ShoppingItemSheet />", () => {
       },
     });
     expect(screen.queryByText(/put.*on this/)).not.toBeInTheDocument();
+  });
+
+  // ---- Task 7b — inline amend/edit (name/category/cost) ----------------
+
+  it("Edit reveals the form prefilled with current name/category/cost", async () => {
+    const user = userEvent.setup();
+    await renderSheet({
+      item: { name: "Tequila", category: "booze", cost_cents: 4500 },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+
+    expect(screen.getByDisplayValue("Tequila")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("45.00")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: SHOPPING_LIST_UI_STRINGS.categoryBooze,
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("changing ONLY the name sends { name } — category/costCents NOT in the patch (gap-A)", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    await renderSheet({
+      item: { name: "Tequila", category: "booze", cost_cents: 4500 },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const nameInput = screen.getByDisplayValue("Tequila");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mezcal");
+
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledTimes(1)
+    );
+    const [id, patch] = amendShoppingItemMock.mock.calls[0];
+    expect(id).toBe("item-1");
+    expect(patch).toEqual({ name: "Mezcal" });
+    expect(patch).not.toHaveProperty("category");
+    expect(patch).not.toHaveProperty("costCents");
+  });
+
+  it("clearing category sends { category: null }", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    await renderSheet({ item: { category: "booze" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: SHOPPING_LIST_UI_STRINGS.categoryBooze,
+      })
+    );
+
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledWith("item-1", {
+        category: null,
+      })
+    );
+  });
+
+  it("changing cost sends costCents in cents; clearing cost sends { costCents: null }", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    const { item } = await renderSheet({ item: { cost_cents: 4500 } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const costInput = screen.getByDisplayValue("45.00");
+    await user.clear(costInput);
+    await user.type(costInput, "12.50");
+
+    let save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledWith(item.id, {
+        costCents: 1250,
+      })
+    );
+
+    amendShoppingItemMock.mockClear();
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+
+    // reopen — clear cost entirely
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const costInput2 = screen.getByDisplayValue("45.00");
+    await user.clear(costInput2);
+
+    save = screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editSave });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledWith(item.id, {
+        costCents: null,
+      })
+    );
+  });
+
+  it("Save is disabled with no changes / does not call the action", async () => {
+    const user = userEvent.setup();
+    await renderSheet({ item: { name: "Tequila" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    expect(save).toBeDisabled();
+    expect(amendShoppingItemMock).not.toHaveBeenCalled();
+  });
+
+  it("ok:true exits edit mode and calls router.refresh", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    await renderSheet({ item: { name: "Tequila" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const nameInput = screen.getByDisplayValue("Tequila");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mezcal");
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editSave })
+    ).not.toBeInTheDocument();
+  });
+
+  it("a failed amend keeps the form open and shows an alert", async () => {
+    amendShoppingItemMock.mockResolvedValue({
+      ok: false,
+      errorKey: "shopping_list_save_failed",
+    });
+    const user = userEvent.setup();
+    await renderSheet({ item: { name: "Tequila" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const nameInput = screen.getByDisplayValue("Tequila");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mezcal");
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        ERRORS.shopping_list_save_failed
+      )
+    );
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editSave })
+    ).toBeInTheDocument();
   });
 });

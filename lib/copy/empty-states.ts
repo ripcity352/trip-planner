@@ -1050,6 +1050,11 @@ export const SHOPPING_LIST_UI_STRINGS = {
   quickAddPlaceholder: "Add an item…",
   pasteAddConfirm_template: "Add {count} items?",
   addDetailsCta: "Add with details",
+
+  // Task 7b — inline amend/edit (name/category/cost) in the detail sheet.
+  // `cancelCta` is reused for the edit form's cancel action.
+  editCta: "Edit",
+  editSave: "Save",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

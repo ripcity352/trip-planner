@@ -47,6 +47,7 @@ import { ERRORS } from "@/lib/copy/errors";
 import { ShoppingReactionStrip } from "./ShoppingReactionStrip";
 import { ShoppingNotesThread } from "./ShoppingNotesThread";
 import { ShoppingNoteComposer } from "./ShoppingNoteComposer";
+import { ShoppingItemEditForm } from "./ShoppingItemEditForm";
 import type {
   ShoppingItem,
   ShoppingItemComment,
@@ -78,6 +79,9 @@ export function ShoppingItemSheet({
   onClose,
 }: ShoppingItemSheetProps) {
   const [isGone, setIsGone] = React.useState(false);
+  // Task 7b — inline amend/edit. Anyone who can see the item may amend it
+  // (RLS + rule-8, no author-only gate) — no role/author check here.
+  const [isEditing, setIsEditing] = React.useState(false);
   // Optimistic notes appended locally between "submitted" and the next
   // `router.refresh()` reconciling real props. Deduped against `comments`
   // by idempotency_key so a refresh never double-renders one.
@@ -194,25 +198,44 @@ export function ShoppingItemSheet({
     <ShoppingSheetShell onBackdropClick={onClose}>
       <div className="flex h-full flex-col">
         <div className="flex items-start justify-between gap-2 border-b border-border p-4">
-          <div className="flex min-w-0 flex-col gap-1">
-            <h2 className="text-base font-medium break-words">{item.name}</h2>
-            <p className="text-muted-foreground text-xs">
-              {SHOPPING_LIST_UI_STRINGS.addedBy_template
-                .replace("{name}", authorName)
-                .replace("{when}", addedWhen)}
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-              {costTag ? (
-                <span className="text-muted-foreground">{costTag}</span>
-              ) : null}
-              <span className="text-muted-foreground">{statusLine}</span>
+          {isEditing ? (
+            <div className="min-w-0 flex-1">
+              <ShoppingItemEditForm
+                item={item}
+                onSaved={() => setIsEditing(false)}
+                onCancel={() => setIsEditing(false)}
+              />
             </div>
-            {provenanceLine ? (
+          ) : (
+            <div className="flex min-w-0 flex-col gap-1">
+              <h2 className="text-base font-medium break-words">{item.name}</h2>
               <p className="text-muted-foreground text-xs">
-                {provenanceLine}
+                {SHOPPING_LIST_UI_STRINGS.addedBy_template
+                  .replace("{name}", authorName)
+                  .replace("{when}", addedWhen)}
               </p>
-            ) : null}
-          </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                {costTag ? (
+                  <span className="text-muted-foreground">{costTag}</span>
+                ) : null}
+                <span className="text-muted-foreground">{statusLine}</span>
+              </div>
+              {provenanceLine ? (
+                <p className="text-muted-foreground text-xs">
+                  {provenanceLine}
+                </p>
+              ) : null}
+              <div className="mt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="text-muted-foreground rounded-xs text-xs underline underline-offset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                >
+                  {SHOPPING_LIST_UI_STRINGS.editCta}
+                </button>
+              </div>
+            </div>
+          )}
           <button
             type="button"
             aria-label={SHOPPING_LIST_UI_STRINGS.sheetClose_aria}
