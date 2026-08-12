@@ -1029,6 +1029,17 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // title, not a prompt.
   completedByPickerTitle: "Completed by…",
   reopenNotePlaceholder: "Add a note (optional)…",
+  // Task 6 — segmented filter + sectioning. `completeAction` above is
+  // literally "Completed", which collides with the Completed section
+  // divider's own visible label as an accessible name — this template
+  // gives the divider/toggle button a distinct one ("Show/hide
+  // Completed") so screen-reader users (and role-based queries) can tell
+  // the two apart. {section} is stateCompleted or stateRemoved.
+  sectionToggle_aria_template: "Show/hide {section}",
+  // Small neutral line for an empty FILTERED tab (e.g. no Removed items
+  // yet) — distinct from EMPTY_STATES.shopping_list_empty, which only
+  // fires when there are ZERO items total.
+  filterTab_emptyNote: "Nothing here for this filter.",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;
@@ -1086,4 +1097,8 @@ export type DashboardGlanceStringKey = keyof typeof DASHBOARD_GLANCE_STRINGS;
  */
 export const A11Y_UI_STRINGS = {
   loading: "Loading",
+  // Task 6 — accessible group name for the shopping-list segmented filter
+  // (All / Open / In-progress / Completed / Removed). Not visibly
+  // rendered — the group's own heading already says "Shopping list".
+  shoppingListFilterGroup: "Filter",
 } as const;

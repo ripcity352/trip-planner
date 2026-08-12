@@ -128,7 +128,6 @@ async function renderCard(
       memberMap={MEMBER_MAP}
       viewerMemberId={MEMBER_A}
       canDelete={props.canDelete ?? false}
-      claimReadOnly={false}
       reactionSummary={props.reactionSummary}
       commentCount={props.commentCount ?? 0}
       onOpenItem={onOpenItem}

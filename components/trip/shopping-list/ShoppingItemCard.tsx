@@ -152,12 +152,6 @@ export interface ShoppingItemCardProps {
   viewerMemberId: string;
   /** Author (via created_by_trip_member_id) or organizer/co_organizer. */
   canDelete: boolean;
-  /**
-   * v1 concept — the card no longer reads this (state now derives from
-   * `deriveShoppingItemState`). Kept in the props interface only because
-   * `ShoppingList` still passes it; Task 6 removes it.
-   */
-  claimReadOnly: boolean;
   /** Folded reaction summary (counts + viewer's own) — never raw rows. */
   reactionSummary: ShoppingItemReactionSummary | undefined;
   /** Note-thread count, folded server-side — never raw comment rows. */

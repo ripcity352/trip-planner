@@ -300,6 +300,9 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   // v2 pickers + reopen-with-note flow (Task 5b)
   "completedByPickerTitle",
   "reopenNotePlaceholder",
+  // Segmented filter + sectioning (Task 6)
+  "sectionToggle_aria_template",
+  "filterTab_emptyNote",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {
@@ -331,6 +334,9 @@ describe("SHOPPING_LIST_UI_STRINGS", () => {
     expect(SHOPPING_LIST_UI_STRINGS.addedBy_template).toContain("{when}");
     expect(SHOPPING_LIST_UI_STRINGS.noteAuthorLine_template).toContain(
       "{name}"
+    );
+    expect(SHOPPING_LIST_UI_STRINGS.sectionToggle_aria_template).toContain(
+      "{section}"
     );
     expect(SHOPPING_LIST_UI_STRINGS.noteAuthorLine_template).toContain(
       "{when}"
