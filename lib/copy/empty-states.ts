@@ -993,6 +993,31 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // cost is named up front instead of a generic "can't undo".
   itemDeleteConfirm:
     "Remove this? It'll take its reactions and notes with it — can't undo.",
+
+  // --- v2 lifecycle ---
+  // v2 lifecycle — state labels (reused for filter tabs, section
+  // dividers, and the Open status line). Precise/literal beats warm/cute
+  // here (see feedback_precise_copy_over_cute) — this is a coordination
+  // state machine, not a celebratory surface. Verb spine: complete.
+  stateOpen: "Open",
+  stateInProgress: "In-progress",
+  stateCompleted: "Completed",
+  stateRemoved: "Removed",
+  filterAll: "All",
+  // v2 action buttons (one primary per state)
+  completeAction: "Completed",
+  claimSelfAction: "I'll complete",
+  assignAction: "Assign…",
+  reassignAction: "Re-assign…",
+  reopenAction: "Re-open",
+  // v2 attributed status lines
+  completedBy_template: "Completed by {name}",
+  removedBy_template: "Removed by {name}",
+  inProgressYou: "You to complete",
+  inProgressThem_template: "{name} to complete",
+  // v2 assign/re-assign picker + provenance
+  assignOpenNoOne: "Open — no one",
+  assignedByProvenance_template: "{assigner} put {assignee} on this",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

@@ -277,6 +277,24 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "noteDeleteConfirm",
   "noteComposerSubmit_aria",
   "itemDeleteConfirm",
+  // v2 lifecycle — precise/literal state+action strings (Task 3,
+  // feedback_precise_copy_over_cute). Verb spine: complete.
+  "stateOpen",
+  "stateInProgress",
+  "stateCompleted",
+  "stateRemoved",
+  "filterAll",
+  "completeAction",
+  "claimSelfAction",
+  "assignAction",
+  "reassignAction",
+  "reopenAction",
+  "completedBy_template",
+  "removedBy_template",
+  "inProgressYou",
+  "inProgressThem_template",
+  "assignOpenNoOne",
+  "assignedByProvenance_template",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {
