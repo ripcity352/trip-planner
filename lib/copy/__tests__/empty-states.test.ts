@@ -266,6 +266,17 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "deleteConfirm",
   "openDetail_template",
   "likeAria",
+  "sheetClose_aria",
+  "addedBy_template",
+  "reactionsGroup_aria",
+  "notesHeading",
+  "notePlaceholder",
+  "notesEmpty",
+  "noteAuthorLine_template",
+  "noteDelete_aria",
+  "noteDeleteConfirm",
+  "noteComposerSubmit_aria",
+  "itemDeleteConfirm",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {
@@ -293,5 +304,13 @@ describe("SHOPPING_LIST_UI_STRINGS", () => {
     );
     expect(SHOPPING_LIST_UI_STRINGS.claimedBy_template).toContain("{name}");
     expect(SHOPPING_LIST_UI_STRINGS.openDetail_template).toContain("{name}");
+    expect(SHOPPING_LIST_UI_STRINGS.addedBy_template).toContain("{name}");
+    expect(SHOPPING_LIST_UI_STRINGS.addedBy_template).toContain("{when}");
+    expect(SHOPPING_LIST_UI_STRINGS.noteAuthorLine_template).toContain(
+      "{name}"
+    );
+    expect(SHOPPING_LIST_UI_STRINGS.noteAuthorLine_template).toContain(
+      "{when}"
+    );
   });
 });

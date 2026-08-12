@@ -19,8 +19,13 @@
  * down to each `<ShoppingItemCard>` (never raw rows — the aggregate-only
  * boundary is enforced server-side in `page.tsx`, P2-T7). Both default to
  * empty so this component works standalone before P2-T7 wires the page.
- * Holds `openItemId` for the P2-T6 detail sheet — the sheet itself isn't
- * rendered yet (see the seam comment below).
+ *
+ * P2-T6 — holds `openItemId`; when set, renders `<ShoppingItemSheet>` for
+ * that item, sourced from `commentsByItem` (full comment rows for the
+ * detail thread, distinct from `commentCountByItem`'s row-level fold) +
+ * `reactionsByItem` + `now`. `now` defaults to `new Date()` evaluated at
+ * render if the page (P2-T7) doesn't supply one — components work
+ * standalone pre-wiring, same as the reaction/comment-count defaults above.
  */
 
 import * as React from "react";
@@ -29,8 +34,10 @@ import { EMPTY_STATES, SHOPPING_LIST_UI_STRINGS } from "@/lib/copy/empty-states"
 import { resolveMemberName } from "@/lib/utils/member-display";
 import { AddItemSheet } from "./AddItemSheet";
 import { ShoppingItemCard } from "./ShoppingItemCard";
+import { ShoppingItemSheet } from "./ShoppingItemSheet";
 import type {
   ShoppingItem,
+  ShoppingItemComment,
   ShoppingItemReactionSummary,
   TripMember,
 } from "@/lib/db/types";
@@ -45,6 +52,10 @@ export interface ShoppingListProps {
   reactionsByItem?: Record<string, ShoppingItemReactionSummary>;
   /** Folded per-item note-thread count, keyed by item id. */
   commentCountByItem?: Record<string, number>;
+  /** Full comment rows for the detail sheet's Notes thread, keyed by item id. */
+  commentsByItem?: Record<string, ShoppingItemComment[]>;
+  /** Server reference clock for the detail sheet's relative-time labels. */
+  now?: Date;
 }
 
 const ORGANIZER_ROLES = new Set(["organizer", "co_organizer"]);
@@ -56,15 +67,20 @@ export function ShoppingList({
   viewer,
   reactionsByItem = {},
   commentCountByItem = {},
+  commentsByItem = {},
+  now,
 }: ShoppingListProps) {
   const memberMap = React.useMemo(
     () => new Map(tripMembers.map((member) => [member.id, member])),
     [tripMembers]
   );
 
-  // P2-T6 seam: holds which item's detail sheet is open. Setter is passed
-  // to every card as `onOpenItem`; no sheet renders yet.
+  // Holds which item's detail sheet is open. Setter is passed to every
+  // card as `onOpenItem`.
   const [openItemId, setOpenItemId] = React.useState<string | null>(null);
+  const openItem = openItemId
+    ? (items.find((item) => item.id === openItemId) ?? null)
+    : null;
 
   const celebrantName = React.useMemo(() => {
     const celebrant = tripMembers.find((member) => member.is_celebrant);
@@ -134,10 +150,20 @@ export function ShoppingList({
 
       <AddItemSheet tripId={tripId} viewer={viewer} celebrantName={celebrantName} />
 
-      {/* P2-T6: render <ShoppingItemSheet itemId={openItemId} onClose={() => setOpenItemId(null)} .../>
-          when openItemId is set. Left as a no-op seam for now — the hidden
-          marker below keeps `openItemId` a real (test-observable) read
-          instead of a write-only ref until the sheet lands. */}
+      {openItem ? (
+        <ShoppingItemSheet
+          item={openItem}
+          reactionSummary={reactionsByItem[openItem.id]}
+          comments={commentsByItem[openItem.id] ?? []}
+          memberMap={memberMap}
+          viewer={viewer}
+          now={now ?? new Date()}
+          onClose={() => setOpenItemId(null)}
+        />
+      ) : null}
+
+      {/* Test-observable read of `openItemId` — kept alongside the real
+          sheet render above (harmless when the sheet is also mounted). */}
       <span hidden data-open-item-id={openItemId ?? undefined} />
     </div>
   );

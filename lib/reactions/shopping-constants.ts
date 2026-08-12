@@ -37,3 +37,20 @@ export function isShoppingReactionEmoji(
 ): value is ShoppingReactionEmoji {
   return (SHOPPING_REACTION_EMOJI as readonly string[]).includes(value);
 }
+
+/**
+ * Neutral per-pill aria-labels for the detail-sheet reaction strip (spec
+ * §12.6). MUST stay neutral — "thumbs down", never "dislike"/"downvote",
+ * which would smuggle a toxic frame to screen readers that the visual
+ * emoji itself doesn't carry. Every entry here is read aloud by a screen
+ * reader on every render of the strip, so this is the one place voice
+ * discipline is a11y-load-bearing, not just a nice-to-have.
+ */
+export const SHOPPING_REACTION_ARIA: Record<ShoppingReactionEmoji, string> = {
+  "👍": "thumbs up",
+  "👎": "thumbs down",
+  "❤️": "heart",
+  "🔥": "fire",
+  "😂": "laughing",
+  "🍻": "cheers",
+};

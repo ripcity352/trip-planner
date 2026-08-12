@@ -160,8 +160,18 @@ export function ShoppingItemCard({
   const handleToggleBought = () => runMutation(() => toggleBought(item.id, !item.bought));
   const handleClaim = () => runMutation(() => setClaim(item.id, true));
   const handleUnclaim = () => runMutation(() => setClaim(item.id, false));
+  // Distinct confirm copy when the item carries a live thread (≥1 comment
+  // or reaction) — the cascade wipes that too, so the confirm names the
+  // real cost instead of a generic "can't undo" (spec §12.6).
+  const hasLiveThread =
+    commentCount > 0 ||
+    Object.values(reactionSummary?.counts ?? {}).some((c) => (c ?? 0) > 0);
+
   const handleDelete = () => {
-    if (!window.confirm(SHOPPING_LIST_UI_STRINGS.deleteConfirm)) return;
+    const confirmCopy = hasLiveThread
+      ? SHOPPING_LIST_UI_STRINGS.itemDeleteConfirm
+      : SHOPPING_LIST_UI_STRINGS.deleteConfirm;
+    if (!window.confirm(confirmCopy)) return;
     runMutation(() => deleteShoppingItem(item.id));
   };
 
