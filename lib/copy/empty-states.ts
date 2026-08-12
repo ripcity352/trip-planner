@@ -41,7 +41,7 @@ export const EMPTY_STATES: Record<EmptyStateKey, string> = {
   invites_for_trip:
     "No links out yet. Mint one and start texting it around.",
   shopping_list_empty:
-    "List's empty. Snacks, booze, sunscreen, the aux cable — throw it on before you forget.",
+    "List's empty. Booze, ice, mixers, sunscreen — add what we need to pick up.",
 };
 
 /**
@@ -942,7 +942,7 @@ export type TripEditUIStringKey = keyof typeof TRIP_EDIT_UI_STRINGS;
  */
 export const SHOPPING_LIST_UI_STRINGS = {
   heading: "Shopping list",
-  addCta: "What are we bringing?",
+  addCta: "What do we need?",
   nameLabel: "What is it?",
   namePlaceholder: "e.g. 2 handles of tequila",
   costLabel: "Rough cost (optional)",

@@ -4544,3 +4544,24 @@ Both PRs are gate-green and their migrations (`20260811010000_shopping_list`,
 `20260811020000_shopping_social`) are applied to prod. Deferred polish
 (dual-optimistic-cache row↔sheet lag, sheet a11y, claim-fallback reconcile,
 this amend UI) is bundled in issue #604.
+
+### 3. Copy encodes procurement (a store run), not packing
+
+**Gap (caught in a prod walk, 2026-08-12).** The shipped empty state and
+add-CTA carried a *pack-from-home* mental model — CTA "What are we bringing?",
+empty "…the aux cable — throw it on before you forget." That reads as a packing
+list. The feature is the opposite: a **shopping run** — coordinating what the
+crew *buys/grabs at the store once at the destination* (spec §1: "supplies /
+booze / groceries / gear that any member can add onto, claim, and check off").
+The wrong model originated in the spec §6 / brief §6 copy and shipped unchanged.
+
+**Decision (operator, 2026-08-12).** Reframe to procurement voice; examples are
+destination-buys, not pack-items:
+- `SHOPPING_LIST_UI_STRINGS.addCta`: "What are we bringing?" → **"What do we need?"**
+- `shopping_list_empty`: → **"List's empty. Booze, ice, mixers, sunscreen — add
+  what we need to pick up."**
+
+The historical plan/brief/exploration docs keep the old strings (record of what
+was speced); this ADR + the live copy bag are the corrected source of truth.
+Claim/got-it copy ("I've got this", "Got it. One less thing.") was already
+procurement-neutral and unchanged.
