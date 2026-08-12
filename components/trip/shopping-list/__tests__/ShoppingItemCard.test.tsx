@@ -28,10 +28,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock }),
 }));
 
+const toggleBoughtMock = vi.fn();
+const deleteShoppingItemMock = vi.fn();
 vi.mock("@/lib/actions/shopping-list", () => ({
-  toggleBought: vi.fn(),
+  toggleBought: (...args: unknown[]) => toggleBoughtMock(...args),
   setClaim: vi.fn(),
-  deleteShoppingItem: vi.fn(),
+  deleteShoppingItem: (...args: unknown[]) => deleteShoppingItemMock(...args),
 }));
 
 const toggleShoppingReactionMock = vi.fn();
@@ -85,6 +87,7 @@ async function renderCard(
     reactionSummary?: ShoppingItemReactionSummary;
     commentCount?: number;
     onOpenItem?: (itemId: string) => void;
+    canDelete?: boolean;
   } = {}
 ) {
   const { ShoppingItemCard } = await import(
@@ -97,7 +100,7 @@ async function renderCard(
       item={item}
       memberMap={MEMBER_MAP}
       viewerMemberId={MEMBER_A}
-      canDelete={false}
+      canDelete={props.canDelete ?? false}
       claimReadOnly={false}
       reactionSummary={props.reactionSummary}
       commentCount={props.commentCount ?? 0}
@@ -111,6 +114,8 @@ describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
   beforeEach(() => {
     refreshMock.mockReset();
     toggleShoppingReactionMock.mockReset();
+    toggleBoughtMock.mockReset();
+    deleteShoppingItemMock.mockReset();
   });
 
   it("(a) renders the like count only when >= 1, never '👍 0'", async () => {
@@ -231,6 +236,34 @@ describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
       emoji: ROW_LIKE_EMOJI,
       active: false,
     });
+  });
+
+  // These two guard the exact regression the row-tap rewrite exists to
+  // prevent: the got-it checkbox and the delete button are real SIBLINGS
+  // of the row-open button, never nested inside it. If a future edit
+  // accidentally moved either one back inside the open-trigger, its
+  // click would bubble into `onOpenItem` too — these assert it doesn't.
+  it("clicking the got-it checkbox fires its own toggle and does NOT open the detail sheet", async () => {
+    toggleBoughtMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    const { onOpenItem, item } = await renderCard();
+    await user.click(
+      screen.getByRole("checkbox", { name: SHOPPING_LIST_UI_STRINGS.gotIt })
+    );
+    expect(toggleBoughtMock).toHaveBeenCalledWith(item.id, true);
+    expect(onOpenItem).not.toHaveBeenCalled();
+  });
+
+  it("clicking delete confirms + fires its own action and does NOT open the detail sheet", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    deleteShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    const { onOpenItem, item } = await renderCard({ canDelete: true });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.deleteCta })
+    );
+    expect(deleteShoppingItemMock).toHaveBeenCalledWith(item.id);
+    expect(onOpenItem).not.toHaveBeenCalled();
   });
 
   it("like toggle rolls back optimistic state on failure", async () => {
