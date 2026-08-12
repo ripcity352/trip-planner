@@ -31,18 +31,19 @@
  */
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { formatDistance } from "date-fns";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { callAction } from "@/lib/ui/call-action";
-import { setClaim } from "@/lib/actions/shopping-list";
-import { resolveContentAuthorName } from "@/lib/utils/member-display";
+import { deriveShoppingItemState } from "@/lib/db/shopping-list";
+import {
+  resolveContentAuthorName,
+  resolveMemberName,
+} from "@/lib/utils/member-display";
 import { formatCents } from "@/lib/utils/format-cents";
 import { SHOPPING_LIST_UI_STRINGS } from "@/lib/copy/empty-states";
-import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
+import { ERRORS } from "@/lib/copy/errors";
 import { ShoppingReactionStrip } from "./ShoppingReactionStrip";
 import { ShoppingNotesThread } from "./ShoppingNotesThread";
 import { ShoppingNoteComposer } from "./ShoppingNoteComposer";
@@ -76,12 +77,7 @@ export function ShoppingItemSheet({
   now,
   onClose,
 }: ShoppingItemSheetProps) {
-  const router = useRouter();
   const [isGone, setIsGone] = React.useState(false);
-  const [claimPending, setClaimPending] = React.useState(false);
-  const [claimErrorKey, setClaimErrorKey] = React.useState<ErrorKey | null>(
-    null
-  );
   // Optimistic notes appended locally between "submitted" and the next
   // `router.refresh()` reconciling real props. Deduped against `comments`
   // by idempotency_key so a refresh never double-renders one.
@@ -111,11 +107,6 @@ export function ShoppingItemSheet({
   };
 
   const isViewerOrganizer = ORGANIZER_ROLES.has(viewer.role);
-  const isClaimedByViewer = item.claimed_by_trip_member_id === viewer.id;
-  // Mirrors ShoppingItemCard's claimReadOnly rule (gap-E): a bought item's
-  // claim renders read-only in the row, so the sheet keeps that same
-  // capability rather than offering an unclaim control the row wouldn't.
-  const claimReadOnly = item.bought;
 
   const authorName = resolveContentAuthorName(
     memberMap,
@@ -132,27 +123,57 @@ export function ShoppingItemSheet({
         )
       : null;
 
-  const handleClaim = (claimed: boolean) => {
-    if (claimPending) return;
-    setClaimErrorKey(null);
-    setClaimPending(true);
-    void (async () => {
-      try {
-        const result = await callAction(() => setClaim(item.id, claimed));
-        if (!result.ok) {
-          if (result.errorKey === "rls_denied") {
-            handleGone();
-            return;
-          }
-          setClaimErrorKey(result.errorKey);
-          return;
-        }
-        router.refresh();
-      } finally {
-        setClaimPending(false);
-      }
-    })();
-  };
+  // Read-only v2 status line (mirrors ShoppingItemCard's statusLine — the
+  // sheet no longer offers a claim toggle; all mutation lives on the card,
+  // Tasks 5a/5b). `resolveMemberName` (not `resolveContentAuthorName`) —
+  // these ids are roster members, not content authors, so the "Guest"
+  // fallback (not "Someone") applies.
+  const state = deriveShoppingItemState(item);
+  const claimerId = item.claimed_by_trip_member_id;
+  const statusLine = (() => {
+    switch (state) {
+      case "open":
+        return SHOPPING_LIST_UI_STRINGS.stateOpen;
+      case "in_progress":
+        return claimerId === viewer.id
+          ? SHOPPING_LIST_UI_STRINGS.inProgressYou
+          : SHOPPING_LIST_UI_STRINGS.inProgressThem_template.replace(
+              "{name}",
+              resolveMemberName(memberMap, claimerId ?? "")
+            );
+      case "completed":
+        return SHOPPING_LIST_UI_STRINGS.completedBy_template.replace(
+          "{name}",
+          resolveMemberName(memberMap, item.completed_by_trip_member_id ?? "")
+        );
+      case "removed":
+        return SHOPPING_LIST_UI_STRINGS.removedBy_template.replace(
+          "{name}",
+          resolveMemberName(memberMap, item.removed_by_trip_member_id ?? "")
+        );
+    }
+  })();
+
+  // Provenance line (rule #8): only for an on-behalf assign — the assigner
+  // differs from the assignee. A self-claim or an unclaimed item leaves
+  // `claim_assigned_by_trip_member_id` null, so this stays hidden.
+  const showProvenance =
+    item.claim_assigned_by_trip_member_id !== null &&
+    item.claim_assigned_by_trip_member_id !== item.claimed_by_trip_member_id;
+  const provenanceLine = showProvenance
+    ? SHOPPING_LIST_UI_STRINGS.assignedByProvenance_template
+        .replace(
+          "{assigner}",
+          resolveMemberName(
+            memberMap,
+            item.claim_assigned_by_trip_member_id ?? ""
+          )
+        )
+        .replace(
+          "{assignee}",
+          resolveMemberName(memberMap, item.claimed_by_trip_member_id ?? "")
+        )
+    : null;
 
   if (isGone) {
     return (
@@ -184,44 +205,11 @@ export function ShoppingItemSheet({
               {costTag ? (
                 <span className="text-muted-foreground">{costTag}</span>
               ) : null}
-              {item.claimed_by_trip_member_id ? (
-                <>
-                  <span className="text-muted-foreground">
-                    {isClaimedByViewer
-                      ? SHOPPING_LIST_UI_STRINGS.claimedByYou
-                      : SHOPPING_LIST_UI_STRINGS.claimedBy_template.replace(
-                          "{name}",
-                          resolveContentAuthorName(
-                            memberMap,
-                            item.claimed_by_trip_member_id
-                          )
-                        )}
-                  </span>
-                  {!claimReadOnly && isClaimedByViewer ? (
-                    <button
-                      type="button"
-                      disabled={claimPending}
-                      onClick={() => handleClaim(false)}
-                      className="text-muted-foreground underline underline-offset-2 disabled:opacity-60"
-                    >
-                      {SHOPPING_LIST_UI_STRINGS.unclaim}
-                    </button>
-                  ) : null}
-                </>
-              ) : !claimReadOnly ? (
-                <button
-                  type="button"
-                  disabled={claimPending}
-                  onClick={() => handleClaim(true)}
-                  className="text-foreground underline underline-offset-2 disabled:opacity-60"
-                >
-                  {SHOPPING_LIST_UI_STRINGS.claimCta}
-                </button>
-              ) : null}
+              <span className="text-muted-foreground">{statusLine}</span>
             </div>
-            {claimErrorKey ? (
-              <p role="alert" className="text-muted-foreground text-xs">
-                {ERRORS[claimErrorKey]}
+            {provenanceLine ? (
+              <p className="text-muted-foreground text-xs">
+                {provenanceLine}
               </p>
             ) : null}
           </div>

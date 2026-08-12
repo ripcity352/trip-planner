@@ -2,9 +2,11 @@
  * Tests for `lib/actions/shopping-list.ts` (Task 4).
  *
  * Covers: happy-path add, idempotency replay (23505), RLS rejection
- * (42501), claim/unclaim member resolution, blank-name validation,
- * partial-patch amend (name-only leaves category/cost intact — gap-A
- * regression), and the I12 no-redirect invariant.
+ * (42501), blank-name validation, partial-patch amend (name-only leaves
+ * category/cost intact — gap-A regression), the v2 lifecycle actions
+ * (assign/complete/remove/reopen), and the I12 no-redirect invariant.
+ * (v1 `toggleBought`/`setClaim` coverage retired in Task 5c along with the
+ * mutations themselves.)
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -128,8 +130,6 @@ const mockItem = {
 };
 
 let addShoppingItem: typeof import("../shopping-list").addShoppingItem;
-let toggleBought: typeof import("../shopping-list").toggleBought;
-let setClaim: typeof import("../shopping-list").setClaim;
 let amendShoppingItem: typeof import("../shopping-list").amendShoppingItem;
 let deleteShoppingItem: typeof import("../shopping-list").deleteShoppingItem;
 let assignShoppingItem: typeof import("../shopping-list").assignShoppingItem;
@@ -148,8 +148,6 @@ beforeEach(async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   const mod = await import("../shopping-list");
   addShoppingItem = mod.addShoppingItem;
-  toggleBought = mod.toggleBought;
-  setClaim = mod.setClaim;
   amendShoppingItem = mod.amendShoppingItem;
   deleteShoppingItem = mod.deleteShoppingItem;
   assignShoppingItem = mod.assignShoppingItem;
@@ -262,85 +260,6 @@ describe("addShoppingItem", () => {
     );
     const res = await addShoppingItem({ tripId: TRIP, name: "Sunscreen" }, KEY);
     expect(res).toEqual({ ok: false, errorKey: "rate_limit" });
-  });
-});
-
-describe("toggleBought", () => {
-  it("returns ok:true on a successful toggle", async () => {
-    primeAuth(USER);
-    tableQueues.set("shopping_list_items", [{ data: null, error: null, count: 1 }]);
-    const res = await toggleBought(ITEM, true);
-    expect(res).toEqual({ ok: true });
-  });
-
-  it("returns rls_denied when unauthenticated", async () => {
-    primeAuth(null);
-    const res = await toggleBought(ITEM, true);
-    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
-  });
-
-  it("returns rls_denied when the update matches no row", async () => {
-    primeAuth(USER);
-    tableQueues.set("shopping_list_items", [{ data: null, error: null, count: 0 }]);
-    const res = await toggleBought(ITEM, true);
-    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
-  });
-
-  it("rejects a non-uuid item id", async () => {
-    primeAuth(USER);
-    const res = await toggleBought("nope", true);
-    expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
-  });
-});
-
-describe("setClaim", () => {
-  it("resolves the acting member and writes their id when claiming", async () => {
-    primeAuth(USER);
-    tableQueues.set("shopping_list_items", [
-      { data: { trip_id: TRIP }, error: null },
-      { data: null, error: null, count: 1 },
-    ]);
-    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
-
-    const res = await setClaim(ITEM, true);
-    expect(res).toEqual({ ok: true });
-
-    const update = capturedWrites.find(
-      (w) => w.table === "shopping_list_items" && w.op === "update"
-    );
-    expect(update?.arg).toEqual({ claimed_by_trip_member_id: MEMBER });
-  });
-
-  it("writes null when unclaiming", async () => {
-    primeAuth(USER);
-    tableQueues.set("shopping_list_items", [
-      { data: { trip_id: TRIP }, error: null },
-      { data: null, error: null, count: 1 },
-    ]);
-    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
-
-    const res = await setClaim(ITEM, false);
-    expect(res).toEqual({ ok: true });
-
-    const update = capturedWrites.find(
-      (w) => w.table === "shopping_list_items" && w.op === "update"
-    );
-    expect(update?.arg).toEqual({ claimed_by_trip_member_id: null });
-  });
-
-  it("returns rls_denied when the item isn't visible to the caller", async () => {
-    primeAuth(USER);
-    tableQueues.set("shopping_list_items", [{ data: null, error: null }]);
-    const res = await setClaim(ITEM, true);
-    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
-  });
-
-  it("returns rls_denied when the caller is not a trip member", async () => {
-    primeAuth(USER);
-    tableQueues.set("shopping_list_items", [{ data: { trip_id: TRIP }, error: null }]);
-    tableQueues.set("trip_members", [{ data: null, error: null }]);
-    const res = await setClaim(ITEM, true);
-    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
   });
 });
 
@@ -809,14 +728,12 @@ describe("reopenShoppingItem", () => {
 // I12: no shopping-list action calls redirect() — router.refresh() is the
 // caller's job, per notes on the callAction contract.
 describe("no action calls redirect (I12)", () => {
-  it("never invokes next/navigation redirect across the surface (all 9 mutations)", async () => {
+  it("never invokes next/navigation redirect across the surface (all 7 mutations)", async () => {
     primeAuth(USER);
     tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
     tableQueues.set("shopping_list_items", [{ data: mockItem, error: null, count: 1 }]);
 
     await addShoppingItem({ tripId: TRIP, name: "Sunscreen" }, KEY);
-    await toggleBought(ITEM, true);
-    await setClaim(ITEM, true);
     await amendShoppingItem(ITEM, { name: "New name" });
     await deleteShoppingItem(ITEM);
     await assignShoppingItem(ITEM, null);

@@ -5,8 +5,9 @@
  *   1. `SHOPPING_ITEM_COLUMNS` — includes every non-exempt written column (I1).
  *   2. `getShoppingItems` — orders by created_at asc, throws on error.
  *   3. `amendItem` — sends only the keys present in the patch.
- *   4. `setItemBought` / `setItemClaim` / `deleteItem` — exact-count update,
- *      SHOPPING_ITEM_NO_ROW on a zero-row match, error.code preserved.
+ *   4. `deleteItem` — exact-count update, SHOPPING_ITEM_NO_ROW on a
+ *      zero-row match, error.code preserved. (v1 `setItemBought` /
+ *      `setItemClaim` coverage retired in Task 5c along with the setters.)
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -22,8 +23,6 @@ import {
   getShoppingItems,
   reopenItem,
   setItemAssignment,
-  setItemBought,
-  setItemClaim,
   setItemCompleted,
   setItemRemoved,
 } from "../shopping-list";
@@ -213,96 +212,8 @@ describe("amendItem partial patch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// setItemBought / setItemClaim / deleteItem
+// deleteItem
 // ---------------------------------------------------------------------------
-
-describe("setItemBought no-row", () => {
-  it("throws SHOPPING_ITEM_NO_ROW when nothing matched", async () => {
-    const supabase = {
-      from: vi.fn().mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ error: null, count: 0 }),
-        }),
-      }),
-    } as never;
-    await expect(setItemBought(supabase, "missing", true)).rejects.toMatchObject({
-      code: SHOPPING_ITEM_NO_ROW,
-    });
-  });
-});
-
-describe("setItemBought", () => {
-  it("updates bought with an exact count", async () => {
-    const { calls, client } = makeSequencedBuilder([
-      { data: null, error: null, count: 1 },
-    ]);
-    await setItemBought(client as unknown as SupabaseClient, "item-1", true);
-    expect(calls.find((c) => c.method === "update")?.args).toEqual([
-      { bought: true },
-      { count: "exact" },
-    ]);
-    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
-      "id",
-      "item-1",
-    ]);
-  });
-
-  it("preserves error.code on failure", async () => {
-    const { client } = makeSequencedBuilder([
-      { data: null, error: { code: "42501", message: "rls" }, count: null },
-    ]);
-    const err = await setItemBought(
-      client as unknown as SupabaseClient,
-      "item-1",
-      true
-    ).then(
-      () => null,
-      (e: unknown) => e
-    );
-    expect(err).toBeInstanceOf(ShoppingListDbError);
-    expect((err as ShoppingListDbError).code).toBe("42501");
-  });
-});
-
-describe("setItemClaim", () => {
-  it("updates claimed_by_trip_member_id with an exact count", async () => {
-    const { calls, client } = makeSequencedBuilder([
-      { data: null, error: null, count: 1 },
-    ]);
-    await setItemClaim(client as unknown as SupabaseClient, "item-1", "tm-2");
-    expect(calls.find((c) => c.method === "update")?.args).toEqual([
-      { claimed_by_trip_member_id: "tm-2" },
-      { count: "exact" },
-    ]);
-  });
-
-  it("allows clearing the claim to null", async () => {
-    const { calls, client } = makeSequencedBuilder([
-      { data: null, error: null, count: 1 },
-    ]);
-    await setItemClaim(client as unknown as SupabaseClient, "item-1", null);
-    expect(calls.find((c) => c.method === "update")?.args).toEqual([
-      { claimed_by_trip_member_id: null },
-      { count: "exact" },
-    ]);
-  });
-
-  it("throws SHOPPING_ITEM_NO_ROW when nothing matched", async () => {
-    const { client } = makeSequencedBuilder([
-      { data: null, error: null, count: 0 },
-    ]);
-    const err = await setItemClaim(
-      client as unknown as SupabaseClient,
-      "item-1",
-      "tm-2"
-    ).then(
-      () => null,
-      (e: unknown) => e
-    );
-    expect(err).toBeInstanceOf(ShoppingListDbError);
-    expect((err as ShoppingListDbError).code).toBe(SHOPPING_ITEM_NO_ROW);
-  });
-});
 
 describe("deleteItem", () => {
   it("deletes by id with an exact count", async () => {

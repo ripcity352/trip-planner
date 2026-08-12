@@ -5,12 +5,16 @@
  * see notes/shopping-list-exploration.md). Mirrors the `ride-groups.ts`
  * template: one `ShoppingActionError`, one `toErrorResult`, a
  * `resolveMemberId` helper, `rateLimitedAction` wrapping, and the
- * 23505/42501 error-code split for the raw insert. The `toggleBought` /
- * `setClaim` / `amendShoppingItem` / `deleteShoppingItem` mutations route
- * through the Task 2 db layer (`lib/db/shopping-list.ts`) and map its
- * `ShoppingListDbError` (42501 / SHOPPING_ITEM_NO_ROW) to the same
- * `rls_denied` envelope — a filtered-to-zero-rows update looks identical to
- * an explicit RLS rejection from the caller's point of view.
+ * 23505/42501 error-code split for the raw insert. The `amendShoppingItem` /
+ * `deleteShoppingItem` mutations route through the Task 2 db layer
+ * (`lib/db/shopping-list.ts`) and map its `ShoppingListDbError` (42501 /
+ * SHOPPING_ITEM_NO_ROW) to the same `rls_denied` envelope — a
+ * filtered-to-zero-rows update looks identical to an explicit RLS rejection
+ * from the caller's point of view.
+ *
+ * `toggleBought` and `setClaim` (the v1 mutations) were retired in Task 5c —
+ * v2 folds them into the lifecycle actions below (`assignShoppingItem` /
+ * `completeShoppingItem` / `removeShoppingItem` / `reopenShoppingItem`).
  *
  * No `revalidatePath`, no `redirect()` — `router.refresh()` is caller-side
  * (I12).
@@ -26,8 +30,6 @@ import {
   deleteItem,
   reopenItem,
   setItemAssignment,
-  setItemBought,
-  setItemClaim,
   setItemCompleted,
   setItemRemoved,
 } from "@/lib/db/shopping-list";
@@ -291,81 +293,11 @@ export async function addShoppingItem(
   }
 }
 
-// ---- toggleBought ----------------------------------------------
+// ---- shared result type ----------------------------------------------
 
 export type ToggleShoppingItemResult =
   | { ok: true }
   | { ok: false; errorKey: ErrorKey };
-
-/** Set an item's `bought` state to a desired end state (idempotent). */
-export async function toggleBought(
-  itemId: string,
-  bought: boolean
-): Promise<ToggleShoppingItemResult> {
-  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
-    return { ok: false, errorKey: "validation_failed" };
-  }
-
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
-  const userId = authData.user.id;
-
-  try {
-    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
-      setItemBought(supabase, itemId, bought)
-    );
-    return { ok: true };
-  } catch (err) {
-    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
-  }
-}
-
-// ---- setClaim ----------------------------------------------------
-
-/**
- * Claim (or unclaim, `claimed:false`) an item on the acting member's own
- * behalf. Resolves the caller's own `trip_member_id` server-side — the
- * client never supplies a member id directly.
- */
-export async function setClaim(
-  itemId: string,
-  claimed: boolean
-): Promise<ToggleShoppingItemResult> {
-  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
-    return { ok: false, errorKey: "validation_failed" };
-  }
-
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
-  const userId = authData.user.id;
-
-  // RLS SELECT allows any member who can see the item, so resolving its
-  // trip is safe even before we know the caller's own membership.
-  const { data: item, error: itemErr } = await supabase
-    .from("shopping_list_items")
-    .select("trip_id")
-    .eq("id", itemId)
-    .maybeSingle();
-  if (itemErr || !item) return { ok: false, errorKey: "rls_denied" };
-
-  const memberId = await resolveMemberId(
-    supabase,
-    (item as { trip_id: string }).trip_id,
-    userId
-  );
-  if (!memberId) return { ok: false, errorKey: "rls_denied" };
-
-  try {
-    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
-      setItemClaim(supabase, itemId, claimed ? memberId : null)
-    );
-    return { ok: true };
-  } catch (err) {
-    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
-  }
-}
 
 // ---- amendShoppingItem --------------------------------------------
 
@@ -453,9 +385,9 @@ export async function amendShoppingItem(
  *
  * Idempotent on double-tap (rule 9 — drunk-user-on-bad-signal): a second
  * delete of an already-deleted row hits `SHOPPING_ITEM_NO_ROW` in the Task 2
- * db layer. Unlike `toggleBought`/`setClaim`/`amendShoppingItem` (where a
- * no-row match is genuinely ambiguous between "already handled" and "you
- * can't see this"), a delete's no-row case has only one honest reading —
+ * db layer. Unlike `amendShoppingItem` (where a no-row match is genuinely
+ * ambiguous between "already handled" and "you can't see this"), a
+ * delete's no-row case has only one honest reading —
  * the desired end state (gone) is already true — so it's treated as
  * success, not folded into `mapDbError`'s shared `rls_denied` collapse.
  */

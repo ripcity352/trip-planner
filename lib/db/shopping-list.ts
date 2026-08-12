@@ -70,37 +70,6 @@ async function runCounted(
   }
 }
 
-/** Set an item's `bought` column to a desired end state. */
-export function setItemBought(
-  supabase: SupabaseClient,
-  itemId: string,
-  bought: boolean
-): Promise<void> {
-  return runCounted(
-    supabase
-      .from("shopping_list_items")
-      .update({ bought }, { count: "exact" })
-      .eq("id", itemId)
-  );
-}
-
-/** Set (or clear, with `null`) who's claimed an item. */
-export function setItemClaim(
-  supabase: SupabaseClient,
-  itemId: string,
-  claimedByTripMemberId: string | null
-): Promise<void> {
-  return runCounted(
-    supabase
-      .from("shopping_list_items")
-      .update(
-        { claimed_by_trip_member_id: claimedByTripMemberId },
-        { count: "exact" }
-      )
-      .eq("id", itemId)
-  );
-}
-
 /**
  * Partial-patch update: only the keys present in `patch` are sent.
  * `undefined` = leave unchanged (key omitted from the payload); `null`
@@ -178,7 +147,8 @@ export function setItemRemoved(
 
 /**
  * Set (or clear, with both `null`) who's claimed an item and who assigned
- * that claim. Supersedes `setItemClaim`, which only wrote claimed_by.
+ * that claim. Supersedes the retired v1 `setItemClaim`, which only wrote
+ * claimed_by.
  * Both null = "send back to Open — no one".
  */
 export function setItemAssignment(
