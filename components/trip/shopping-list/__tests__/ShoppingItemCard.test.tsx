@@ -685,6 +685,56 @@ describe("<ShoppingItemCard /> — v2 overflow menu (spec §4)", () => {
     );
     expect(deleteShoppingItemMock).toHaveBeenCalledWith(item.id);
   });
+
+  it("⋯ Completed on an own-claimed row completes as self (no picker) — #606 follow-up", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: MEMBER_A, bought: false },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", {
+        name: SHOPPING_LIST_UI_STRINGS.completeAction,
+      })
+    );
+    expect(completeShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_A);
+    // Own-claimed short-circuits before any who-completed picker opens.
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("⋯ Completed on an Open (unclaimed) row opens the who-completed picker", async () => {
+    const user = userEvent.setup();
+    await renderCard({ item: { claimed_by_trip_member_id: null, bought: false } });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", {
+        name: SHOPPING_LIST_UI_STRINGS.completeAction,
+      })
+    );
+    // The picker opens (default = viewer); nothing completed until a pick.
+    expect(await screen.findByRole("menuitem", { name: "Dave" })).toBeInTheDocument();
+    expect(completeShoppingItemMock).not.toHaveBeenCalled();
+  });
+
+  it("⋯ Completed is absent on a terminal (Completed) row", async () => {
+    const user = userEvent.setup();
+    await renderCard({
+      item: { bought: true, completed_by_trip_member_id: MEMBER_A },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await screen.findByRole("menu");
+    expect(
+      screen.queryByRole("menuitem", {
+        name: SHOPPING_LIST_UI_STRINGS.completeAction,
+      })
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("<ShoppingItemCard /> — row-open a11y preserved (spec §4)", () => {

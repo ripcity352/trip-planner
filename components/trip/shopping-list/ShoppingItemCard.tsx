@@ -442,6 +442,7 @@ export function ShoppingItemCard({
               isTerminal={isTerminal}
               isClaimed={claimerId !== null}
               canDelete={canDelete}
+              onComplete={handleComplete}
               onRemove={handleRemove}
               onAssignClick={() => setOpenPanel("assign")}
               onPurge={handlePurge}
