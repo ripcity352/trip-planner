@@ -123,6 +123,10 @@ function makeItem(overrides: Partial<ShoppingItem> = {}): ShoppingItem {
     visibility: "everyone",
     idempotency_key: null,
     created_at: "2026-08-10T12:00:00Z",
+    completed_by_trip_member_id: null,
+    removed_by_trip_member_id: null,
+    removed_at: null,
+    claim_assigned_by_trip_member_id: null,
     ...overrides,
   };
 }
