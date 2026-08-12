@@ -371,4 +371,32 @@ describe("<ShoppingList />", () => {
     expect(earlyIndex).toBeGreaterThanOrEqual(0);
     expect(laterIndex).toBeGreaterThan(earlyIndex);
   });
+
+  // ---- fast multi-add + "Add with details" demotion (Task 7a) -----------
+
+  it("renders the quick-add input, even on an empty list", async () => {
+    await renderList([]);
+    expect(
+      screen.getByPlaceholderText(SHOPPING_LIST_UI_STRINGS.quickAddPlaceholder)
+    ).toBeInTheDocument();
+  });
+
+  it('"Add with details" opens the full AddItemSheet form', async () => {
+    const user = userEvent.setup();
+    await renderList([makeItem({ name: "Ice" })]);
+
+    expect(
+      screen.queryByLabelText(SHOPPING_LIST_UI_STRINGS.nameLabel)
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: SHOPPING_LIST_UI_STRINGS.addDetailsCta,
+      })
+    );
+
+    expect(
+      screen.getByLabelText(SHOPPING_LIST_UI_STRINGS.nameLabel)
+    ).toBeInTheDocument();
+  });
 });

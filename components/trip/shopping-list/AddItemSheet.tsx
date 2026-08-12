@@ -152,7 +152,7 @@ export function AddItemSheet({ tripId, viewer, celebrantName }: AddItemSheetProp
           setOpen(true);
         }}
       >
-        {SHOPPING_LIST_UI_STRINGS.addCta}
+        {SHOPPING_LIST_UI_STRINGS.addDetailsCta}
       </Button>
     );
   }

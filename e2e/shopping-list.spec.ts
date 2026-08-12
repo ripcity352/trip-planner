@@ -62,7 +62,7 @@ test.describe("Shopping list — authenticated add → claim → got-it → undo
 
     // ---- Add an item -----------------------------------------------
     await page
-      .getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.addCta })
+      .getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.addDetailsCta })
       .click();
 
     await page

@@ -1040,6 +1040,16 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // yet) — distinct from EMPTY_STATES.shopping_list_empty, which only
   // fires when there are ZERO items total.
   filterTab_emptyNote: "Nothing here for this filter.",
+
+  // Task 7a — fast multi-add (Enter-to-continue + paste-split) and the
+  // "Add with details" demotion of the full form. `addCta` stays put on
+  // `SHOPPING_LIST_UI_STRINGS` (Task 8 owns copy retirement) even though
+  // it's no longer referenced from the trigger — `addDetailsCta` replaces
+  // it there. `cancelCta` is reused for the paste-confirm's cancel action
+  // (no dedicated key — same "Never mind" register).
+  quickAddPlaceholder: "Add an item…",
+  pasteAddConfirm_template: "Add {count} items?",
+  addDetailsCta: "Add with details",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

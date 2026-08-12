@@ -54,6 +54,7 @@ import { resolveMemberName } from "@/lib/utils/member-display";
 import { AddItemSheet } from "./AddItemSheet";
 import { ShoppingItemCard } from "./ShoppingItemCard";
 import { ShoppingItemSheet } from "./ShoppingItemSheet";
+import { ShoppingQuickAdd } from "./ShoppingQuickAdd";
 import type {
   ShoppingItem,
   ShoppingItemComment,
@@ -200,6 +201,15 @@ export function ShoppingList({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Task 7a — quick-add is the DEFAULT add path, always visible at the
+          top (even on an empty list, so the first item doesn't need the
+          full form). AddItemSheet sits directly under it, demoted to
+          "Add with details" for category/cost/surprise. */}
+      <div className="flex flex-col gap-2">
+        <ShoppingQuickAdd tripId={tripId} />
+        <AddItemSheet tripId={tripId} viewer={viewer} celebrantName={celebrantName} />
+      </div>
+
       {items.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           {EMPTY_STATES.shopping_list_empty}
@@ -240,8 +250,6 @@ export function ShoppingList({
           {filter === "all" ? renderSectionedView() : renderFilteredTab()}
         </>
       )}
-
-      <AddItemSheet tripId={tripId} viewer={viewer} celebrantName={celebrantName} />
 
       {openItem ? (
         <ShoppingItemSheet

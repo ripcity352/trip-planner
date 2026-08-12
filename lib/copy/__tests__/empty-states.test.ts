@@ -303,6 +303,10 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   // Segmented filter + sectioning (Task 6)
   "sectionToggle_aria_template",
   "filterTab_emptyNote",
+  // Fast multi-add + "Add with details" demotion (Task 7a)
+  "quickAddPlaceholder",
+  "pasteAddConfirm_template",
+  "addDetailsCta",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {
@@ -337,6 +341,9 @@ describe("SHOPPING_LIST_UI_STRINGS", () => {
     );
     expect(SHOPPING_LIST_UI_STRINGS.sectionToggle_aria_template).toContain(
       "{section}"
+    );
+    expect(SHOPPING_LIST_UI_STRINGS.pasteAddConfirm_template).toContain(
+      "{count}"
     );
     expect(SHOPPING_LIST_UI_STRINGS.noteAuthorLine_template).toContain(
       "{when}"
