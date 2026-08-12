@@ -1024,6 +1024,11 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // window.confirm dialog).
   itemMenu_aria: "Item options",
   menuPurge: "Delete permanently",
+  // v2 pickers + reopen-with-note flow (Task 5b). Precise/literal, same
+  // register as the rest of the lifecycle strings — this is a picker
+  // title, not a prompt.
+  completedByPickerTitle: "Completed by…",
+  reopenNotePlaceholder: "Add a note (optional)…",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

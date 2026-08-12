@@ -444,9 +444,15 @@ describe("<ShoppingItemCard /> — v2 one primary action per state (spec §4)", 
     });
     await user.click(buttons[buttons.length - 1]);
     expect(completeShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_A);
+    // Own-claimed path is a same-tap no-prompt mutation — it must NOT
+    // open the who-completed picker.
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("In-progress claimed by OTHER: completeAction passes the OTHER's member id as completedBy (on-hook default)", async () => {
+  // v2/5b: "someone else's in-progress item" no longer completes straight
+  // from the primary action — it opens the who-completed picker
+  // (defaulting to the on-hook claimer), and only a pick commits.
+  it("In-progress claimed by OTHER: completeAction opens a picker defaulting to the claimer; picking them completes", async () => {
     const user = userEvent.setup();
     const { item } = await renderCard({
       item: { claimed_by_trip_member_id: MEMBER_B },
@@ -455,10 +461,32 @@ describe("<ShoppingItemCard /> — v2 one primary action per state (spec §4)", 
       name: SHOPPING_LIST_UI_STRINGS.completeAction,
     });
     await user.click(buttons[buttons.length - 1]);
+    expect(completeShoppingItemMock).not.toHaveBeenCalled();
+    const winstonItem = await screen.findByRole("menuitem", { name: "Winston" });
+    expect(winstonItem).toHaveAttribute("aria-current", "true");
+    await user.click(winstonItem);
     expect(completeShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_B);
   });
 
-  it("Completed → reopenAction calls reopenShoppingItem(id, {assignTo: null})", async () => {
+  // v2/5b: an unclaimed Open item completed straight from Open also opens
+  // the picker (no auto-complete-as-self) — default-highlighted to the
+  // viewer, since there's no on-hook claimer.
+  it("Open item completed via the glyph opens a picker defaulting to the viewer; picking completes", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.completeAction })
+    );
+    expect(completeShoppingItemMock).not.toHaveBeenCalled();
+    const daveItem = await screen.findByRole("menuitem", { name: "Dave" });
+    expect(daveItem).toHaveAttribute("aria-current", "true");
+    await user.click(daveItem);
+    expect(completeShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_A);
+  });
+
+  it("Completed → reopenAction opens the reopen form; confirming calls reopenShoppingItem(id, {assignTo:null, comment:undefined}, key)", async () => {
     const user = userEvent.setup();
     const { item } = await renderCard({
       item: { bought: true, completed_by_trip_member_id: MEMBER_A },
@@ -466,10 +494,18 @@ describe("<ShoppingItemCard /> — v2 one primary action per state (spec §4)", 
     await user.click(
       screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.reopenAction })
     );
-    expect(reopenShoppingItemMock).toHaveBeenCalledWith(item.id, { assignTo: null });
+    const confirmButton = await screen.findByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.reopenAction,
+    });
+    await user.click(confirmButton);
+    expect(reopenShoppingItemMock).toHaveBeenCalledTimes(1);
+    const [itemId, opts, key] = reopenShoppingItemMock.mock.calls[0];
+    expect(itemId).toBe(item.id);
+    expect(opts).toEqual({ assignTo: null, comment: undefined });
+    expect(typeof key).toBe("string");
   });
 
-  it("Removed → reopenAction calls reopenShoppingItem(id, {assignTo: null})", async () => {
+  it("Removed → reopenAction opens the reopen form; confirming calls reopenShoppingItem(id, {assignTo:null, comment:undefined}, key)", async () => {
     const user = userEvent.setup();
     const { item } = await renderCard({
       item: {
@@ -480,7 +516,108 @@ describe("<ShoppingItemCard /> — v2 one primary action per state (spec §4)", 
     await user.click(
       screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.reopenAction })
     );
-    expect(reopenShoppingItemMock).toHaveBeenCalledWith(item.id, { assignTo: null });
+    const confirmButton = await screen.findByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.reopenAction,
+    });
+    await user.click(confirmButton);
+    const [itemId, opts, key] = reopenShoppingItemMock.mock.calls[0];
+    expect(itemId).toBe(item.id);
+    expect(opts).toEqual({ assignTo: null, comment: undefined });
+    expect(typeof key).toBe("string");
+  });
+});
+
+describe("<ShoppingItemCard /> — assign / re-assign picker (spec §6, rule #8)", () => {
+  it("Open: ⋯ menu shows 'Assign…'; picking a member calls assignShoppingItem(id, member)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Winston" }));
+    expect(assignShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_B);
+  });
+
+  it("Claimed (in-progress): ⋯ menu shows 'Re-assign…' instead of 'Assign…'", async () => {
+    const user = userEvent.setup();
+    await renderCard({ item: { claimed_by_trip_member_id: MEMBER_A } });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.reassignAction })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    ).not.toBeInTheDocument();
+  });
+
+  it("Picking 'Open — no one' calls assignShoppingItem(id, null)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({ item: { claimed_by_trip_member_id: MEMBER_A } });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.reassignAction })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignOpenNoOne })
+    );
+    expect(assignShoppingItemMock).toHaveBeenCalledWith(item.id, null);
+  });
+
+  it("opening the assign picker then triggering complete leaves only ONE panel open (mutual exclusivity)", async () => {
+    const user = userEvent.setup();
+    await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    // Open the assign picker via the ⋯ menu.
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    );
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+
+    // Now trigger the complete flow — for an unclaimed Open item this
+    // opens the who-completed picker. Before the fix, `assignPickerOpen`
+    // and `completePickerOpen` were independent booleans, so both
+    // panels could render stacked.
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.completeAction })
+    );
+
+    // Exactly one menu/panel is present — the assign picker's own items
+    // ("Open — no one") are gone, replaced by the who-completed picker.
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignOpenNoOne })
+    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Dave" })).toBeInTheDocument();
+  });
+
+  it("Assign/Re-assign is absent from a terminal (Completed) row's ⋯ menu", async () => {
+    const user = userEvent.setup();
+    await renderCard({ item: { bought: true, completed_by_trip_member_id: MEMBER_A } });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await screen.findByRole("menu");
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.reassignAction })
+    ).not.toBeInTheDocument();
   });
 });
 

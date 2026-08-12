@@ -297,6 +297,9 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "assignedByProvenance_template",
   "itemMenu_aria",
   "menuPurge",
+  // v2 pickers + reopen-with-note flow (Task 5b)
+  "completedByPickerTitle",
+  "reopenNotePlaceholder",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {

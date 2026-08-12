@@ -74,25 +74,41 @@
  *        else" already treats those rows as their OWN independent
  *        controls, so this is the intended split.
  *
- * Scope carve-out (5a — see task brief): pickers (assign / who-completed)
- * and the reopen-with-note flow are a LATER task (5b) — this card wires
- * the simple forms only (self-claim, default-completer complete, bare
- * reopen). Superseded v1 actions (`toggleBought`, `setClaim`) are removed
- * from THIS component's imports/usage but their exports are NOT deleted
- * from `lib/actions/shopping-list.ts` — that's a LATER task (5c), after
+ * Pickers + reopen-with-note (Task 5b, spec §6): assign/re-assign
+ * (`⋯` menu → `ShoppingItemMenu`), who-completed (glyph + primary
+ * "Completed" button, both routed through `handleComplete`), and the
+ * reopen-with-note inline panel (`ShoppingReopenForm`) all live in their
+ * own files under this directory — the card only composes them and owns
+ * a single `openPanel: "assign" | "complete" | "reopen" | null` state
+ * that decides which one (if any) is expanded below the row. A single
+ * enum (rather than three independent booleans) makes mutual exclusion
+ * structural — setting one panel open always clears whichever other one
+ * was open, so two panels can never render stacked.
+ *
+ * "Close here, auto-open there" pattern: `ShoppingItemMenu`'s Assign…/
+ * Re-assign… item closes ITS OWN menu and calls `onAssignClick`, which
+ * just flips `assignPickerOpen`. The card then conditionally renders a
+ * `ShoppingMemberPicker` with a hard-coded `open` (no second click on
+ * its own trigger needed — the picker appears already expanded). Same
+ * shape for the who-completed picker. `ShoppingReopenForm` is simpler —
+ * it owns its own full inline panel, the card just toggles whether it's
+ * mounted.
+ *
+ * Who-completed ambiguity rule (spec §6): completing your OWN claimed
+ * item is a same-tap no-prompt mutation; completing anyone else's item
+ * (someone else's in-progress claim, OR an unclaimed Open item) opens
+ * the picker, default-highlighted to the on-hook member
+ * (`claimed_by ?? viewer`).
+ *
+ * Superseded v1 actions (`toggleBought`, `setClaim`) are removed from
+ * THIS component's imports/usage but their exports are NOT deleted from
+ * `lib/actions/shopping-list.ts` — that's a LATER task (5c), after
  * `ShoppingItemSheet` stops using `setClaim`.
  */
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical } from "lucide-react";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { callAction } from "@/lib/ui/call-action";
@@ -105,11 +121,13 @@ import {
   completeShoppingItem,
   deleteShoppingItem,
   removeShoppingItem,
-  reopenShoppingItem,
 } from "@/lib/actions/shopping-list";
 import { deriveShoppingItemState } from "@/lib/db/shopping-list";
 import { toggleShoppingReaction } from "@/lib/actions/shopping-item-reactions";
 import { ROW_LIKE_EMOJI } from "@/lib/reactions/shopping-constants";
+import { ShoppingItemMenu } from "./ShoppingItemMenu";
+import { ShoppingMemberPicker } from "./ShoppingMemberPicker";
+import { ShoppingReopenForm } from "./ShoppingReopenForm";
 import type {
   ShoppingItem,
   ShoppingItemReactionSummary,
@@ -160,8 +178,21 @@ export function ShoppingItemCard({
   const router = useRouter();
   const [isPending, startTransition] = React.useTransition();
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const [purgeArmed, setPurgeArmed] = React.useState(false);
+
+  // 5b pickers/reopen-form — ONE enum, not three independent booleans:
+  // enforces "at most one open at a time" structurally (setting a new
+  // panel always replaces/clears any other), rather than relying on every
+  // open handler to remember to clear the other two flags.
+  const [openPanel, setOpenPanel] = React.useState<
+    "assign" | "complete" | "reopen" | null
+  >(null);
+
+  // Ordered list for the pickers — `memberMap` stays the lookup the rest
+  // of the row already uses for name resolution.
+  const tripMembers = React.useMemo(
+    () => Array.from(memberMap.values()),
+    [memberMap]
+  );
 
   // Like state seeds from the folded summary — same "initial only, no
   // resync effect" pattern as `reaction-row.tsx`: an in-flight optimistic
@@ -201,31 +232,46 @@ export function ShoppingItemCard({
     });
   };
 
-  // Completed default (no picker in 5a — 5b adds the who-completed
-  // override): the on-hook claimer if any, else the actor completing it.
-  const completedByMemberId = claimerId ?? viewerMemberId;
+  // Who-completed default (spec §6): the on-hook claimer if any, else
+  // the viewer — used both as the immediate-complete target (own claim)
+  // and as the picker's default-highlighted member (anyone else's).
+  const completedByDefault = claimerId ?? viewerMemberId;
 
   const handleClaimSelf = () =>
     runMutation(() => assignShoppingItem(item.id, viewerMemberId));
-  const handleComplete = () =>
-    runMutation(() => completeShoppingItem(item.id, completedByMemberId));
-  const handleReopen = () =>
-    runMutation(() => reopenShoppingItem(item.id, { assignTo: null }));
-  const handleRemove = () => runMutation(() => removeShoppingItem(item.id));
 
-  const handleMenuOpenChange = (next: boolean) => {
-    setMenuOpen(next);
-    if (!next) setPurgeArmed(false);
-  };
-
-  const handlePurgeClick = () => {
-    if (!purgeArmed) {
-      setPurgeArmed(true);
+  // Own claimed item → complete immediately, no prompt. Anything else
+  // (someone else's in-progress claim, or an unclaimed Open item) opens
+  // the who-completed picker instead of guessing. Shared by the glyph
+  // tap AND the primary "Completed" button (spec §6).
+  const handleComplete = () => {
+    if (claimerId === viewerMemberId) {
+      runMutation(() => completeShoppingItem(item.id, viewerMemberId));
       return;
     }
-    setPurgeArmed(false);
-    setMenuOpen(false);
-    runMutation(() => deleteShoppingItem(item.id));
+    setOpenPanel("complete");
+  };
+
+  const handleCompleteSelect = (memberId: string | null) => {
+    setOpenPanel(null);
+    // Defensive only — this picker never renders the "Open — no one"
+    // item (`includeOpenNoOne={false}`), so `memberId` is never null in
+    // practice.
+    if (memberId === null) return;
+    runMutation(() => completeShoppingItem(item.id, memberId));
+  };
+
+  const handleAssignSelect = (memberId: string | null) => {
+    setOpenPanel(null);
+    runMutation(() => assignShoppingItem(item.id, memberId));
+  };
+
+  const handleRemove = () => runMutation(() => removeShoppingItem(item.id));
+  const handlePurge = () => runMutation(() => deleteShoppingItem(item.id));
+
+  const handleReopenConfirmed = () => {
+    setOpenPanel(null);
+    router.refresh();
   };
 
   const handleToggleLike = () => {
@@ -382,50 +428,84 @@ export function ShoppingItemCard({
                 {SHOPPING_LIST_UI_STRINGS.completeAction}
               </button>
             ) : null}
-            {isTerminal ? (
+            {/* Hidden once the reopen form is open — its own confirm
+                button carries the same `reopenAction` label, and two
+                same-labelled buttons on one row is both confusing and
+                ambiguous for `getByRole`. */}
+            {isTerminal && openPanel !== "reopen" ? (
               <button
                 type="button"
                 disabled={isPending}
-                onClick={handleReopen}
+                onClick={() => setOpenPanel("reopen")}
                 className="text-foreground ml-auto underline underline-offset-2 disabled:opacity-60"
               >
                 {SHOPPING_LIST_UI_STRINGS.reopenAction}
               </button>
             ) : null}
 
-            {/* `⋯` overflow menu — every row. Assign/Re-assign and
-                Re-open-with-note land here in 5b; do not add them now. */}
-            <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
-              <DropdownMenuTrigger
-                aria-label={SHOPPING_LIST_UI_STRINGS.itemMenu_aria}
-                className={cn(
-                  "text-muted-foreground hover:text-foreground rounded-xs",
-                  "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
-                )}
-              >
-                <MoreVertical aria-hidden className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" sideOffset={4}>
-                {!isTerminal ? (
-                  <DropdownMenuItem onClick={handleRemove}>
-                    {SHOPPING_LIST_UI_STRINGS.deleteCta}
-                  </DropdownMenuItem>
-                ) : null}
-                {canDelete ? (
-                  <DropdownMenuItem
-                    data-testid="confirm-purge"
-                    variant="destructive"
-                    closeOnClick={false}
-                    onClick={handlePurgeClick}
-                  >
-                    {purgeArmed
-                      ? SHOPPING_LIST_UI_STRINGS.itemDeleteConfirm
-                      : SHOPPING_LIST_UI_STRINGS.menuPurge}
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* `⋯` overflow menu — every row (leaf component, Task 5b). */}
+            <ShoppingItemMenu
+              isTerminal={isTerminal}
+              isClaimed={claimerId !== null}
+              canDelete={canDelete}
+              onRemove={handleRemove}
+              onAssignClick={() => setOpenPanel("assign")}
+              onPurge={handlePurge}
+            />
           </div>
+
+          {/* Assign/Re-assign picker (5b, spec §6 rule #8) — opened by
+              `ShoppingItemMenu`'s Assign…/Re-assign… item. Controlled
+              `open` so it appears already expanded, no second click. */}
+          {openPanel === "assign" ? (
+            <div className="mt-1.5 text-xs">
+              <ShoppingMemberPicker
+                members={tripMembers}
+                memberMap={memberMap}
+                includeOpenNoOne
+                triggerLabel={
+                  claimerId !== null
+                    ? SHOPPING_LIST_UI_STRINGS.reassignAction
+                    : SHOPPING_LIST_UI_STRINGS.assignAction
+                }
+                onSelect={handleAssignSelect}
+                open
+                onOpenChange={(next) => {
+                  if (!next) setOpenPanel(null);
+                }}
+              />
+            </div>
+          ) : null}
+
+          {/* Who-completed picker (5b, spec §6) — opened by `handleComplete`
+              whenever the actor isn't completing their own claimed item. */}
+          {openPanel === "complete" ? (
+            <div className="mt-1.5 text-xs">
+              <ShoppingMemberPicker
+                members={tripMembers}
+                memberMap={memberMap}
+                includeOpenNoOne={false}
+                triggerLabel={SHOPPING_LIST_UI_STRINGS.completedByPickerTitle}
+                defaultMemberId={completedByDefault}
+                onSelect={handleCompleteSelect}
+                open
+                onOpenChange={(next) => {
+                  if (!next) setOpenPanel(null);
+                }}
+              />
+            </div>
+          ) : null}
+
+          {/* Reopen-with-note inline panel (5b, spec §6). */}
+          {openPanel === "reopen" ? (
+            <ShoppingReopenForm
+              itemId={item.id}
+              members={tripMembers}
+              memberMap={memberMap}
+              onCancel={() => setOpenPanel(null)}
+              onConfirmed={handleReopenConfirmed}
+            />
+          ) : null}
 
           {showMetaSlot ? (
             <div className="mt-1 flex items-center gap-3 text-xs">
