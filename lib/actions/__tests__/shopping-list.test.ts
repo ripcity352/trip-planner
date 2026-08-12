@@ -46,6 +46,11 @@ vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirectMock(...args),
 }));
 
+const addShoppingCommentMock = vi.fn();
+vi.mock("@/lib/actions/shopping-item-comments", () => ({
+  addShoppingComment: (...args: unknown[]) => addShoppingCommentMock(...args),
+}));
+
 const capturedWrites: Array<{ table: string; op: string; arg: unknown }> = [];
 
 function nextResult(
@@ -105,6 +110,7 @@ const MEMBER = "22222222-2222-4222-8222-222222222222";
 const ITEM = "33333333-3333-4333-8333-333333333333";
 const KEY = "44444444-4444-4444-8444-444444444444";
 const USER = "55555555-5555-4555-8555-555555555555";
+const OTHER_MEMBER = "66666666-6666-4666-8666-666666666666";
 
 const mockItem = {
   id: ITEM,
@@ -126,6 +132,10 @@ let toggleBought: typeof import("../shopping-list").toggleBought;
 let setClaim: typeof import("../shopping-list").setClaim;
 let amendShoppingItem: typeof import("../shopping-list").amendShoppingItem;
 let deleteShoppingItem: typeof import("../shopping-list").deleteShoppingItem;
+let assignShoppingItem: typeof import("../shopping-list").assignShoppingItem;
+let completeShoppingItem: typeof import("../shopping-list").completeShoppingItem;
+let removeShoppingItem: typeof import("../shopping-list").removeShoppingItem;
+let reopenShoppingItem: typeof import("../shopping-list").reopenShoppingItem;
 
 beforeEach(async () => {
   getUserMock.mockReset();
@@ -133,6 +143,8 @@ beforeEach(async () => {
   capturedWrites.length = 0;
   rateLimitedActionMock.mockClear();
   redirectMock.mockClear();
+  addShoppingCommentMock.mockReset();
+  addShoppingCommentMock.mockResolvedValue({ ok: true, comment: {} });
   vi.spyOn(console, "error").mockImplementation(() => {});
   const mod = await import("../shopping-list");
   addShoppingItem = mod.addShoppingItem;
@@ -140,6 +152,10 @@ beforeEach(async () => {
   setClaim = mod.setClaim;
   amendShoppingItem = mod.amendShoppingItem;
   deleteShoppingItem = mod.deleteShoppingItem;
+  assignShoppingItem = mod.assignShoppingItem;
+  completeShoppingItem = mod.completeShoppingItem;
+  removeShoppingItem = mod.removeShoppingItem;
+  reopenShoppingItem = mod.reopenShoppingItem;
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -409,10 +425,391 @@ describe("deleteShoppingItem", () => {
   });
 });
 
+describe("assignShoppingItem", () => {
+  it("self-claim: claim_assigned_by is null when target === actor", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: { id: MEMBER }, error: null }, // isSameTripMember(target)
+    ]);
+
+    const res = await assignShoppingItem(ITEM, MEMBER);
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toEqual({
+      claimed_by_trip_member_id: MEMBER,
+      claim_assigned_by_trip_member_id: null,
+    });
+  });
+
+  it("assign-to-other: claim_assigned_by is the actor", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: { id: OTHER_MEMBER }, error: null }, // isSameTripMember(target)
+    ]);
+
+    const res = await assignShoppingItem(ITEM, OTHER_MEMBER);
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toEqual({
+      claimed_by_trip_member_id: OTHER_MEMBER,
+      claim_assigned_by_trip_member_id: MEMBER,
+    });
+  });
+
+  it("Open—no one: both claim fields null when targetMemberId is null", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
+
+    const res = await assignShoppingItem(ITEM, null);
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toEqual({
+      claimed_by_trip_member_id: null,
+      claim_assigned_by_trip_member_id: null,
+    });
+  });
+
+  it("rejects a cross-trip target and never calls the setter", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [{ data: { trip_id: TRIP }, error: null }]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: null, error: null }, // isSameTripMember(target) — not found
+    ]);
+
+    const res = await assignShoppingItem(ITEM, OTHER_MEMBER);
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update).toBeUndefined();
+  });
+
+  it("returns rls_denied when the item isn't visible to the caller", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [{ data: null, error: null }]);
+    const res = await assignShoppingItem(ITEM, MEMBER);
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns rls_denied when the actor is not a trip member", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [{ data: { trip_id: TRIP }, error: null }]);
+    tableQueues.set("trip_members", [{ data: null, error: null }]);
+    const res = await assignShoppingItem(ITEM, MEMBER);
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("rejects a non-uuid target", async () => {
+    primeAuth(USER);
+    const res = await assignShoppingItem(ITEM, "nope");
+    expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("I3 error split — 42501 maps to rls_denied", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: { code: "42501", message: "denied" } },
+    ]);
+    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
+    const res = await assignShoppingItem(ITEM, null);
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("I3 error split — a coded non-42501 error maps to save_rejected", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: { code: "23514", message: "check constraint" } },
+    ]);
+    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
+    const res = await assignShoppingItem(ITEM, null);
+    expect(res).toEqual({ ok: false, errorKey: "shopping_list_save_rejected" });
+  });
+
+  it("I3 error split — a codeless error maps to save_failed", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: { code: "", message: "network hiccup" } },
+    ]);
+    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
+    const res = await assignShoppingItem(ITEM, null);
+    expect(res).toEqual({ ok: false, errorKey: "shopping_list_save_failed" });
+  });
+});
+
+describe("completeShoppingItem", () => {
+  it("explicit same-trip completer succeeds", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: { id: MEMBER }, error: null }, // isSameTripMember(completedBy)
+    ]);
+
+    const res = await completeShoppingItem(ITEM, MEMBER);
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toEqual({
+      bought: true,
+      completed_by_trip_member_id: MEMBER,
+    });
+  });
+
+  it("allows completing someone else's in-progress item (actor !== claimer)", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: { id: OTHER_MEMBER }, error: null }, // isSameTripMember(completedBy)
+    ]);
+
+    const res = await completeShoppingItem(ITEM, OTHER_MEMBER);
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toEqual({
+      bought: true,
+      completed_by_trip_member_id: OTHER_MEMBER,
+    });
+  });
+
+  it("rejects a cross-trip completer and never calls the setter", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [{ data: { trip_id: TRIP }, error: null }]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: null, error: null }, // isSameTripMember(completedBy) — not found
+    ]);
+
+    const res = await completeShoppingItem(ITEM, OTHER_MEMBER);
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update).toBeUndefined();
+  });
+
+  it("returns rls_denied when the actor isn't a member", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [{ data: { trip_id: TRIP }, error: null }]);
+    tableQueues.set("trip_members", [{ data: null, error: null }]);
+    const res = await completeShoppingItem(ITEM, MEMBER);
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("rejects a non-uuid completedByMemberId", async () => {
+    primeAuth(USER);
+    const res = await completeShoppingItem(ITEM, "nope");
+    expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+});
+
+describe("removeShoppingItem", () => {
+  it("calls setItemRemoved with the SERVER-resolved actor and an ISO timestamp", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
+
+    const res = await removeShoppingItem(ITEM);
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    const arg = update?.arg as { removed_by_trip_member_id: string; removed_at: string };
+    expect(arg.removed_by_trip_member_id).toBe(MEMBER);
+    expect(new Date(arg.removed_at).toISOString()).toBe(arg.removed_at);
+  });
+
+  it("returns rls_denied when the item isn't visible", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [{ data: null, error: null }]);
+    const res = await removeShoppingItem(ITEM);
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("rejects a non-uuid item id", async () => {
+    primeAuth(USER);
+    const res = await removeShoppingItem("nope");
+    expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+});
+
+describe("reopenShoppingItem", () => {
+  it("assignTo=other member: claim_assigned_by is the actor", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: { id: OTHER_MEMBER }, error: null }, // isSameTripMember(assignTo)
+    ]);
+
+    const res = await reopenShoppingItem(ITEM, { assignTo: OTHER_MEMBER });
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toEqual({
+      bought: false,
+      completed_by_trip_member_id: null,
+      removed_by_trip_member_id: null,
+      removed_at: null,
+      claimed_by_trip_member_id: OTHER_MEMBER,
+      claim_assigned_by_trip_member_id: MEMBER,
+    });
+    expect(addShoppingCommentMock).not.toHaveBeenCalled();
+  });
+
+  it("assignTo=self: claim_assigned_by is null", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: { id: MEMBER }, error: null }, // isSameTripMember(assignTo)
+    ]);
+
+    const res = await reopenShoppingItem(ITEM, { assignTo: MEMBER });
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toMatchObject({
+      claimed_by_trip_member_id: MEMBER,
+      claim_assigned_by_trip_member_id: null,
+    });
+  });
+
+  it("assignTo=null: both claim fields null, no isSameTripMember check needed", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
+
+    const res = await reopenShoppingItem(ITEM, { assignTo: null });
+    expect(res).toEqual({ ok: true });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update?.arg).toMatchObject({
+      claimed_by_trip_member_id: null,
+      claim_assigned_by_trip_member_id: null,
+    });
+  });
+
+  it("with a comment: calls addShoppingComment with itemId/body and the idempotency key", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [
+      { data: { trip_id: TRIP }, error: null },
+      { data: null, error: null, count: 1 },
+    ]);
+    tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
+
+    const res = await reopenShoppingItem(
+      ITEM,
+      { assignTo: null, comment: "  back on the list  " },
+      KEY
+    );
+    expect(res).toEqual({ ok: true });
+    expect(addShoppingCommentMock).toHaveBeenCalledWith(
+      { itemId: ITEM, body: "back on the list" },
+      KEY
+    );
+  });
+
+  it("comment present but no idempotency key: validation_failed, no write", async () => {
+    primeAuth(USER);
+    const res = await reopenShoppingItem(ITEM, { assignTo: null, comment: "note" });
+    expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update).toBeUndefined();
+    expect(addShoppingCommentMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a cross-trip assignTo target and never calls the setter", async () => {
+    primeAuth(USER);
+    tableQueues.set("shopping_list_items", [{ data: { trip_id: TRIP }, error: null }]);
+    tableQueues.set("trip_members", [
+      { data: { id: MEMBER }, error: null }, // actor resolve
+      { data: null, error: null }, // isSameTripMember(assignTo) — not found
+    ]);
+
+    const res = await reopenShoppingItem(ITEM, { assignTo: OTHER_MEMBER });
+    expect(res).toEqual({ ok: false, errorKey: "rls_denied" });
+
+    const update = capturedWrites.find(
+      (w) => w.table === "shopping_list_items" && w.op === "update"
+    );
+    expect(update).toBeUndefined();
+    expect(addShoppingCommentMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-uuid item id", async () => {
+    primeAuth(USER);
+    const res = await reopenShoppingItem("nope", { assignTo: null });
+    expect(res).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+});
+
 // I12: no shopping-list action calls redirect() — router.refresh() is the
 // caller's job, per notes on the callAction contract.
 describe("no action calls redirect (I12)", () => {
-  it("never invokes next/navigation redirect across the surface (all 5 mutations)", async () => {
+  it("never invokes next/navigation redirect across the surface (all 9 mutations)", async () => {
     primeAuth(USER);
     tableQueues.set("trip_members", [{ data: { id: MEMBER }, error: null }]);
     tableQueues.set("shopping_list_items", [{ data: mockItem, error: null, count: 1 }]);
@@ -422,6 +819,10 @@ describe("no action calls redirect (I12)", () => {
     await setClaim(ITEM, true);
     await amendShoppingItem(ITEM, { name: "New name" });
     await deleteShoppingItem(ITEM);
+    await assignShoppingItem(ITEM, null);
+    await completeShoppingItem(ITEM, MEMBER);
+    await removeShoppingItem(ITEM);
+    await reopenShoppingItem(ITEM, { assignTo: null });
 
     expect(redirectMock).not.toHaveBeenCalled();
   });
