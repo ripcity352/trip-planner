@@ -197,7 +197,7 @@ export function ShoppingQuickAdd({ tripId }: ShoppingQuickAddProps) {
             aria-busy={isPending}
             onClick={handleConfirmPaste}
           >
-            {SHOPPING_LIST_UI_STRINGS.submitCta}
+            {SHOPPING_LIST_UI_STRINGS.pasteAddConfirmCta}
           </Button>
           <button
             type="button"

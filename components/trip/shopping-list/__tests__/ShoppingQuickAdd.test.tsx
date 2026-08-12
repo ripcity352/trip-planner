@@ -171,7 +171,7 @@ describe("<ShoppingQuickAdd />", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: SHOPPING_LIST_UI_STRINGS.submitCta,
+        name: SHOPPING_LIST_UI_STRINGS.pasteAddConfirmCta,
       })
     );
 
@@ -208,7 +208,7 @@ describe("<ShoppingQuickAdd />", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: SHOPPING_LIST_UI_STRINGS.submitCta,
+        name: SHOPPING_LIST_UI_STRINGS.pasteAddConfirmCta,
       })
     );
 

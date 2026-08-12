@@ -37,18 +37,9 @@ import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { SHOPPING_LIST_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { ShoppingItem } from "@/lib/db/types";
+import { CATEGORY_CHIPS } from "./category-chips";
 
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
-
-// Duplicated from AddItemSheet's CATEGORY_CHIPS (not exported there). Two live
-// copies of the same taxonomy — keep in sync by hand; extract to a shared const
-// if a 3rd call site appears.
-const CATEGORY_CHIPS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "snacks", label: SHOPPING_LIST_UI_STRINGS.categorySnacks },
-  { value: "booze", label: SHOPPING_LIST_UI_STRINGS.categoryBooze },
-  { value: "supplies", label: SHOPPING_LIST_UI_STRINGS.categorySupplies },
-  { value: "gear", label: SHOPPING_LIST_UI_STRINGS.categoryGear },
-];
 
 /** Integer cents -> a decimal-string prefill for the cost input (inverse of `dollarsToCents`). */
 function centsToDollarsString(cents: number): string {

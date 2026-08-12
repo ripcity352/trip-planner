@@ -44,6 +44,9 @@ import type { ShoppingItem, ShoppingItemPatch } from "@/lib/db/types";
 
 const IDEMPOTENCY_KEY_SCHEMA = z.string().uuid();
 const ITEM_ID_SCHEMA = z.string().uuid();
+// A trip_members.id. Same underlying shape as ITEM_ID_SCHEMA (both uuid), but
+// named for what it validates so the member-id call sites read truer (#610).
+const MEMBER_ID_SCHEMA = z.string().uuid();
 
 const VISIBILITY_SCHEMA = z.enum([
   "everyone",
@@ -433,7 +436,7 @@ export async function deleteShoppingItem(
 // target is validated same-trip via `isSameTripMember` before any setter
 // runs. See the module report for the per-column breakdown.
 
-const TARGET_MEMBER_SCHEMA = z.string().uuid().nullable();
+const TARGET_MEMBER_SCHEMA = MEMBER_ID_SCHEMA.nullable();
 
 // ---- assignShoppingItem --------------------------------------------
 
@@ -499,7 +502,7 @@ export async function completeShoppingItem(
   if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
     return { ok: false, errorKey: "validation_failed" };
   }
-  if (!ITEM_ID_SCHEMA.safeParse(completedByMemberId).success) {
+  if (!MEMBER_ID_SCHEMA.safeParse(completedByMemberId).success) {
     return { ok: false, errorKey: "validation_failed" };
   }
 

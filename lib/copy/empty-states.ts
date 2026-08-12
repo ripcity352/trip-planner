@@ -1042,6 +1042,10 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // (no dedicated key — same "Never mind" register).
   quickAddPlaceholder: "Add an item…",
   pasteAddConfirm_template: "Add {count} items?",
+  // Confirm button for the paste-split gate above. Distinct from the
+  // singular `submitCta` ("Add it") — the paste dialog adds N items, so the
+  // plural "Add them" reads truer under "Add {count} items?".
+  pasteAddConfirmCta: "Add them",
   addDetailsCta: "Add with details",
 
   // Task 7b — inline amend/edit (name/category/cost) in the detail sheet.
