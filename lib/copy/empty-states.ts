@@ -1018,6 +1018,12 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // v2 assign/re-assign picker + provenance
   assignOpenNoOne: "Open — no one",
   assignedByProvenance_template: "{assigner} put {assignee} on this",
+  // v2 row overflow menu (Task 5a) — trigger aria-label + the two-tap
+  // purge item. Soft Remove reuses `deleteCta`; the purge confirm label
+  // reuses `itemDeleteConfirm` (same cascade-cost copy as the old
+  // window.confirm dialog).
+  itemMenu_aria: "Item options",
+  menuPurge: "Delete permanently",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

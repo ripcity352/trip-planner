@@ -295,6 +295,8 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "inProgressThem_template",
   "assignOpenNoOne",
   "assignedByProvenance_template",
+  "itemMenu_aria",
+  "menuPurge",
 ];
 
 describe("SHOPPING_LIST_UI_STRINGS", () => {
