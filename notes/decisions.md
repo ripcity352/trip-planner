@@ -4490,3 +4490,57 @@ class, not a patch to one surface:
 `/signup` is public (not in middleware `AUTHED_PREFIXES`), mirrors `/login`.
 ZERO schema / server-action / RLS change — gate-safe, does NOT lift the M6
 gate.
+
+---
+
+## Shopping list — amend deferral + row-👍 behavior (2026-08-12)
+
+Two decisions made during the subagent-driven build of the shared shopping
+list (PR #602 core + PR #603 social, spec
+`docs/superpowers/specs/2026-08-11-shopping-list-design.md`), recorded here so
+they don't resurface as "bug reports."
+
+### 1. `amendShoppingItem` ships as a headless capability (no UI in either PR)
+
+**State.** The amend action (`lib/actions/shopping-list.ts`), its db fn
+(`amendItem` in `lib/db/shopping-list.ts`), and their tests are shipped and
+correct — including the gap-A partial-patch discipline (`undefined` = leave,
+`null` = clear). **No UI triggers it.** PR1's `ShoppingItemCard` is
+claim/got-it/delete only (spec §7's card description omits an edit affordance);
+PR2's `ShoppingItemSheet` (§12.6) also shipped without one.
+
+**Why it's headless, not dead.** Spec §2 lists *Amend (name/qty/category/cost)
+— any member* as an MVP capability, and the action layer (Task 4) built all
+five mutations as a set. But neither the plan's PR1 Task 6 (card) nor P2-T6
+(sheet) task text assigned amend a UI gesture — the plan built the action
+without ever placing its trigger. So it's a **plan-level gap**, surfaced only
+by the whole-branch review seeing the tasks together, not a coding defect.
+
+**Decision.** Keep the action shipped (removing tested, correct code to
+re-add later is churn) and treat the **edit gesture as a follow-up** rather
+than block either PR on a spec-underspecified UI. The natural home is an inline
+edit in the detail sheet (the sheet is where per-item interaction lives).
+Tracked in issue #604. The function carries a comment pointing here so it does
+not read as dead code. *(Correction: an earlier PR1 comment claimed amend would
+"land in the PR2 detail sheet" — PR2 shipped without it; the comment is now
+corrected to reflect the follow-up status.)*
+
+### 2. Row 👍 is hidden until an item has ≥1 like (operator call)
+
+**The conflict.** Spec §12 intro (the operator's own reframe) says *"you can
+like inline from the row"* — implying an always-tappable 👍. Spec §12.6 says
+*"row shows nothing in the meta slot when like=notes=0, never 👍 0"* — implying
+the control is absent at zero. The two read against each other.
+
+**Decision (operator, 2026-08-12).** The **§12.6 literal reading governs**: the
+row's meta slot is empty when an item has 0 likes and 0 notes — no 👍 control,
+no placeholder. Counts (`👍n` / `💬n`) appear only at ≥1. **The first like
+originates from the detail sheet's ghost pills**, not the row. Rationale: keeps
+the glanceable row calm (no zero-state social furniture, lowest social
+temperature) at the cost of one extra tap to place the very first like. The
+row 👍 remains an inline toggle *once a like exists*.
+
+Both PRs are gate-green and their migrations (`20260811010000_shopping_list`,
+`20260811020000_shopping_social`) are applied to prod. Deferred polish
+(dual-optimistic-cache row↔sheet lag, sheet a11y, claim-fallback reconcile,
+this amend UI) is bundled in issue #604.
