@@ -5,12 +5,16 @@
  * see notes/shopping-list-exploration.md). Mirrors the `ride-groups.ts`
  * template: one `ShoppingActionError`, one `toErrorResult`, a
  * `resolveMemberId` helper, `rateLimitedAction` wrapping, and the
- * 23505/42501 error-code split for the raw insert. The `toggleBought` /
- * `setClaim` / `amendShoppingItem` / `deleteShoppingItem` mutations route
- * through the Task 2 db layer (`lib/db/shopping-list.ts`) and map its
- * `ShoppingListDbError` (42501 / SHOPPING_ITEM_NO_ROW) to the same
- * `rls_denied` envelope — a filtered-to-zero-rows update looks identical to
- * an explicit RLS rejection from the caller's point of view.
+ * 23505/42501 error-code split for the raw insert. The `amendShoppingItem` /
+ * `deleteShoppingItem` mutations route through the Task 2 db layer
+ * (`lib/db/shopping-list.ts`) and map its `ShoppingListDbError` (42501 /
+ * SHOPPING_ITEM_NO_ROW) to the same `rls_denied` envelope — a
+ * filtered-to-zero-rows update looks identical to an explicit RLS rejection
+ * from the caller's point of view.
+ *
+ * `toggleBought` and `setClaim` (the v1 mutations) were retired in Task 5c —
+ * v2 folds them into the lifecycle actions below (`assignShoppingItem` /
+ * `completeShoppingItem` / `removeShoppingItem` / `reopenShoppingItem`).
  *
  * No `revalidatePath`, no `redirect()` — `router.refresh()` is caller-side
  * (I12).
@@ -24,9 +28,12 @@ import {
   ShoppingListDbError,
   amendItem,
   deleteItem,
-  setItemBought,
-  setItemClaim,
+  reopenItem,
+  setItemAssignment,
+  setItemCompleted,
+  setItemRemoved,
 } from "@/lib/db/shopping-list";
+import { addShoppingComment } from "@/lib/actions/shopping-item-comments";
 import {
   RATE_LIMIT_SCOPES,
   RateLimitError,
@@ -59,6 +66,69 @@ async function resolveMemberId(
     .maybeSingle();
   if (error || !data) return null;
   return (data as { id: string }).id;
+}
+
+/**
+ * Resolve the parent item's trip and the caller's own member row — the
+ * shared context resolver for the v2 lifecycle actions (assign / complete /
+ * remove / reopen). Same shape as `resolveCommentContext` in
+ * shopping-item-comments.ts: the item select runs under RLS (unseeable
+ * item ⇒ null), then the caller's own trip_member_id is resolved (no seat
+ * ⇒ null).
+ */
+async function resolveItemContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  itemId: string,
+  userId: string
+): Promise<{ tripId: string; actorMemberId: string } | null> {
+  const { data: item } = await supabase
+    .from("shopping_list_items")
+    .select("trip_id")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (!item) return null;
+  const tripId = (item as { trip_id: string }).trip_id;
+
+  const actorMemberId = await resolveMemberId(supabase, tripId, userId);
+  if (!actorMemberId) return null;
+
+  return { tripId, actorMemberId };
+}
+
+/**
+ * SECURITY: RLS lets any member who can see an item UPDATE its mutable
+ * columns, including a client-supplied `trip_members.id` attribution
+ * column — even one belonging to ANOTHER trip. This is the load-bearing
+ * check that rejects a cross-trip target before any setter is called.
+ */
+async function isSameTripMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tripId: string,
+  memberId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("trip_members")
+    .select("id")
+    .eq("id", memberId)
+    .eq("trip_id", tripId)
+    .maybeSingle();
+  return !!data;
+}
+
+/**
+ * Resolve the (claimed_by, claim_assigned_by) pair for an assignment.
+ * `claim_assigned_by` is null on a self-claim (target === actor) or an
+ * "Open — no one" clear (target null), and the SERVER-resolved actor member id
+ * on an on-behalf assign. This rule is load-bearing (self vs on-behalf
+ * provenance) and shared by assign + reopen — keep it in ONE place.
+ */
+function computeClaimAttribution(
+  target: string | null,
+  actorMemberId: string
+): { claimedBy: string | null; claimAssignedBy: string | null } {
+  const claimAssignedBy =
+    target === null || target === actorMemberId ? null : actorMemberId;
+  return { claimedBy: target, claimAssignedBy };
 }
 
 type ShoppingErrorReason = "save_failed" | "save_rejected" | "rls_denied";
@@ -223,81 +293,11 @@ export async function addShoppingItem(
   }
 }
 
-// ---- toggleBought ----------------------------------------------
+// ---- shared result type ----------------------------------------------
 
 export type ToggleShoppingItemResult =
   | { ok: true }
   | { ok: false; errorKey: ErrorKey };
-
-/** Set an item's `bought` state to a desired end state (idempotent). */
-export async function toggleBought(
-  itemId: string,
-  bought: boolean
-): Promise<ToggleShoppingItemResult> {
-  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
-    return { ok: false, errorKey: "validation_failed" };
-  }
-
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
-  const userId = authData.user.id;
-
-  try {
-    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
-      setItemBought(supabase, itemId, bought)
-    );
-    return { ok: true };
-  } catch (err) {
-    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
-  }
-}
-
-// ---- setClaim ----------------------------------------------------
-
-/**
- * Claim (or unclaim, `claimed:false`) an item on the acting member's own
- * behalf. Resolves the caller's own `trip_member_id` server-side — the
- * client never supplies a member id directly.
- */
-export async function setClaim(
-  itemId: string,
-  claimed: boolean
-): Promise<ToggleShoppingItemResult> {
-  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
-    return { ok: false, errorKey: "validation_failed" };
-  }
-
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
-  const userId = authData.user.id;
-
-  // RLS SELECT allows any member who can see the item, so resolving its
-  // trip is safe even before we know the caller's own membership.
-  const { data: item, error: itemErr } = await supabase
-    .from("shopping_list_items")
-    .select("trip_id")
-    .eq("id", itemId)
-    .maybeSingle();
-  if (itemErr || !item) return { ok: false, errorKey: "rls_denied" };
-
-  const memberId = await resolveMemberId(
-    supabase,
-    (item as { trip_id: string }).trip_id,
-    userId
-  );
-  if (!memberId) return { ok: false, errorKey: "rls_denied" };
-
-  try {
-    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
-      setItemClaim(supabase, itemId, claimed ? memberId : null)
-    );
-    return { ok: true };
-  } catch (err) {
-    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
-  }
-}
 
 // ---- amendShoppingItem --------------------------------------------
 
@@ -385,9 +385,9 @@ export async function amendShoppingItem(
  *
  * Idempotent on double-tap (rule 9 — drunk-user-on-bad-signal): a second
  * delete of an already-deleted row hits `SHOPPING_ITEM_NO_ROW` in the Task 2
- * db layer. Unlike `toggleBought`/`setClaim`/`amendShoppingItem` (where a
- * no-row match is genuinely ambiguous between "already handled" and "you
- * can't see this"), a delete's no-row case has only one honest reading —
+ * db layer. Unlike `amendShoppingItem` (where a no-row match is genuinely
+ * ambiguous between "already handled" and "you can't see this"), a
+ * delete's no-row case has only one honest reading —
  * the desired end state (gone) is already true — so it's treated as
  * success, not folded into `mapDbError`'s shared `rls_denied` collapse.
  */
@@ -420,4 +420,215 @@ export async function deleteShoppingItem(
       "shopping_list_delete_failed"
     );
   }
+}
+
+// ---- v2 lifecycle actions: assign / complete / remove / reopen ------
+//
+// SECURITY CARRY-FORWARD (Task 1 review): RLS lets any member who can see
+// an item UPDATE its mutable columns, including writing an arbitrary
+// trip_members.id (even one from ANOTHER trip) into the attribution
+// columns. The *assigner* / *remover* is always the SERVER-resolved actor
+// member id — never accepted from the client. Only the *target* (assign
+// target, completed-by) is client-supplied, and every client-supplied
+// target is validated same-trip via `isSameTripMember` before any setter
+// runs. See the module report for the per-column breakdown.
+
+const TARGET_MEMBER_SCHEMA = z.string().uuid().nullable();
+
+// ---- assignShoppingItem --------------------------------------------
+
+/**
+ * Assign (or unassign, `targetMemberId: null`) an item's claim. Serves both
+ * "I'll complete" (client passes its own viewerMemberId as target) and
+ * Assign/Re-assign to someone else. `claimAssignedBy` is null on a
+ * self-claim (no attribution needed for claiming your own work) and the
+ * SERVER-resolved actor on an on-behalf assignment — never the client.
+ */
+export async function assignShoppingItem(
+  itemId: string,
+  targetMemberId: string | null
+): Promise<ToggleShoppingItemResult> {
+  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  if (!TARGET_MEMBER_SCHEMA.safeParse(targetMemberId).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  const context = await resolveItemContext(supabase, itemId, userId);
+  if (!context) return { ok: false, errorKey: "rls_denied" };
+  const { tripId, actorMemberId } = context;
+
+  if (targetMemberId !== null) {
+    const validTarget = await isSameTripMember(supabase, tripId, targetMemberId);
+    if (!validTarget) return { ok: false, errorKey: "rls_denied" };
+  }
+
+  const { claimedBy, claimAssignedBy } = computeClaimAttribution(
+    targetMemberId,
+    actorMemberId
+  );
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
+      setItemAssignment(supabase, itemId, claimedBy, claimAssignedBy)
+    );
+    return { ok: true };
+  } catch (err) {
+    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
+  }
+}
+
+// ---- completeShoppingItem --------------------------------------------
+
+/**
+ * Mark an item complete. Anyone who can see the item may complete it —
+ * including someone else's in-progress item; the actor does not need to
+ * be the claimer. `completedByMemberId` is client-supplied and must be
+ * validated same-trip before the setter runs.
+ */
+export async function completeShoppingItem(
+  itemId: string,
+  completedByMemberId: string
+): Promise<ToggleShoppingItemResult> {
+  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  if (!ITEM_ID_SCHEMA.safeParse(completedByMemberId).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  const context = await resolveItemContext(supabase, itemId, userId);
+  if (!context) return { ok: false, errorKey: "rls_denied" };
+  const { tripId } = context;
+
+  const validTarget = await isSameTripMember(supabase, tripId, completedByMemberId);
+  if (!validTarget) return { ok: false, errorKey: "rls_denied" };
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
+      setItemCompleted(supabase, itemId, completedByMemberId)
+    );
+    return { ok: true };
+  } catch (err) {
+    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
+  }
+}
+
+// ---- removeShoppingItem --------------------------------------------
+
+/**
+ * Soft-close an item (undoable via reopen). The remover is always the
+ * SERVER-resolved actor member id — never accepted from the client.
+ */
+export async function removeShoppingItem(
+  itemId: string
+): Promise<ToggleShoppingItemResult> {
+  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  const context = await resolveItemContext(supabase, itemId, userId);
+  if (!context) return { ok: false, errorKey: "rls_denied" };
+  const { actorMemberId } = context;
+
+  const removedAt = new Date().toISOString();
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
+      setItemRemoved(supabase, itemId, actorMemberId, removedAt)
+    );
+    return { ok: true };
+  } catch (err) {
+    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
+  }
+}
+
+// ---- reopenShoppingItem --------------------------------------------
+
+export interface ReopenShoppingItemOptions {
+  assignTo: string | null;
+  comment?: string;
+}
+
+/**
+ * Re-open an item from Completed or Removed, optionally re-assigning it
+ * and/or leaving a note. `reopenItem` is a fixed-target update (idempotent
+ * on retry) and runs first as the primary action; a supplied comment posts
+ * after, via `addShoppingComment`. A present-but-blank comment (after
+ * trim) is treated as "no comment" and ignored. A non-blank comment
+ * requires a valid idempotency key — validated BEFORE any write.
+ */
+export async function reopenShoppingItem(
+  itemId: string,
+  opts: ReopenShoppingItemOptions,
+  idempotencyKey?: string
+): Promise<ToggleShoppingItemResult> {
+  if (!ITEM_ID_SCHEMA.safeParse(itemId).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  if (!TARGET_MEMBER_SCHEMA.safeParse(opts.assignTo).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const trimmedComment = opts.comment?.trim();
+  const hasComment = !!trimmedComment;
+  if (hasComment && !IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey).success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  const context = await resolveItemContext(supabase, itemId, userId);
+  if (!context) return { ok: false, errorKey: "rls_denied" };
+  const { tripId, actorMemberId } = context;
+
+  if (opts.assignTo !== null) {
+    const validTarget = await isSameTripMember(supabase, tripId, opts.assignTo);
+    if (!validTarget) return { ok: false, errorKey: "rls_denied" };
+  }
+
+  const { claimedBy, claimAssignedBy } = computeClaimAttribution(
+    opts.assignTo,
+    actorMemberId
+  );
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.TOGGLE_SHOPPING_ITEM, userId, () =>
+      reopenItem(supabase, itemId, claimedBy, claimAssignedBy)
+    );
+  } catch (err) {
+    return mapDbError(err, "shopping_list_save_rejected", "shopping_list_save_failed");
+  }
+
+  if (hasComment) {
+    // reopenItem is idempotent (fixed-target update), so on a comment-post
+    // failure a retry safely replays the comment by idempotency key and
+    // re-runs the (idempotent) reopen — do not swallow the failure here.
+    const commentResult = await addShoppingComment(
+      { itemId, body: trimmedComment! },
+      idempotencyKey!
+    );
+    if (!commentResult.ok) return commentResult;
+  }
+
+  return { ok: true };
 }

@@ -53,9 +53,9 @@ vi.mock("@/lib/actions/shopping-item-comments", () => ({
     deleteShoppingCommentMock(...args),
 }));
 
-const setClaimMock = vi.fn();
+const amendShoppingItemMock = vi.fn();
 vi.mock("@/lib/actions/shopping-list", () => ({
-  setClaim: (...args: unknown[]) => setClaimMock(...args),
+  amendShoppingItem: (...args: unknown[]) => amendShoppingItemMock(...args),
 }));
 
 const TRIP_ID = "11111111-1111-4111-8111-111111111111";
@@ -123,6 +123,10 @@ function makeItem(overrides: Partial<ShoppingItem> = {}): ShoppingItem {
     visibility: "everyone",
     idempotency_key: null,
     created_at: "2026-08-10T12:00:00Z",
+    completed_by_trip_member_id: null,
+    removed_by_trip_member_id: null,
+    removed_at: null,
+    claim_assigned_by_trip_member_id: null,
     ...overrides,
   };
 }
@@ -174,7 +178,7 @@ describe("<ShoppingItemSheet />", () => {
     toggleShoppingReactionMock.mockReset();
     addShoppingCommentMock.mockReset();
     deleteShoppingCommentMock.mockReset();
-    setClaimMock.mockReset();
+    amendShoppingItemMock.mockReset();
   });
 
   // ---- (a) neutral reaction aria labels -----------------------------
@@ -427,5 +431,316 @@ describe("<ShoppingItemSheet />", () => {
       })[0]
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // ---- read-only v2 status line ---------------------------------------
+  // The sheet no longer offers a claim toggle (Task 5c) — status is a
+  // read-only line derived from `deriveShoppingItemState`, mirroring
+  // `ShoppingItemCard`'s statusLine.
+
+  it("shows the Open status line when unclaimed / not bought / not removed", async () => {
+    await renderSheet({ item: { claimed_by_trip_member_id: null } });
+    expect(
+      screen.getByText(SHOPPING_LIST_UI_STRINGS.stateOpen)
+    ).toBeInTheDocument();
+  });
+
+  it("shows 'You to complete' when the VIEWER is the claimer", async () => {
+    await renderSheet({ item: { claimed_by_trip_member_id: MEMBER_A } });
+    expect(
+      screen.getByText(SHOPPING_LIST_UI_STRINGS.inProgressYou)
+    ).toBeInTheDocument();
+  });
+
+  it("shows '{name} to complete' when someone ELSE is the claimer", async () => {
+    await renderSheet({ item: { claimed_by_trip_member_id: MEMBER_B } });
+    expect(
+      screen.getByText(
+        SHOPPING_LIST_UI_STRINGS.inProgressThem_template.replace(
+          "{name}",
+          "Marcus"
+        )
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("shows 'Completed by {name}' for a completed item", async () => {
+    await renderSheet({
+      item: {
+        bought: true,
+        claimed_by_trip_member_id: MEMBER_B,
+        completed_by_trip_member_id: MEMBER_B,
+      },
+    });
+    expect(
+      screen.getByText(
+        SHOPPING_LIST_UI_STRINGS.completedBy_template.replace(
+          "{name}",
+          "Marcus"
+        )
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("shows 'Removed by {name}' for a removed item", async () => {
+    await renderSheet({
+      item: {
+        removed_at: "2026-08-11T11:00:00Z",
+        removed_by_trip_member_id: MEMBER_A,
+      },
+    });
+    expect(
+      screen.getByText(
+        SHOPPING_LIST_UI_STRINGS.removedBy_template.replace("{name}", "Dave")
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("never renders a claim-toggle control — no 'I've got this' / 'Off your plate' button", async () => {
+    // Literal strings, not `SHOPPING_LIST_UI_STRINGS.claimCta` /
+    // `.unclaim` — those keys were retired (Task 8b, precise-copy
+    // migration); this guard must survive their deletion.
+    await renderSheet({ item: { claimed_by_trip_member_id: null } });
+    expect(
+      screen.queryByRole("button", { name: "I've got this" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Off your plate." })
+    ).not.toBeInTheDocument();
+  });
+
+  // ---- provenance line (rule #8) ---------------------------------------
+
+  it("shows the assignedByProvenance line on an ON-BEHALF assign (assigner !== assignee)", async () => {
+    await renderSheet({
+      item: {
+        claimed_by_trip_member_id: MEMBER_A,
+        claim_assigned_by_trip_member_id: MEMBER_B,
+      },
+    });
+    expect(
+      screen.getByText(
+        SHOPPING_LIST_UI_STRINGS.assignedByProvenance_template
+          .replace("{assigner}", "Marcus")
+          .replace("{assignee}", "Dave")
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("hides the provenance line on a SELF-claim (claim_assigned_by is null)", async () => {
+    await renderSheet({
+      item: {
+        claimed_by_trip_member_id: MEMBER_A,
+        claim_assigned_by_trip_member_id: null,
+      },
+    });
+    expect(
+      screen.queryByText(
+        SHOPPING_LIST_UI_STRINGS.assignedByProvenance_template
+          .replace("{assigner}", "Marcus")
+          .replace("{assignee}", "Dave")
+      )
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the provenance line when the item is unclaimed (Open — no one)", async () => {
+    await renderSheet({
+      item: {
+        claimed_by_trip_member_id: null,
+        claim_assigned_by_trip_member_id: null,
+      },
+    });
+    expect(screen.queryByText(/put.*on this/)).not.toBeInTheDocument();
+  });
+
+  // ---- Task 7b — inline amend/edit (name/category/cost) ----------------
+
+  it("Edit reveals the form prefilled with current name/category/cost", async () => {
+    const user = userEvent.setup();
+    await renderSheet({
+      item: { name: "Tequila", category: "booze", cost_cents: 4500 },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+
+    expect(screen.getByDisplayValue("Tequila")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("45.00")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: SHOPPING_LIST_UI_STRINGS.categoryBooze,
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("changing ONLY the name sends { name } — category/costCents NOT in the patch (gap-A)", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    await renderSheet({
+      item: { name: "Tequila", category: "booze", cost_cents: 4500 },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const nameInput = screen.getByDisplayValue("Tequila");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mezcal");
+
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledTimes(1)
+    );
+    const [id, patch] = amendShoppingItemMock.mock.calls[0];
+    expect(id).toBe("item-1");
+    expect(patch).toEqual({ name: "Mezcal" });
+    expect(patch).not.toHaveProperty("category");
+    expect(patch).not.toHaveProperty("costCents");
+  });
+
+  it("clearing category sends { category: null }", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    await renderSheet({ item: { category: "booze" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: SHOPPING_LIST_UI_STRINGS.categoryBooze,
+      })
+    );
+
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledWith("item-1", {
+        category: null,
+      })
+    );
+  });
+
+  it("changing cost sends costCents in cents; clearing cost sends { costCents: null }", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    const { item } = await renderSheet({ item: { cost_cents: 4500 } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const costInput = screen.getByDisplayValue("45.00");
+    await user.clear(costInput);
+    await user.type(costInput, "12.50");
+
+    let save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledWith(item.id, {
+        costCents: 1250,
+      })
+    );
+
+    amendShoppingItemMock.mockClear();
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+
+    // reopen — clear cost entirely
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const costInput2 = screen.getByDisplayValue("45.00");
+    await user.clear(costInput2);
+
+    save = screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editSave });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(amendShoppingItemMock).toHaveBeenCalledWith(item.id, {
+        costCents: null,
+      })
+    );
+  });
+
+  it("Save is disabled with no changes / does not call the action", async () => {
+    const user = userEvent.setup();
+    await renderSheet({ item: { name: "Tequila" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    expect(save).toBeDisabled();
+    expect(amendShoppingItemMock).not.toHaveBeenCalled();
+  });
+
+  it("ok:true exits edit mode and calls router.refresh", async () => {
+    amendShoppingItemMock.mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    await renderSheet({ item: { name: "Tequila" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const nameInput = screen.getByDisplayValue("Tequila");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mezcal");
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editSave })
+    ).not.toBeInTheDocument();
+  });
+
+  it("a failed amend keeps the form open and shows an alert", async () => {
+    amendShoppingItemMock.mockResolvedValue({
+      ok: false,
+      errorKey: "shopping_list_save_failed",
+    });
+    const user = userEvent.setup();
+    await renderSheet({ item: { name: "Tequila" } });
+
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editCta })
+    );
+    const nameInput = screen.getByDisplayValue("Tequila");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Mezcal");
+    const save = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.editSave,
+    });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        ERRORS.shopping_list_save_failed
+      )
+    );
+    expect(refreshMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.editSave })
+    ).toBeInTheDocument();
   });
 });

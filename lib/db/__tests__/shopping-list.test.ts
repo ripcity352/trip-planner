@@ -5,8 +5,9 @@
  *   1. `SHOPPING_ITEM_COLUMNS` — includes every non-exempt written column (I1).
  *   2. `getShoppingItems` — orders by created_at asc, throws on error.
  *   3. `amendItem` — sends only the keys present in the patch.
- *   4. `setItemBought` / `setItemClaim` / `deleteItem` — exact-count update,
- *      SHOPPING_ITEM_NO_ROW on a zero-row match, error.code preserved.
+ *   4. `deleteItem` — exact-count update, SHOPPING_ITEM_NO_ROW on a
+ *      zero-row match, error.code preserved. (v1 `setItemBought` /
+ *      `setItemClaim` coverage retired in Task 5c along with the setters.)
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -18,9 +19,12 @@ import {
   ShoppingListDbError,
   amendItem,
   deleteItem,
+  deriveShoppingItemState,
   getShoppingItems,
-  setItemBought,
-  setItemClaim,
+  reopenItem,
+  setItemAssignment,
+  setItemCompleted,
+  setItemRemoved,
 } from "../shopping-list";
 import type { ShoppingItem } from "../types";
 
@@ -67,6 +71,10 @@ const mockItem: ShoppingItem = {
   visibility: "everyone",
   idempotency_key: null,
   created_at: "2026-08-11T10:00:00.000Z",
+  completed_by_trip_member_id: null,
+  removed_by_trip_member_id: null,
+  removed_at: null,
+  claim_assigned_by_trip_member_id: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -81,6 +89,10 @@ const REQUIRED_COLUMNS = [
   "cost_cents",
   "currency",
   "visibility",
+  "completed_by_trip_member_id",
+  "removed_by_trip_member_id",
+  "removed_at",
+  "claim_assigned_by_trip_member_id",
 ]; // the non-exempt written columns (I1)
 
 describe("SHOPPING_ITEM_COLUMNS", () => {
@@ -200,96 +212,8 @@ describe("amendItem partial patch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// setItemBought / setItemClaim / deleteItem
+// deleteItem
 // ---------------------------------------------------------------------------
-
-describe("setItemBought no-row", () => {
-  it("throws SHOPPING_ITEM_NO_ROW when nothing matched", async () => {
-    const supabase = {
-      from: vi.fn().mockReturnValue({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ error: null, count: 0 }),
-        }),
-      }),
-    } as never;
-    await expect(setItemBought(supabase, "missing", true)).rejects.toMatchObject({
-      code: SHOPPING_ITEM_NO_ROW,
-    });
-  });
-});
-
-describe("setItemBought", () => {
-  it("updates bought with an exact count", async () => {
-    const { calls, client } = makeSequencedBuilder([
-      { data: null, error: null, count: 1 },
-    ]);
-    await setItemBought(client as unknown as SupabaseClient, "item-1", true);
-    expect(calls.find((c) => c.method === "update")?.args).toEqual([
-      { bought: true },
-      { count: "exact" },
-    ]);
-    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
-      "id",
-      "item-1",
-    ]);
-  });
-
-  it("preserves error.code on failure", async () => {
-    const { client } = makeSequencedBuilder([
-      { data: null, error: { code: "42501", message: "rls" }, count: null },
-    ]);
-    const err = await setItemBought(
-      client as unknown as SupabaseClient,
-      "item-1",
-      true
-    ).then(
-      () => null,
-      (e: unknown) => e
-    );
-    expect(err).toBeInstanceOf(ShoppingListDbError);
-    expect((err as ShoppingListDbError).code).toBe("42501");
-  });
-});
-
-describe("setItemClaim", () => {
-  it("updates claimed_by_trip_member_id with an exact count", async () => {
-    const { calls, client } = makeSequencedBuilder([
-      { data: null, error: null, count: 1 },
-    ]);
-    await setItemClaim(client as unknown as SupabaseClient, "item-1", "tm-2");
-    expect(calls.find((c) => c.method === "update")?.args).toEqual([
-      { claimed_by_trip_member_id: "tm-2" },
-      { count: "exact" },
-    ]);
-  });
-
-  it("allows clearing the claim to null", async () => {
-    const { calls, client } = makeSequencedBuilder([
-      { data: null, error: null, count: 1 },
-    ]);
-    await setItemClaim(client as unknown as SupabaseClient, "item-1", null);
-    expect(calls.find((c) => c.method === "update")?.args).toEqual([
-      { claimed_by_trip_member_id: null },
-      { count: "exact" },
-    ]);
-  });
-
-  it("throws SHOPPING_ITEM_NO_ROW when nothing matched", async () => {
-    const { client } = makeSequencedBuilder([
-      { data: null, error: null, count: 0 },
-    ]);
-    const err = await setItemClaim(
-      client as unknown as SupabaseClient,
-      "item-1",
-      "tm-2"
-    ).then(
-      () => null,
-      (e: unknown) => e
-    );
-    expect(err).toBeInstanceOf(ShoppingListDbError);
-    expect((err as ShoppingListDbError).code).toBe(SHOPPING_ITEM_NO_ROW);
-  });
-});
 
 describe("deleteItem", () => {
   it("deletes by id with an exact count", async () => {
@@ -311,6 +235,259 @@ describe("deleteItem", () => {
       { data: null, error: null, count: 0 },
     ]);
     const err = await deleteItem(client as unknown as SupabaseClient, "item-1").then(
+      () => null,
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(ShoppingListDbError);
+    expect((err as ShoppingListDbError).code).toBe(SHOPPING_ITEM_NO_ROW);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveShoppingItemState — pure truth table (v2 spec §2)
+// ---------------------------------------------------------------------------
+
+describe("deriveShoppingItemState", () => {
+  it("returns 'open' when not removed, not bought, unclaimed", () => {
+    expect(deriveShoppingItemState({ ...mockItem })).toBe("open");
+  });
+
+  it("returns 'in_progress' when not removed, not bought, claimed", () => {
+    expect(
+      deriveShoppingItemState({
+        ...mockItem,
+        claimed_by_trip_member_id: "tm-2",
+      })
+    ).toBe("in_progress");
+  });
+
+  it("returns 'completed' when not removed and bought", () => {
+    expect(
+      deriveShoppingItemState({
+        ...mockItem,
+        bought: true,
+        completed_by_trip_member_id: "tm-1",
+      })
+    ).toBe("completed");
+  });
+
+  it("returns 'removed' when removed_at is set", () => {
+    expect(
+      deriveShoppingItemState({
+        ...mockItem,
+        removed_at: "2026-08-12T00:00:00.000Z",
+        removed_by_trip_member_id: "tm-1",
+      })
+    ).toBe("removed");
+  });
+
+  it("precedence: removed wins over bought (both set)", () => {
+    expect(
+      deriveShoppingItemState({
+        ...mockItem,
+        bought: true,
+        completed_by_trip_member_id: "tm-1",
+        removed_at: "2026-08-12T00:00:00.000Z",
+        removed_by_trip_member_id: "tm-1",
+      })
+    ).toBe("removed");
+  });
+
+  it("precedence: bought wins over claimed (in_progress) when not removed", () => {
+    expect(
+      deriveShoppingItemState({
+        ...mockItem,
+        bought: true,
+        completed_by_trip_member_id: "tm-1",
+        claimed_by_trip_member_id: "tm-2",
+      })
+    ).toBe("completed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setItemCompleted / setItemRemoved / setItemAssignment / reopenItem
+// ---------------------------------------------------------------------------
+
+describe("setItemCompleted", () => {
+  it("updates bought + completed_by_trip_member_id with an exact count", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+    await setItemCompleted(
+      client as unknown as SupabaseClient,
+      "item-1",
+      "tm-1"
+    );
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      { bought: true, completed_by_trip_member_id: "tm-1" },
+      { count: "exact" },
+    ]);
+    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
+      "id",
+      "item-1",
+    ]);
+  });
+
+  it("throws SHOPPING_ITEM_NO_ROW when nothing matched", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: null, count: 0 },
+    ]);
+    const err = await setItemCompleted(
+      client as unknown as SupabaseClient,
+      "item-1",
+      "tm-1"
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(ShoppingListDbError);
+    expect((err as ShoppingListDbError).code).toBe(SHOPPING_ITEM_NO_ROW);
+  });
+});
+
+describe("setItemRemoved", () => {
+  it("updates removed_by_trip_member_id + removed_at with an exact count", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+    await setItemRemoved(
+      client as unknown as SupabaseClient,
+      "item-1",
+      "tm-1",
+      "2026-08-12T00:00:00.000Z"
+    );
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      {
+        removed_by_trip_member_id: "tm-1",
+        removed_at: "2026-08-12T00:00:00.000Z",
+      },
+      { count: "exact" },
+    ]);
+    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
+      "id",
+      "item-1",
+    ]);
+  });
+});
+
+describe("setItemAssignment", () => {
+  it("updates claimed_by_trip_member_id + claim_assigned_by_trip_member_id", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+    await setItemAssignment(
+      client as unknown as SupabaseClient,
+      "item-1",
+      "tm-2",
+      "tm-1"
+    );
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      {
+        claimed_by_trip_member_id: "tm-2",
+        claim_assigned_by_trip_member_id: "tm-1",
+      },
+      { count: "exact" },
+    ]);
+    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
+      "id",
+      "item-1",
+    ]);
+  });
+
+  it("allows both null (send back to Open — no one)", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+    await setItemAssignment(
+      client as unknown as SupabaseClient,
+      "item-1",
+      null,
+      null
+    );
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      {
+        claimed_by_trip_member_id: null,
+        claim_assigned_by_trip_member_id: null,
+      },
+      { count: "exact" },
+    ]);
+  });
+
+  it("throws SHOPPING_ITEM_NO_ROW when nothing matched", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: null, count: 0 },
+    ]);
+    const err = await setItemAssignment(
+      client as unknown as SupabaseClient,
+      "item-1",
+      "tm-2",
+      "tm-1"
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(ShoppingListDbError);
+    expect((err as ShoppingListDbError).code).toBe(SHOPPING_ITEM_NO_ROW);
+  });
+});
+
+describe("reopenItem", () => {
+  it("clears all four terminal fields and sets the assignment in one update", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+    await reopenItem(
+      client as unknown as SupabaseClient,
+      "item-1",
+      "tm-2",
+      "tm-1"
+    );
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      {
+        bought: false,
+        completed_by_trip_member_id: null,
+        removed_by_trip_member_id: null,
+        removed_at: null,
+        claimed_by_trip_member_id: "tm-2",
+        claim_assigned_by_trip_member_id: "tm-1",
+      },
+      { count: "exact" },
+    ]);
+    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
+      "id",
+      "item-1",
+    ]);
+  });
+
+  it("allows both assignment ids null (reopen to unclaimed)", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+    await reopenItem(client as unknown as SupabaseClient, "item-1", null, null);
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      {
+        bought: false,
+        completed_by_trip_member_id: null,
+        removed_by_trip_member_id: null,
+        removed_at: null,
+        claimed_by_trip_member_id: null,
+        claim_assigned_by_trip_member_id: null,
+      },
+      { count: "exact" },
+    ]);
+  });
+
+  it("throws SHOPPING_ITEM_NO_ROW when nothing matched", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: null, count: 0 },
+    ]);
+    const err = await reopenItem(
+      client as unknown as SupabaseClient,
+      "item-1",
+      "tm-2",
+      "tm-1"
+    ).then(
       () => null,
       (e: unknown) => e
     );

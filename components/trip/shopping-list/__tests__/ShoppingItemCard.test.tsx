@@ -1,14 +1,15 @@
 /**
- * Tests for `components/trip/shopping-list/ShoppingItemCard.tsx` (P2-T5).
+ * Tests for `components/trip/shopping-list/ShoppingItemCard.tsx` (P2-T5,
+ * v2 row rewrite Task 5a).
  *
- * Covers the row's glanceable social affordances (spec §12.6):
- *   (a) the 👍 like control renders its count only when ≥1 — never "👍 0"
- *   (b) the 💬n note-count renders only when ≥1
- *   (c) the meta slot renders nothing when like=0 & notes=0 (no placeholder)
- *   (d) no 👎 or any other reaction emoji ever appears on the row
- *   (e) tapping the row body opens the detail sheet via `onOpenItem`,
- *       including on a bought/struck row
- *   (f) tapping the 👍 like control does NOT fire `onOpenItem`
+ * Covers:
+ *   - the row's glanceable social affordances (spec §12.6): like control,
+ *     note count, meta-slot emptiness, row-open a11y pattern (unchanged
+ *     in v2 — kept verbatim per the module header)
+ *   - v2 row legibility (spec §4): state glyph (interactive on non-terminal
+ *     states, static on terminal states), one attributed status line per
+ *     state, exactly one primary action button per state, and the `⋯`
+ *     overflow menu (soft Remove + two-tap purge)
  *
  * Actions and next/navigation are mocked — this is a focused component
  * test, not an integration test against the db layer.
@@ -28,11 +29,16 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock }),
 }));
 
-const toggleBoughtMock = vi.fn();
+const assignShoppingItemMock = vi.fn();
+const completeShoppingItemMock = vi.fn();
+const removeShoppingItemMock = vi.fn();
+const reopenShoppingItemMock = vi.fn();
 const deleteShoppingItemMock = vi.fn();
 vi.mock("@/lib/actions/shopping-list", () => ({
-  toggleBought: (...args: unknown[]) => toggleBoughtMock(...args),
-  setClaim: vi.fn(),
+  assignShoppingItem: (...args: unknown[]) => assignShoppingItemMock(...args),
+  completeShoppingItem: (...args: unknown[]) => completeShoppingItemMock(...args),
+  removeShoppingItem: (...args: unknown[]) => removeShoppingItemMock(...args),
+  reopenShoppingItem: (...args: unknown[]) => reopenShoppingItemMock(...args),
   deleteShoppingItem: (...args: unknown[]) => deleteShoppingItemMock(...args),
 }));
 
@@ -43,6 +49,7 @@ vi.mock("@/lib/actions/shopping-item-reactions", () => ({
 
 const TRIP_ID = "11111111-1111-4111-8111-111111111111";
 const MEMBER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const MEMBER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const MEMBER_MAP = new Map<string, TripMember>([
   [
@@ -56,6 +63,22 @@ const MEMBER_MAP = new Map<string, TripMember>([
       joined_at: "2026-01-01T00:00:00Z",
       is_celebrant: false,
       display_name: "Dave",
+      phone_e164: null,
+      email: null,
+      idempotency_key: null,
+    },
+  ],
+  [
+    MEMBER_B,
+    {
+      id: MEMBER_B,
+      trip_id: TRIP_ID,
+      user_id: "user-b",
+      role: "attendee",
+      rsvp_status: "going",
+      joined_at: "2026-01-01T00:00:00Z",
+      is_celebrant: false,
+      display_name: "Winston",
       phone_e164: null,
       email: null,
       idempotency_key: null,
@@ -77,6 +100,10 @@ function makeItem(overrides: Partial<ShoppingItem>): ShoppingItem {
     visibility: "everyone",
     idempotency_key: null,
     created_at: "2026-01-01T00:00:00Z",
+    completed_by_trip_member_id: null,
+    removed_by_trip_member_id: null,
+    removed_at: null,
+    claim_assigned_by_trip_member_id: null,
     ...overrides,
   };
 }
@@ -101,7 +128,6 @@ async function renderCard(
       memberMap={MEMBER_MAP}
       viewerMemberId={MEMBER_A}
       canDelete={props.canDelete ?? false}
-      claimReadOnly={false}
       reactionSummary={props.reactionSummary}
       commentCount={props.commentCount ?? 0}
       onOpenItem={onOpenItem}
@@ -110,14 +136,26 @@ async function renderCard(
   return { onOpenItem, item };
 }
 
-describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
-  beforeEach(() => {
-    refreshMock.mockReset();
-    toggleShoppingReactionMock.mockReset();
-    toggleBoughtMock.mockReset();
-    deleteShoppingItemMock.mockReset();
-  });
+const ALL_MOCKS = [
+  refreshMock,
+  assignShoppingItemMock,
+  completeShoppingItemMock,
+  removeShoppingItemMock,
+  reopenShoppingItemMock,
+  deleteShoppingItemMock,
+  toggleShoppingReactionMock,
+];
 
+beforeEach(() => {
+  for (const mock of ALL_MOCKS) mock.mockReset();
+  assignShoppingItemMock.mockResolvedValue({ ok: true });
+  completeShoppingItemMock.mockResolvedValue({ ok: true });
+  removeShoppingItemMock.mockResolvedValue({ ok: true });
+  reopenShoppingItemMock.mockResolvedValue({ ok: true });
+  deleteShoppingItemMock.mockResolvedValue({ ok: true });
+});
+
+describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
   it("(a) renders the like count only when >= 1, never '👍 0'", async () => {
     await renderCard({
       reactionSummary: { counts: { [ROW_LIKE_EMOJI]: 3 }, mine: [] },
@@ -201,8 +239,10 @@ describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
     expect(onOpenItem).toHaveBeenCalledWith(item.id);
   });
 
-  it("(e) tapping row content opens the detail sheet on a bought/struck row too", async () => {
-    const { onOpenItem, item } = await renderCard({ item: { bought: true } });
+  it("(e) tapping row content opens the detail sheet on a completed row too", async () => {
+    const { onOpenItem, item } = await renderCard({
+      item: { bought: true, completed_by_trip_member_id: MEMBER_A },
+    });
     fireEvent.click(screen.getByText(item.name));
     expect(onOpenItem).toHaveBeenCalledWith(item.id);
   });
@@ -238,34 +278,6 @@ describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
     });
   });
 
-  // These two guard the exact regression the row-tap rewrite exists to
-  // prevent: the got-it checkbox and the delete button are real SIBLINGS
-  // of the row-open button, never nested inside it. If a future edit
-  // accidentally moved either one back inside the open-trigger, its
-  // click would bubble into `onOpenItem` too — these assert it doesn't.
-  it("clicking the got-it checkbox fires its own toggle and does NOT open the detail sheet", async () => {
-    toggleBoughtMock.mockResolvedValue({ ok: true });
-    const user = userEvent.setup();
-    const { onOpenItem, item } = await renderCard();
-    await user.click(
-      screen.getByRole("checkbox", { name: SHOPPING_LIST_UI_STRINGS.gotIt })
-    );
-    expect(toggleBoughtMock).toHaveBeenCalledWith(item.id, true);
-    expect(onOpenItem).not.toHaveBeenCalled();
-  });
-
-  it("clicking delete confirms + fires its own action and does NOT open the detail sheet", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    deleteShoppingItemMock.mockResolvedValue({ ok: true });
-    const user = userEvent.setup();
-    const { onOpenItem, item } = await renderCard({ canDelete: true });
-    await user.click(
-      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.deleteCta })
-    );
-    expect(deleteShoppingItemMock).toHaveBeenCalledWith(item.id);
-    expect(onOpenItem).not.toHaveBeenCalled();
-  });
-
   it("like toggle rolls back optimistic state on failure", async () => {
     toggleShoppingReactionMock.mockResolvedValue({
       ok: false,
@@ -284,5 +296,403 @@ describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
     );
     // Rolled back: still shows count 1 (the pre-toggle server state).
     expect(screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.likeAria })).toHaveTextContent("1");
+  });
+
+  // No `.email` anywhere on the row (I6) — resolveMemberName never needs it
+  // and this row never renders a raw member record.
+  it("never renders a member email anywhere on the row", async () => {
+    await renderCard({
+      item: {
+        bought: true,
+        completed_by_trip_member_id: MEMBER_A,
+      },
+    });
+    expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+  });
+});
+
+describe("<ShoppingItemCard /> — v2 state glyph (spec §4)", () => {
+  it("Open: glyph is ○ and an interactive completeAction-labelled button", async () => {
+    await renderCard({ item: { claimed_by_trip_member_id: null, bought: false } });
+    const glyph = screen.getByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.completeAction,
+    });
+    expect(glyph).toHaveTextContent("○");
+  });
+
+  it("In-progress: glyph is ◐ and an interactive completeAction-labelled button", async () => {
+    await renderCard({
+      item: { claimed_by_trip_member_id: MEMBER_A, bought: false },
+    });
+    // In-progress shows the glyph AND the primary action button, both
+    // aria-labelled `completeAction` by design (same mutation) — the
+    // glyph is the one carrying the ◐ glyph text.
+    const buttons = screen.getAllByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.completeAction,
+    });
+    // BOTH render on In-progress (spec §4 mock: `◐ … · [ Completed ]`): the
+    // tappable glyph AND the separate primary button. Locking the count so a
+    // regression that drops the primary button (leaving only the glyph) fails
+    // here rather than silently passing the `.some(◐)` check.
+    expect(buttons).toHaveLength(2);
+    expect(buttons.some((btn) => btn.textContent === "◐")).toBe(true);
+    expect(buttons.some((btn) => btn.textContent !== "◐")).toBe(true);
+  });
+
+  it("Completed: glyph is ✓ and static (no completeAction button)", async () => {
+    await renderCard({
+      item: { bought: true, completed_by_trip_member_id: MEMBER_A },
+    });
+    expect(screen.getByText("✓")).toBeInTheDocument();
+    expect(screen.getByText("✓")).toHaveAttribute("aria-hidden");
+    expect(
+      screen.queryByRole("button", { name: SHOPPING_LIST_UI_STRINGS.completeAction })
+    ).not.toBeInTheDocument();
+  });
+
+  it("Removed: glyph is ⊘ and static (no completeAction button)", async () => {
+    await renderCard({
+      item: { removed_at: "2026-01-02T00:00:00Z", removed_by_trip_member_id: MEMBER_A },
+    });
+    expect(screen.getByText("⊘")).toBeInTheDocument();
+    expect(screen.getByText("⊘")).toHaveAttribute("aria-hidden");
+    expect(
+      screen.queryByRole("button", { name: SHOPPING_LIST_UI_STRINGS.completeAction })
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("<ShoppingItemCard /> — v2 attributed status line (spec §4)", () => {
+  it("Open → stateOpen", async () => {
+    await renderCard({ item: { claimed_by_trip_member_id: null, bought: false } });
+    expect(screen.getByText(SHOPPING_LIST_UI_STRINGS.stateOpen)).toBeInTheDocument();
+  });
+
+  it("In-progress, claimed by viewer → inProgressYou", async () => {
+    await renderCard({ item: { claimed_by_trip_member_id: MEMBER_A } });
+    expect(
+      screen.getByText(SHOPPING_LIST_UI_STRINGS.inProgressYou)
+    ).toBeInTheDocument();
+  });
+
+  it("In-progress, claimed by other → inProgressThem_template with the claimer's name", async () => {
+    await renderCard({ item: { claimed_by_trip_member_id: MEMBER_B } });
+    expect(
+      screen.getByText(
+        SHOPPING_LIST_UI_STRINGS.inProgressThem_template.replace("{name}", "Winston")
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("Completed → completedBy_template with the completer's name", async () => {
+    await renderCard({
+      item: { bought: true, completed_by_trip_member_id: MEMBER_B },
+    });
+    expect(
+      screen.getByText(
+        SHOPPING_LIST_UI_STRINGS.completedBy_template.replace("{name}", "Winston")
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("Removed → removedBy_template with the remover's name", async () => {
+    await renderCard({
+      item: {
+        removed_at: "2026-01-02T00:00:00Z",
+        removed_by_trip_member_id: MEMBER_B,
+      },
+    });
+    expect(
+      screen.getByText(
+        SHOPPING_LIST_UI_STRINGS.removedBy_template.replace("{name}", "Winston")
+      )
+    ).toBeInTheDocument();
+  });
+});
+
+describe("<ShoppingItemCard /> — v2 one primary action per state (spec §4)", () => {
+  it("Open → claimSelfAction calls assignShoppingItem(id, viewerMemberId)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.claimSelfAction })
+    );
+    expect(assignShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_A);
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("Open row has exactly one primary action button (claimSelfAction only)", async () => {
+    await renderCard({ item: { claimed_by_trip_member_id: null, bought: false } });
+    expect(
+      screen.queryByRole("button", { name: SHOPPING_LIST_UI_STRINGS.reopenAction })
+    ).not.toBeInTheDocument();
+  });
+
+  it("In-progress (claimed by viewer) → completeAction calls completeShoppingItem(id, viewerMemberId)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: MEMBER_A },
+    });
+    // The glyph button AND the primary action button share the same
+    // accessible name (completeAction) by design — both trigger the same
+    // mutation. Click the primary action (the last matching button).
+    const buttons = screen.getAllByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.completeAction,
+    });
+    await user.click(buttons[buttons.length - 1]);
+    expect(completeShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_A);
+    // Own-claimed path is a same-tap no-prompt mutation — it must NOT
+    // open the who-completed picker.
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  // v2/5b: "someone else's in-progress item" no longer completes straight
+  // from the primary action — it opens the who-completed picker
+  // (defaulting to the on-hook claimer), and only a pick commits.
+  it("In-progress claimed by OTHER: completeAction opens a picker defaulting to the claimer; picking them completes", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: MEMBER_B },
+    });
+    const buttons = screen.getAllByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.completeAction,
+    });
+    await user.click(buttons[buttons.length - 1]);
+    expect(completeShoppingItemMock).not.toHaveBeenCalled();
+    const winstonItem = await screen.findByRole("menuitem", { name: "Winston" });
+    expect(winstonItem).toHaveAttribute("aria-current", "true");
+    await user.click(winstonItem);
+    expect(completeShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_B);
+  });
+
+  // v2/5b: an unclaimed Open item completed straight from Open also opens
+  // the picker (no auto-complete-as-self) — default-highlighted to the
+  // viewer, since there's no on-hook claimer.
+  it("Open item completed via the glyph opens a picker defaulting to the viewer; picking completes", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.completeAction })
+    );
+    expect(completeShoppingItemMock).not.toHaveBeenCalled();
+    const daveItem = await screen.findByRole("menuitem", { name: "Dave" });
+    expect(daveItem).toHaveAttribute("aria-current", "true");
+    await user.click(daveItem);
+    expect(completeShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_A);
+  });
+
+  it("Completed → reopenAction opens the reopen form; confirming calls reopenShoppingItem(id, {assignTo:null, comment:undefined}, key)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { bought: true, completed_by_trip_member_id: MEMBER_A },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.reopenAction })
+    );
+    const confirmButton = await screen.findByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.reopenAction,
+    });
+    await user.click(confirmButton);
+    expect(reopenShoppingItemMock).toHaveBeenCalledTimes(1);
+    const [itemId, opts, key] = reopenShoppingItemMock.mock.calls[0];
+    expect(itemId).toBe(item.id);
+    expect(opts).toEqual({ assignTo: null, comment: undefined });
+    expect(typeof key).toBe("string");
+  });
+
+  it("Removed → reopenAction opens the reopen form; confirming calls reopenShoppingItem(id, {assignTo:null, comment:undefined}, key)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: {
+        removed_at: "2026-01-02T00:00:00Z",
+        removed_by_trip_member_id: MEMBER_A,
+      },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.reopenAction })
+    );
+    const confirmButton = await screen.findByRole("button", {
+      name: SHOPPING_LIST_UI_STRINGS.reopenAction,
+    });
+    await user.click(confirmButton);
+    const [itemId, opts, key] = reopenShoppingItemMock.mock.calls[0];
+    expect(itemId).toBe(item.id);
+    expect(opts).toEqual({ assignTo: null, comment: undefined });
+    expect(typeof key).toBe("string");
+  });
+});
+
+describe("<ShoppingItemCard /> — assign / re-assign picker (spec §6, rule #8)", () => {
+  it("Open: ⋯ menu shows 'Assign…'; picking a member calls assignShoppingItem(id, member)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Winston" }));
+    expect(assignShoppingItemMock).toHaveBeenCalledWith(item.id, MEMBER_B);
+  });
+
+  it("Claimed (in-progress): ⋯ menu shows 'Re-assign…' instead of 'Assign…'", async () => {
+    const user = userEvent.setup();
+    await renderCard({ item: { claimed_by_trip_member_id: MEMBER_A } });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.reassignAction })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    ).not.toBeInTheDocument();
+  });
+
+  it("Picking 'Open — no one' calls assignShoppingItem(id, null)", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({ item: { claimed_by_trip_member_id: MEMBER_A } });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.reassignAction })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignOpenNoOne })
+    );
+    expect(assignShoppingItemMock).toHaveBeenCalledWith(item.id, null);
+  });
+
+  it("opening the assign picker then triggering complete leaves only ONE panel open (mutual exclusivity)", async () => {
+    const user = userEvent.setup();
+    await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    // Open the assign picker via the ⋯ menu.
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    );
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+
+    // Now trigger the complete flow — for an unclaimed Open item this
+    // opens the who-completed picker. Before the fix, `assignPickerOpen`
+    // and `completePickerOpen` were independent booleans, so both
+    // panels could render stacked.
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.completeAction })
+    );
+
+    // Exactly one menu/panel is present — the assign picker's own items
+    // ("Open — no one") are gone, replaced by the who-completed picker.
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignOpenNoOne })
+    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Dave" })).toBeInTheDocument();
+  });
+
+  it("Assign/Re-assign is absent from a terminal (Completed) row's ⋯ menu", async () => {
+    const user = userEvent.setup();
+    await renderCard({ item: { bought: true, completed_by_trip_member_id: MEMBER_A } });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await screen.findByRole("menu");
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.assignAction })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.reassignAction })
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("<ShoppingItemCard /> — v2 overflow menu (spec §4)", () => {
+  it("Remove (non-terminal) calls removeShoppingItem, no confirm", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm");
+    const user = userEvent.setup();
+    const { item } = await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.deleteCta })
+    );
+    expect(removeShoppingItemMock).toHaveBeenCalledWith(item.id);
+    expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it("Remove is absent from the menu on a terminal (Completed) row", async () => {
+    const user = userEvent.setup();
+    await renderCard({
+      item: { bought: true, completed_by_trip_member_id: MEMBER_A },
+    });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    expect(
+      await screen.findByRole("menu")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.deleteCta })
+    ).not.toBeInTheDocument();
+  });
+
+  it("Permanent purge is absent when !canDelete", async () => {
+    const user = userEvent.setup();
+    await renderCard({ canDelete: false });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: SHOPPING_LIST_UI_STRINGS.menuPurge })
+    ).not.toBeInTheDocument();
+  });
+
+  it("Permanent purge two-tap arm-then-confirm calls deleteShoppingItem", async () => {
+    const user = userEvent.setup();
+    const { item } = await renderCard({ canDelete: true });
+    await user.click(
+      screen.getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.itemMenu_aria })
+    );
+    const purgeItem = await screen.findByRole("menuitem", {
+      name: SHOPPING_LIST_UI_STRINGS.menuPurge,
+    });
+    // First tap arms — no mutation fired yet.
+    await user.click(purgeItem);
+    expect(deleteShoppingItemMock).not.toHaveBeenCalled();
+    // Second tap (confirm label) commits.
+    await user.click(
+      await screen.findByRole("menuitem", {
+        name: SHOPPING_LIST_UI_STRINGS.itemDeleteConfirm,
+      })
+    );
+    expect(deleteShoppingItemMock).toHaveBeenCalledWith(item.id);
+  });
+});
+
+describe("<ShoppingItemCard /> — row-open a11y preserved (spec §4)", () => {
+  it("the row-open button still opens the sheet on an Open row", async () => {
+    const { onOpenItem, item } = await renderCard({
+      item: { claimed_by_trip_member_id: null, bought: false },
+    });
+    fireEvent.click(screen.getByText(item.name));
+    expect(onOpenItem).toHaveBeenCalledWith(item.id);
   });
 });

@@ -6,13 +6,15 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ShoppingItem, ShoppingItemPatch } from "./types";
+import type { ShoppingItem, ShoppingItemPatch, ShoppingItemState } from "./types";
 
 /** Flat column list — the I1 invariant checker asserts every non-exempt
  * written column (name, category, bought, claimed_by_trip_member_id,
- * cost_cents, currency, visibility) appears here. */
+ * cost_cents, currency, visibility, completed_by_trip_member_id,
+ * removed_by_trip_member_id, removed_at, claim_assigned_by_trip_member_id)
+ * appears here. */
 export const SHOPPING_ITEM_COLUMNS =
-  "id, trip_id, created_by_trip_member_id, claimed_by_trip_member_id, name, category, bought, cost_cents, currency, visibility, idempotency_key, created_at";
+  "id, trip_id, created_by_trip_member_id, claimed_by_trip_member_id, name, category, bought, cost_cents, currency, visibility, idempotency_key, created_at, completed_by_trip_member_id, removed_by_trip_member_id, removed_at, claim_assigned_by_trip_member_id";
 
 /**
  * Return all shopping-list items for a trip, ordered by created_at asc
@@ -68,37 +70,6 @@ async function runCounted(
   }
 }
 
-/** Set an item's `bought` column to a desired end state. */
-export function setItemBought(
-  supabase: SupabaseClient,
-  itemId: string,
-  bought: boolean
-): Promise<void> {
-  return runCounted(
-    supabase
-      .from("shopping_list_items")
-      .update({ bought }, { count: "exact" })
-      .eq("id", itemId)
-  );
-}
-
-/** Set (or clear, with `null`) who's claimed an item. */
-export function setItemClaim(
-  supabase: SupabaseClient,
-  itemId: string,
-  claimedByTripMemberId: string | null
-): Promise<void> {
-  return runCounted(
-    supabase
-      .from("shopping_list_items")
-      .update(
-        { claimed_by_trip_member_id: claimedByTripMemberId },
-        { count: "exact" }
-      )
-      .eq("id", itemId)
-  );
-}
-
 /**
  * Partial-patch update: only the keys present in `patch` are sent.
  * `undefined` = leave unchanged (key omitted from the payload); `null`
@@ -120,6 +91,111 @@ export function amendItem(
     supabase
       .from("shopping_list_items")
       .update(payload, { count: "exact" })
+      .eq("id", itemId)
+  );
+}
+
+/**
+ * Pure display-state derivation (v2 spec §2). No I/O. Precedence order
+ * matters: `removed` wins over everything (even a simultaneously-bought
+ * row); `completed` (bought) wins over `in_progress` (claimed).
+ */
+export function deriveShoppingItemState(item: ShoppingItem): ShoppingItemState {
+  if (item.removed_at !== null) return "removed";
+  if (item.bought) return "completed";
+  if (item.claimed_by_trip_member_id !== null) return "in_progress";
+  return "open";
+}
+
+/** Mark an item bought + record who completed it. */
+export function setItemCompleted(
+  supabase: SupabaseClient,
+  itemId: string,
+  completedByMemberId: string
+): Promise<void> {
+  return runCounted(
+    supabase
+      .from("shopping_list_items")
+      .update(
+        { bought: true, completed_by_trip_member_id: completedByMemberId },
+        { count: "exact" }
+      )
+      .eq("id", itemId)
+  );
+}
+
+/** Mark an item removed + record who removed it and when. */
+export function setItemRemoved(
+  supabase: SupabaseClient,
+  itemId: string,
+  removedByMemberId: string,
+  removedAt: string
+): Promise<void> {
+  return runCounted(
+    supabase
+      .from("shopping_list_items")
+      .update(
+        {
+          removed_by_trip_member_id: removedByMemberId,
+          removed_at: removedAt,
+        },
+        { count: "exact" }
+      )
+      .eq("id", itemId)
+  );
+}
+
+/**
+ * Set (or clear, with both `null`) who's claimed an item and who assigned
+ * that claim. Supersedes the retired v1 `setItemClaim`, which only wrote
+ * claimed_by.
+ * Both null = "send back to Open — no one".
+ */
+export function setItemAssignment(
+  supabase: SupabaseClient,
+  itemId: string,
+  claimedByMemberId: string | null,
+  claimAssignedByMemberId: string | null
+): Promise<void> {
+  return runCounted(
+    supabase
+      .from("shopping_list_items")
+      .update(
+        {
+          claimed_by_trip_member_id: claimedByMemberId,
+          claim_assigned_by_trip_member_id: claimAssignedByMemberId,
+        },
+        { count: "exact" }
+      )
+      .eq("id", itemId)
+  );
+}
+
+/**
+ * Re-open an item from Completed OR Removed: clears all four terminal
+ * fields and sets the assignment in one idempotent update — correct for
+ * both origins.
+ */
+export function reopenItem(
+  supabase: SupabaseClient,
+  itemId: string,
+  claimedByMemberId: string | null,
+  claimAssignedByMemberId: string | null
+): Promise<void> {
+  return runCounted(
+    supabase
+      .from("shopping_list_items")
+      .update(
+        {
+          bought: false,
+          completed_by_trip_member_id: null,
+          removed_by_trip_member_id: null,
+          removed_at: null,
+          claimed_by_trip_member_id: claimedByMemberId,
+          claim_assigned_by_trip_member_id: claimAssignedByMemberId,
+        },
+        { count: "exact" }
+      )
       .eq("id", itemId)
   );
 }

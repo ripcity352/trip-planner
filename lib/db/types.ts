@@ -548,7 +548,23 @@ export interface ShoppingItem {
   visibility: TripVisibility;
   idempotency_key: string | null;
   created_at: string;
+  completed_by_trip_member_id: string | null;
+  removed_by_trip_member_id: string | null;
+  removed_at: string | null;
+  claim_assigned_by_trip_member_id: string | null;
 }
+
+/**
+ * Derived display state for a shopping item (v2 spec §2). Not persisted —
+ * computed by `deriveShoppingItemState` from the terminal-mark columns.
+ * Precedence: `removed` wins over everything, `completed` (bought) wins
+ * over `in_progress`.
+ */
+export type ShoppingItemState =
+  | "open"
+  | "in_progress"
+  | "completed"
+  | "removed";
 
 // Partial-patch for amend: undefined = leave unchanged; null = explicitly clear.
 export interface ShoppingItemPatch {

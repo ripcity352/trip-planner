@@ -952,12 +952,6 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // one appends the banned per-head `~$X/head` split).
   costTag_template: "~{amount}",
   surpriseToggle_template: "Surprise — hide from {name}",
-  claimCta: "I've got this",
-  claimedByYou: "You've got this one.",
-  claimedBy_template: "{name} is on it.",
-  gotIt: "Got it. One less thing.",
-  unclaim: "Off your plate.",
-  gotItDivider: "Got it",
   categorySnacks: "snacks",
   categoryBooze: "booze",
   categorySupplies: "supplies",
@@ -965,7 +959,6 @@ export const SHOPPING_LIST_UI_STRINGS = {
   submitCta: "Add it",
   cancelCta: "Never mind",
   deleteCta: "Remove",
-  deleteConfirm: "Remove this? Can't undo.",
   // P2-T5 — row social affordances. openDetail_template drives the
   // whole-row-tap aria-label (a11y name for the overlay button); likeAria
   // is a static label (aria-pressed communicates the toggle state, so no
@@ -993,6 +986,68 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // cost is named up front instead of a generic "can't undo".
   itemDeleteConfirm:
     "Remove this? It'll take its reactions and notes with it — can't undo.",
+
+  // --- v2 lifecycle ---
+  // v2 lifecycle — state labels (reused for filter tabs, section
+  // dividers, and the Open status line). Precise/literal beats warm/cute
+  // here (see feedback_precise_copy_over_cute) — this is a coordination
+  // state machine, not a celebratory surface. Verb spine: complete.
+  stateOpen: "Open",
+  stateInProgress: "In-progress",
+  stateCompleted: "Completed",
+  stateRemoved: "Removed",
+  filterAll: "All",
+  // v2 action buttons (one primary per state)
+  completeAction: "Completed",
+  claimSelfAction: "I'll complete",
+  assignAction: "Assign…",
+  reassignAction: "Re-assign…",
+  reopenAction: "Re-open",
+  // v2 attributed status lines
+  completedBy_template: "Completed by {name}",
+  removedBy_template: "Removed by {name}",
+  inProgressYou: "You to complete",
+  inProgressThem_template: "{name} to complete",
+  // v2 assign/re-assign picker + provenance
+  assignOpenNoOne: "Open — no one",
+  assignedByProvenance_template: "{assigner} put {assignee} on this",
+  // v2 row overflow menu (Task 5a) — trigger aria-label + the two-tap
+  // purge item. Soft Remove reuses `deleteCta`; the purge confirm label
+  // reuses `itemDeleteConfirm` (same cascade-cost copy as the old
+  // window.confirm dialog).
+  itemMenu_aria: "Item options",
+  menuPurge: "Delete permanently",
+  // v2 pickers + reopen-with-note flow (Task 5b). Precise/literal, same
+  // register as the rest of the lifecycle strings — this is a picker
+  // title, not a prompt.
+  completedByPickerTitle: "Completed by…",
+  reopenNotePlaceholder: "Add a note (optional)…",
+  // Task 6 — segmented filter + sectioning. `completeAction` above is
+  // literally "Completed", which collides with the Completed section
+  // divider's own visible label as an accessible name — this template
+  // gives the divider/toggle button a distinct one ("Show/hide
+  // Completed") so screen-reader users (and role-based queries) can tell
+  // the two apart. {section} is stateCompleted or stateRemoved.
+  sectionToggle_aria_template: "Show/hide {section}",
+  // Small neutral line for an empty FILTERED tab (e.g. no Removed items
+  // yet) — distinct from EMPTY_STATES.shopping_list_empty, which only
+  // fires when there are ZERO items total.
+  filterTab_emptyNote: "Nothing here for this filter.",
+
+  // Task 7a — fast multi-add (Enter-to-continue + paste-split) and the
+  // "Add with details" demotion of the full form. `addCta` stays put on
+  // `SHOPPING_LIST_UI_STRINGS` (Task 8 owns copy retirement) even though
+  // it's no longer referenced from the trigger — `addDetailsCta` replaces
+  // it there. `cancelCta` is reused for the paste-confirm's cancel action
+  // (no dedicated key — same "Never mind" register).
+  quickAddPlaceholder: "Add an item…",
+  pasteAddConfirm_template: "Add {count} items?",
+  addDetailsCta: "Add with details",
+
+  // Task 7b — inline amend/edit (name/category/cost) in the detail sheet.
+  // `cancelCta` is reused for the edit form's cancel action.
+  editCta: "Edit",
+  editSave: "Save",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;
@@ -1050,4 +1105,8 @@ export type DashboardGlanceStringKey = keyof typeof DASHBOARD_GLANCE_STRINGS;
  */
 export const A11Y_UI_STRINGS = {
   loading: "Loading",
+  // Task 6 — accessible group name for the shopping-list segmented filter
+  // (All / Open / In-progress / Completed / Removed). Not visibly
+  // rendered — the group's own heading already says "Shopping list".
+  shoppingListFilterGroup: "Filter",
 } as const;
