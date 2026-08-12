@@ -34,6 +34,14 @@ export interface ShoppingItemMenuProps {
   /** Whether the item currently has a claimer — flips Assign…/Re-assign…. */
   isClaimed: boolean;
   canDelete: boolean;
+  /**
+   * Complete the item — the same handler the leading glyph and the primary
+   * button route through (completes as self if the viewer owns the claim,
+   * else opens the who-completed picker). Surfaced here as a discoverable
+   * labelled path since the glyph reads as a status dot, not a button (#606
+   * follow-up). Non-terminal rows only.
+   */
+  onComplete: () => void;
   onRemove: () => void;
   onAssignClick: () => void;
   onPurge: () => void;
@@ -43,6 +51,7 @@ export function ShoppingItemMenu({
   isTerminal,
   isClaimed,
   canDelete,
+  onComplete,
   onRemove,
   onAssignClick,
   onPurge,
@@ -53,6 +62,11 @@ export function ShoppingItemMenu({
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (!next) setPurgeArmed(false);
+  };
+
+  const handleCompleteClick = () => {
+    setOpen(false);
+    onComplete();
   };
 
   const handleAssignItemClick = () => {
@@ -87,6 +101,11 @@ export function ShoppingItemMenu({
         <MoreVertical aria-hidden className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={4}>
+        {!isTerminal ? (
+          <DropdownMenuItem onClick={handleCompleteClick}>
+            {SHOPPING_LIST_UI_STRINGS.completeAction}
+          </DropdownMenuItem>
+        ) : null}
         {!isTerminal ? (
           <DropdownMenuItem onClick={handleAssignItemClick}>
             {isClaimed
