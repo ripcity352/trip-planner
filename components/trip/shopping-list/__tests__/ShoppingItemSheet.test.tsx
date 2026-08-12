@@ -497,12 +497,15 @@ describe("<ShoppingItemSheet />", () => {
   });
 
   it("never renders a claim-toggle control — no 'I've got this' / 'Off your plate' button", async () => {
+    // Literal strings, not `SHOPPING_LIST_UI_STRINGS.claimCta` /
+    // `.unclaim` — those keys were retired (Task 8b, precise-copy
+    // migration); this guard must survive their deletion.
     await renderSheet({ item: { claimed_by_trip_member_id: null } });
     expect(
-      screen.queryByRole("button", { name: SHOPPING_LIST_UI_STRINGS.claimCta })
+      screen.queryByRole("button", { name: "I've got this" })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: SHOPPING_LIST_UI_STRINGS.unclaim })
+      screen.queryByRole("button", { name: "Off your plate." })
     ).not.toBeInTheDocument();
   });
 

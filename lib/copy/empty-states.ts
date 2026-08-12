@@ -952,12 +952,6 @@ export const SHOPPING_LIST_UI_STRINGS = {
   // one appends the banned per-head `~$X/head` split).
   costTag_template: "~{amount}",
   surpriseToggle_template: "Surprise — hide from {name}",
-  claimCta: "I've got this",
-  claimedByYou: "You've got this one.",
-  claimedBy_template: "{name} is on it.",
-  gotIt: "Got it. One less thing.",
-  unclaim: "Off your plate.",
-  gotItDivider: "Got it",
   categorySnacks: "snacks",
   categoryBooze: "booze",
   categorySupplies: "supplies",
@@ -965,7 +959,6 @@ export const SHOPPING_LIST_UI_STRINGS = {
   submitCta: "Add it",
   cancelCta: "Never mind",
   deleteCta: "Remove",
-  deleteConfirm: "Remove this? Can't undo.",
   // P2-T5 — row social affordances. openDetail_template drives the
   // whole-row-tap aria-label (a11y name for the overlay button); likeAria
   // is a static label (aria-pressed communicates the toggle state, so no

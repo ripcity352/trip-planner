@@ -250,12 +250,6 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "categoryLabel",
   "costTag_template",
   "surpriseToggle_template",
-  "claimCta",
-  "claimedByYou",
-  "claimedBy_template",
-  "gotIt",
-  "unclaim",
-  "gotItDivider",
   "categorySnacks",
   "categoryBooze",
   "categorySupplies",
@@ -263,7 +257,6 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   "submitCta",
   "cancelCta",
   "deleteCta",
-  "deleteConfirm",
   "openDetail_template",
   "likeAria",
   "sheetClose_aria",
@@ -335,7 +328,6 @@ describe("SHOPPING_LIST_UI_STRINGS", () => {
     expect(SHOPPING_LIST_UI_STRINGS.surpriseToggle_template).toContain(
       "{name}"
     );
-    expect(SHOPPING_LIST_UI_STRINGS.claimedBy_template).toContain("{name}");
     expect(SHOPPING_LIST_UI_STRINGS.openDetail_template).toContain("{name}");
     expect(SHOPPING_LIST_UI_STRINGS.addedBy_template).toContain("{name}");
     expect(SHOPPING_LIST_UI_STRINGS.addedBy_template).toContain("{when}");
@@ -351,5 +343,41 @@ describe("SHOPPING_LIST_UI_STRINGS", () => {
     expect(SHOPPING_LIST_UI_STRINGS.noteAuthorLine_template).toContain(
       "{when}"
     );
+  });
+
+  // §10 — cute-copy retirement (Task 8b, precise-copy migration). The v1
+  // claim/got-it register (warm, vague) was replaced by the v2 lifecycle's
+  // precise/literal state machine copy (Task 3). Guards against either
+  // regressing back: the 7 retired keys must be gone from the object, AND
+  // no CURRENT value may collide with one of their old cute literals.
+  it("retired cute-copy keys are gone and no current value matches their old literals", () => {
+    const RETIRED_KEYS = [
+      "gotIt",
+      "gotItDivider",
+      "claimCta",
+      "claimedByYou",
+      "claimedBy_template",
+      "unclaim",
+      "deleteConfirm",
+    ] as const;
+    for (const key of RETIRED_KEYS) {
+      expect(
+        (SHOPPING_LIST_UI_STRINGS as Record<string, string | undefined>)[key]
+      ).toBeUndefined();
+    }
+
+    const RETIRED_LITERALS = [
+      "I've got this",
+      "Got it. One less thing.",
+      "Off your plate.",
+      "{name} is on it.",
+      "You've got this one.",
+      "Got it",
+      "Remove this? Can't undo.",
+    ];
+    const currentValues = Object.values(SHOPPING_LIST_UI_STRINGS);
+    for (const literal of RETIRED_LITERALS) {
+      expect(currentValues).not.toContain(literal);
+    }
   });
 });
