@@ -299,6 +299,7 @@ const SHOPPING_LIST_EXPECTED_KEYS: readonly ShoppingListUiStringKey[] = [
   // Fast multi-add + "Add with details" demotion (Task 7a)
   "quickAddPlaceholder",
   "pasteAddConfirm_template",
+  "pasteAddConfirmCta",
   "addDetailsCta",
   // Task 7b — inline amend/edit
   "editCta",

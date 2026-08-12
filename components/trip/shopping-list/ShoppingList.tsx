@@ -253,6 +253,10 @@ export function ShoppingList({
 
       {openItem ? (
         <ShoppingItemSheet
+          // Structural per-item isolation (#609): a fresh instance per item id
+          // so `isEditing` / `isGone` / `optimisticComments` can never leak
+          // across items even if the open/close ordering ever changes.
+          key={openItem.id}
           item={openItem}
           reactionSummary={reactionsByItem[openItem.id]}
           comments={commentsByItem[openItem.id] ?? []}

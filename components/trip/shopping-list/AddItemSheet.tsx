@@ -37,6 +37,7 @@ import { callAction } from "@/lib/ui/call-action";
 import { FIELD_ERRORS } from "@/lib/copy/field-errors";
 import { SHOPPING_LIST_UI_STRINGS } from "@/lib/copy/empty-states";
 import type { ViewerMember } from "@/lib/db/trips";
+import { CATEGORY_CHIPS } from "./category-chips";
 
 const AMOUNT_RE = /^\d+(\.\d{1,2})?$/;
 
@@ -55,13 +56,6 @@ const addItemFormSchema = z.object({
 });
 
 type AddItemFormValues = z.infer<typeof addItemFormSchema>;
-
-const CATEGORY_CHIPS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "snacks", label: SHOPPING_LIST_UI_STRINGS.categorySnacks },
-  { value: "booze", label: SHOPPING_LIST_UI_STRINGS.categoryBooze },
-  { value: "supplies", label: SHOPPING_LIST_UI_STRINGS.categorySupplies },
-  { value: "gear", label: SHOPPING_LIST_UI_STRINGS.categoryGear },
-];
 
 export interface AddItemSheetProps {
   tripId: string;
