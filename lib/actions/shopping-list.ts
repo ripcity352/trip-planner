@@ -326,9 +326,12 @@ export interface AmendShoppingItemInput {
  * Never forward an `undefined` field, or amending just the name would null
  * out category/cost (gap-A).
  *
- * NOTE: shipped in PR1 (action + tests) but intentionally not yet wired to a
- * UI affordance — PR1's ShoppingItemCard is claim/got-it/delete only (spec §7).
- * The edit gesture lands in the PR2 tap-in detail sheet (spec §12.6). Do not
+ * NOTE: shipped (action + db + tests) but NOT yet wired to any UI affordance
+ * as of PR2. Neither PR1's ShoppingItemCard (claim/got-it/delete only, spec §7)
+ * nor PR2's ShoppingItemSheet (§12.6) surfaces an edit gesture — the plan's card
+ * spec omitted amend, and the sheet shipped without it. The capability is
+ * correct and callable; the edit UI is a tracked follow-up (issue #604). See
+ * notes/decisions.md "Shopping list — amend deferral + row-👍" ADR. Do not
  * treat as dead code.
  */
 export async function amendShoppingItem(
