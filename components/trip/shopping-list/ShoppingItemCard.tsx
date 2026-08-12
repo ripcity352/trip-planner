@@ -23,13 +23,47 @@
  *     when ≥1 (never "👍 0"); NO other emoji on the row.
  *   - A read-only 💬n note-count, shown only when ≥1.
  *   - When both are 0, the meta slot renders nothing (no placeholder).
- *   - Whole-row tap opens the detail sheet (P2-T6) via `onOpenItem`, even
- *     on a struck/bought row. Layering pattern (not nested-in-button, not
- *     stopPropagation): an absolutely-positioned full-row `<button>` sits
- *     BEHIND the row content at z-0; the content wrapper is `relative z-10`
- *     so it paints on top and independently captures clicks on the
- *     checkbox / like / delete controls. Clicks landing anywhere else on
- *     the row fall through to the overlay button underneath.
+ *   - Row-open (P2-T6) via `onOpenItem`, even on a struck/bought row.
+ *
+ *     TWO IMPLEMENTATIONS WERE TRIED for the row-open tap target; only the
+ *     second is real:
+ *
+ *     1. (REJECTED) A CSS "stretched-link": a full-row `absolute inset-0`
+ *        `<button>` SIBLING under a `relative z-10` content wrapper, with
+ *        individual controls raised to `relative z-20`. This relies on
+ *        the BROWSER's paint/hit-test order to route a tap on plain text
+ *        to the sibling button underneath. Two problems: (a) it's
+ *        genuinely broken if any ancestor around the plain content is
+ *        ALSO given a blanket `relative z-*` (an earlier revision of this
+ *        file did exactly that — the whole content wrapper out-ranked the
+ *        overlay and silently ate every tap on the name/chips/whitespace,
+ *        the CRITICAL bug this comment replaces); and (b) even fixed
+ *        correctly, it is UNTESTABLE with `@testing-library` — jsdom has
+ *        no layout/paint engine, so `fireEvent.click(screen.getByText(...))`
+ *        dispatches directly on that node and only bubbles through its
+ *        REAL DOM ancestors. A z-index-only relationship between SIBLINGS
+ *        never enters into it, in jsdom or in RTL's `userEvent`, so this
+ *        approach cannot be proven correct by any test — it is a "looks
+ *        right in the browser, unverifiable in CI" trap.
+ *
+ *     2. (SHIPPED) A real DOM ancestor: the plain-text info line (name +
+ *        category chip + cost tag) is wrapped in an actual `<button
+ *        onClick={() => onOpenItem(item.id)}>`. Every interactive
+ *        control (checkbox, claim/unclaim, delete, the 👍 like button)
+ *        stays a true SIBLING outside that button — never a descendant —
+ *        so there is no nested-interactive-inside-a-button by
+ *        construction, not by convention. Clicks on the name/chip/cost
+ *        text bubble through real DOM ancestry to the button's own
+ *        handler — this works identically in jsdom (verified by the
+ *        component test) and in every real browser, because it's plain
+ *        event bubbling, not CSS-dependent hit-testing. Trade-off: the
+ *        claim-line and the like/note meta-row sit OUTSIDE the open
+ *        button (they contain real controls), so tapping their own
+ *        static text (e.g. "Dave is on it.") does not open the sheet —
+ *        only the primary name/category/cost line and the explicit
+ *        aria-labelled button itself do. Spec's "tap anywhere else"
+ *        already treats the meta rows as their OWN independent controls
+ *        (like/got-it/claim/delete), so this is the intended split.
  */
 
 import * as React from "react";
@@ -170,25 +204,15 @@ export function ShoppingItemCard({
   };
 
   const showMetaSlot = likeCount > 0 || commentCount > 0;
+  // `??` (not `||`) so TS narrows this to `ErrorKey | null` without a
+  // cast — `errorKey` and `likeErrorKey` are each already `ErrorKey |
+  // null`, and `??` picks the first non-null/non-undefined operand.
+  const displayedErrorKey = errorKey ?? likeErrorKey;
 
   return (
-    <li className="border-border relative flex flex-col gap-1.5 border-b py-3 last:border-b-0">
-      {/* Whole-row tap target — sits BEHIND the content below (z-0 vs.
-          z-10) so it only catches clicks that fall through the row's
-          non-interactive whitespace/text. Not nested inside the content —
-          siblings, so the checkbox/like/delete buttons above it capture
-          their own clicks first. Works on struck/bought rows too since
-          it's unconditional. */}
-      <button
-        type="button"
-        onClick={() => onOpenItem(item.id)}
-        aria-label={SHOPPING_LIST_UI_STRINGS.openDetail_template.replace(
-          "{name}",
-          item.name
-        )}
-        className="absolute inset-0 z-0 rounded-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-      />
-      <div className="relative z-10 flex items-start gap-2.5">
+    <li className="border-border flex flex-col gap-1.5 border-b py-3 last:border-b-0">
+      <div className="flex items-start gap-2.5">
+        {/* Real sibling, outside the row-open button — its own onChange. */}
         <input
           type="checkbox"
           checked={item.bought}
@@ -198,24 +222,40 @@ export function ShoppingItemCard({
           className="mt-0.5 h-4 w-4 shrink-0"
         />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span
-              className={cn(
-                "text-sm",
-                item.bought && "text-muted-foreground line-through"
-              )}
-            >
-              {item.name}
-            </span>
-            {item.category ? (
-              <span className="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-xs">
-                {item.category}
+          {/* Row-open tap target — a real <button> ANCESTOR of the
+              purely-informational name/category/cost line (see module
+              header for why: real DOM bubbling, not CSS layering). It
+              contains ONLY plain text/spans — never an interactive
+              descendant — unconditionally present so it covers
+              struck/bought rows too. */}
+          <button
+            type="button"
+            onClick={() => onOpenItem(item.id)}
+            aria-label={SHOPPING_LIST_UI_STRINGS.openDetail_template.replace(
+              "{name}",
+              item.name
+            )}
+            className="w-full rounded-xs text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span
+                className={cn(
+                  "text-sm",
+                  item.bought && "text-muted-foreground line-through"
+                )}
+              >
+                {item.name}
               </span>
-            ) : null}
-            {costTag ? (
-              <span className="text-muted-foreground text-xs">{costTag}</span>
-            ) : null}
-          </div>
+              {item.category ? (
+                <span className="text-muted-foreground rounded-full border border-border px-2 py-0.5 text-xs">
+                  {item.category}
+                </span>
+              ) : null}
+              {costTag ? (
+                <span className="text-muted-foreground text-xs">{costTag}</span>
+              ) : null}
+            </span>
+          </button>
 
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
             {claimerId ? (
@@ -293,9 +333,9 @@ export function ShoppingItemCard({
         </div>
       </div>
 
-      {errorKey || likeErrorKey ? (
-        <p className={cn(ERROR_LINE_CLASS, "relative z-10 text-xs")} role="alert">
-          {ERRORS[errorKey ?? (likeErrorKey as ErrorKey)]}
+      {displayedErrorKey ? (
+        <p className={cn(ERROR_LINE_CLASS, "text-xs")} role="alert">
+          {ERRORS[displayedErrorKey]}
         </p>
       ) : null}
     </li>

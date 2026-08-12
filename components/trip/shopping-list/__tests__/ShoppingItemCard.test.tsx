@@ -16,7 +16,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SHOPPING_LIST_UI_STRINGS } from "@/lib/copy/empty-states";
@@ -166,23 +166,45 @@ describe("<ShoppingItemCard /> — row social affordances (P2-T5)", () => {
     expect(screen.getByText(ROW_LIKE_EMOJI)).toBeInTheDocument();
   });
 
-  it("(e) tapping the row body opens the detail sheet", async () => {
-    const user = userEvent.setup();
+  // (e) These click REAL row content — the item name, a category chip, the
+  // cost text — NOT the overlay button by role. Clicking the overlay by
+  // role only proves the overlay's own handler fires; it says nothing
+  // about whether taps on ordinary row content actually reach it (the
+  // fall-through bug this suite exists to catch: a `relative z-10`
+  // wrapper around the row's non-interactive content silently painted
+  // OVER the overlay, so `fireEvent.click(screen.getByText(item.name))`
+  // never reached it).
+  it("(e) tapping the item name opens the detail sheet", async () => {
     const { onOpenItem, item } = await renderCard();
-    await user.click(
-      screen.getByRole("button", {
-        name: SHOPPING_LIST_UI_STRINGS.openDetail_template.replace(
-          "{name}",
-          item.name
-        ),
-      })
-    );
+    fireEvent.click(screen.getByText(item.name));
     expect(onOpenItem).toHaveBeenCalledWith(item.id);
   });
 
-  it("(e) tapping the row body opens the detail sheet on a bought/struck row too", async () => {
-    const user = userEvent.setup();
+  it("(e) tapping a category chip opens the detail sheet", async () => {
+    const { onOpenItem, item } = await renderCard({
+      item: { category: "snacks" },
+    });
+    fireEvent.click(screen.getByText("snacks"));
+    expect(onOpenItem).toHaveBeenCalledWith(item.id);
+  });
+
+  it("(e) tapping the cost text opens the detail sheet", async () => {
+    const { onOpenItem, item } = await renderCard({
+      item: { cost_cents: 2500 },
+    });
+    fireEvent.click(screen.getByText("~$25.00"));
+    expect(onOpenItem).toHaveBeenCalledWith(item.id);
+  });
+
+  it("(e) tapping row content opens the detail sheet on a bought/struck row too", async () => {
     const { onOpenItem, item } = await renderCard({ item: { bought: true } });
+    fireEvent.click(screen.getByText(item.name));
+    expect(onOpenItem).toHaveBeenCalledWith(item.id);
+  });
+
+  it("(e) the overlay button itself still opens the detail sheet (role-based click)", async () => {
+    const user = userEvent.setup();
+    const { onOpenItem, item } = await renderCard();
     await user.click(
       screen.getByRole("button", {
         name: SHOPPING_LIST_UI_STRINGS.openDetail_template.replace(
