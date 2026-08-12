@@ -216,12 +216,14 @@ test.describe("Shopping list — v2 lifecycle (add → assign → complete → r
       })
       .click();
     await expect(page.getByText(REOPEN_NOTE)).toBeVisible({ timeout: 10_000 });
-    // Two elements share the "Close" accessible name (the full-screen
-    // backdrop button and the explicit X button) — both call the same
-    // `onClose`, so `.first()` resolves the strict-mode ambiguity.
+    // Two elements share the "Close" accessible name: the full-screen
+    // backdrop button (`absolute inset-0`, first in DOM, behind the dialog)
+    // and the explicit X button inside `role="dialog"`. `.first()` resolves
+    // to the backdrop, whose centre is occluded by the z-10 dialog body, so
+    // the click is intercepted. Scope to the dialog to target the X button.
     await page
+      .getByRole("dialog")
       .getByRole("button", { name: SHOPPING_LIST_UI_STRINGS.sheetClose_aria })
-      .first()
       .click();
 
     // ---- 6. Filter to In-progress — only item B (item A is Completed) ----
