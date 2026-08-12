@@ -966,6 +966,33 @@ export const SHOPPING_LIST_UI_STRINGS = {
   cancelCta: "Never mind",
   deleteCta: "Remove",
   deleteConfirm: "Remove this? Can't undo.",
+  // P2-T5 — row social affordances. openDetail_template drives the
+  // whole-row-tap aria-label (a11y name for the overlay button); likeAria
+  // is a static label (aria-pressed communicates the toggle state, so no
+  // template needed).
+  openDetail_template: "Open {name}",
+  likeAria: "Like",
+  // P2-T6 — detail bottom sheet (ShoppingItemSheet). Header, reaction
+  // strip, Notes thread, composer, and dismiss copy. Neutral per-pill
+  // reaction aria-labels live in `lib/reactions/shopping-constants.ts`
+  // (SHOPPING_REACTION_ARIA) — tied 1:1 to the emoji set, not duplicated
+  // here.
+  sheetClose_aria: "Close",
+  addedBy_template: "Added by {name} · {when}",
+  reactionsGroup_aria: "React to this item",
+  notesHeading: "Notes",
+  notePlaceholder: "Add a note…",
+  notesEmpty:
+    "Nothing here yet. Drop a note if there's something the buyer should know.",
+  noteAuthorLine_template: "{name} · {when}",
+  noteDelete_aria: "Delete note",
+  noteDeleteConfirm: "Remove this note? Can't undo.",
+  noteComposerSubmit_aria: "Send note",
+  // Distinct from the plain `deleteConfirm` above — surfaced when the item
+  // being removed carries at least one comment or reaction, so the cascade
+  // cost is named up front instead of a generic "can't undo".
+  itemDeleteConfirm:
+    "Remove this? It'll take its reactions and notes with it — can't undo.",
 } as const;
 
 export type ShoppingListUiStringKey = keyof typeof SHOPPING_LIST_UI_STRINGS;

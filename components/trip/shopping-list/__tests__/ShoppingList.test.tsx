@@ -33,6 +33,10 @@ vi.mock("@/lib/actions/shopping-list", () => ({
   deleteShoppingItem: vi.fn(),
 }));
 
+vi.mock("@/lib/actions/shopping-item-reactions", () => ({
+  toggleShoppingReaction: vi.fn(),
+}));
+
 const TRIP_ID = "11111111-1111-4111-8111-111111111111";
 const MEMBER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MEMBER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -158,5 +162,36 @@ describe("<ShoppingList />", () => {
     expect(
       screen.queryByText(SHOPPING_LIST_UI_STRINGS.gotItDivider)
     ).not.toBeInTheDocument();
+  });
+
+  // No-leaderboard guard (spec §12.2): reactions must never be an
+  // ordering key. An item created earlier but with fewer likes must
+  // still render above an item created later with more likes — the list
+  // is `created_at` order (the array order handed in by the page), full
+  // stop, regardless of how the reaction fold is populated.
+  it("renders items in created_at (input) order regardless of reaction counts — no-leaderboard guard", async () => {
+    const { ShoppingList } = await import("@/components/trip/shopping-list/ShoppingList");
+    const items = [
+      makeItem({ name: "Early Low Likes", created_at: "2026-01-01T00:00:00Z" }),
+      makeItem({ name: "Later High Likes", created_at: "2026-01-02T00:00:00Z" }),
+    ];
+    const reactionsByItem = {
+      [items[0].id]: { counts: { "👍": 0 }, mine: [] },
+      [items[1].id]: { counts: { "👍": 99 }, mine: [] },
+    };
+    render(
+      <ShoppingList
+        items={items}
+        tripMembers={TRIP_MEMBERS}
+        tripId={TRIP_ID}
+        viewer={VIEWER}
+        reactionsByItem={reactionsByItem}
+      />
+    );
+    const rendered = screen.getAllByRole("listitem").map((li) => li.textContent);
+    const earlyIndex = rendered.findIndex((t) => t?.includes("Early Low Likes"));
+    const laterIndex = rendered.findIndex((t) => t?.includes("Later High Likes"));
+    expect(earlyIndex).toBeGreaterThanOrEqual(0);
+    expect(laterIndex).toBeGreaterThan(earlyIndex);
   });
 });

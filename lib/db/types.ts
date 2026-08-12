@@ -1,4 +1,5 @@
 import type { ReactionEmoji } from "@/lib/reactions/constants";
+import type { ShoppingReactionEmoji } from "@/lib/reactions/shopping-constants";
 
 /**
  * Database row types — hand-rolled to match the latest applied migration.
@@ -365,6 +366,28 @@ export interface Announcement {
 }
 
 /**
+ * A flat-thread note on a shopping list item (P2-T3, 20260811020000).
+ *
+ * `author_trip_member_id` FKs `trip_members(id) ON DELETE SET NULL` (NOT
+ * `auth.users` like Announcement.created_by) — a departed member's rows
+ * stay in the thread with a null author. `authorDisplayName` is NOT a DB
+ * column — resolved post-fetch by `enrichComments` (lib/db/shopping-item-
+ * comments.ts) against a trip_member_id-keyed map. null/missing resolves
+ * to M3_UI_STRINGS.announcements_author_fallback ("Someone") at the UI
+ * boundary, not "Guest" (resolveMemberName's roster fallback).
+ */
+export interface ShoppingItemComment {
+  id: string;
+  item_id: string;
+  trip_id: string;
+  author_trip_member_id: string | null;
+  body: string;
+  idempotency_key: string | null;
+  created_at: string;
+  authorDisplayName?: string;
+}
+
+/**
  * A fixed-set emoji ack on an announcement (#389).
  *
  * Visibility is INHERITED from the parent announcement (rule-7 exception —
@@ -532,6 +555,37 @@ export interface ShoppingItemPatch {
   name?: string;
   category?: string | null;
   cost_cents?: number | null;
+}
+
+/**
+ * A fixed-set emoji reaction on a shopping-list item (spec §12.1/§12.3).
+ *
+ * Visibility is INHERITED from the parent item — no visibility column; RLS
+ * routes every read/write through the parent's can_see_content(), pinned to
+ * the parent's trip_id. Idempotency is the natural key
+ * (item_id, trip_member_id, emoji) — rule-9 exception, announcement_reactions
+ * precedent.
+ */
+export interface ShoppingItemReaction {
+  id: string;
+  item_id: string;
+  trip_id: string;
+  trip_member_id: string;
+  emoji: ShoppingReactionEmoji;
+  created_at: string;
+}
+
+/**
+ * Per-item aggregate for the reaction row/sheet. Deliberately
+ * aggregate-only — no per-name reaction lists, no `trip_member_id` (§12.2,
+ * the load-bearing boundary). Plain object/array shapes so it serializes
+ * across the RSC boundary.
+ */
+export interface ShoppingItemReactionSummary {
+  /** emoji → count; only reacted emoji appear (no zero entries). */
+  counts: Partial<Record<ShoppingReactionEmoji, number>>;
+  /** The viewer's own reactions on this item. */
+  mine: ShoppingReactionEmoji[];
 }
 
 /**
