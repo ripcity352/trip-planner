@@ -522,6 +522,17 @@ describe("AnnouncementList", () => {
       await act(async () => {});
 
       expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+      // The rollback restores `snapshot` (the pre-mutation announcements
+      // array) — the optimistic "Edited body." write must not survive a
+      // failed save. Edit mode stays open (handleEditSave only clears
+      // editingId on success) and the form keeps the user's typed text in
+      // its own local state, so the array-level rollback isn't visible
+      // through the textarea. Cancel out of edit mode to surface the
+      // underlying `announcements` array state and confirm it reverted.
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.getByText("Original body.")).toBeInTheDocument();
+      expect(screen.queryByText("Edited body.")).not.toBeInTheDocument();
     });
 
     it("cancels edit mode without saving when Cancel is tapped", async () => {

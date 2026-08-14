@@ -67,6 +67,11 @@ export function AnnouncementEditForm({
 
   return (
     <div className="flex flex-col gap-1.5">
+      {/* Hardcoded id relies on AnnouncementList's single-`editingId`
+          invariant — only one edit form is ever mounted at a time. If
+          multi-edit is ever added, this must become per-announcement
+          (e.g. `announcement-edit-body-${announcementId}`) to avoid an id
+          collision. */}
       <Label htmlFor="announcement-edit-body" className="sr-only">
         {M3_UI_STRINGS.announcements_edit_body_label}
       </Label>
