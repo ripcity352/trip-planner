@@ -35,6 +35,7 @@ import {
 import { TravelLegFormSheet } from "./travel-leg-form-sheet";
 import { TaggedLegConfirm } from "./tagged-leg-confirm";
 import { AddToFlight, type AddToFlightCandidate } from "./add-to-flight";
+import { OrganizerRemoveLeg } from "./organizer-remove-leg";
 import type { MemberDay } from "@/lib/db/trip-member-days";
 import type { TravelLeg, TravelLegKind } from "@/lib/db/types";
 
@@ -94,6 +95,12 @@ export interface TravelLegCardProps {
    * meaningful for flights; empty/omitted hides the affordance.
    */
   addCandidates?: ReadonlyArray<AddToFlightCandidate>;
+  /**
+   * #615 — viewer is a trip organizer. Renders the quiet "Remove"
+   * affordance for another member's leg (never for the owner — they
+   * already have the edit sheet's own delete; never for a non-organizer).
+   */
+  viewerIsOrganizer?: boolean;
 }
 
 export function TravelLegCard({
@@ -107,6 +114,7 @@ export function TravelLegCard({
   tripEndsAt,
   taggerName,
   addCandidates,
+  viewerIsOrganizer = false,
 }: TravelLegCardProps) {
   const isOwner = leg.trip_member_id === myTripMemberId;
 
@@ -202,6 +210,11 @@ export function TravelLegCard({
             tripStartsAt={tripStartsAt}
             tripEndsAt={tripEndsAt}
           />
+        ) : null}
+        {/* #615 — organizer remove, never shown to the owner (who has the
+            edit sheet's own delete) or to a non-organizer. */}
+        {viewerIsOrganizer && !isOwner ? (
+          <OrganizerRemoveLeg legId={leg.id} onRemoved={onMutated} />
         ) : null}
       </div>
 
