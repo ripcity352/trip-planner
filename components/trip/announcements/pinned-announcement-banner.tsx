@@ -38,6 +38,12 @@ interface PinnedAnnouncementBannerProps {
    * here rather than only into the regular-feed `.map`.
    */
   actionsSlotFor?: (announcementId: string, pinned: boolean) => ReactNode;
+  /**
+   * #544 — organizer inline edit form, keyed by announcement id. Same
+   * rationale as `actionsSlotFor`: an organizer may edit a pinned post,
+   * not just a regular-feed one.
+   */
+  editSlotFor?: (announcementId: string) => ReactNode;
 }
 
 export function PinnedAnnouncementBanner({
@@ -45,6 +51,7 @@ export function PinnedAnnouncementBanner({
   celebrantName,
   reactionsSlotFor,
   actionsSlotFor,
+  editSlotFor,
 }: PinnedAnnouncementBannerProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -101,6 +108,7 @@ export function PinnedAnnouncementBanner({
               celebrantName={celebrantName}
               reactionsSlot={reactionsSlotFor(announcement.id)}
               actionsSlot={actionsSlotFor?.(announcement.id, announcement.pinned)}
+              editSlot={editSlotFor?.(announcement.id)}
             />
           ))}
         </div>

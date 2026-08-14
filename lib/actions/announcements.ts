@@ -14,6 +14,12 @@
  *     RLS (UPDATE policy). Sets `pinned` to a DESIRED END STATE (mirrors
  *     `toggleReactionAction`) rather than blindly flipping, so a
  *     drunk-double-tap replay converges instead of toggling back off.
+ *   - `editAnnouncementAction(input, idempotencyKey)` — organizer-only via
+ *     RLS (UPDATE policy, same column-unrestricted policy pinAnnouncement
+ *     already relies on). Fixes a typo in place instead of delete +
+ *     re-post (which loses pin state/reactions/timestamp). No "edited"
+ *     indicator (operator decision, #544) — the key is validated but not
+ *     persisted, same rationale as pin.
  *   - Organizer-only via RLS.
  *   - Idempotency key scope: (trip_id, idempotency_key) — organizer
  *     acting on behalf of the trip.
@@ -37,6 +43,7 @@ import {
   ANNOUNCEMENT_NO_ROW,
   deleteAnnouncement,
   setAnnouncementPinned,
+  updateAnnouncementBody,
 } from "@/lib/db/announcements";
 import {
   RATE_LIMIT_SCOPES,
@@ -308,6 +315,65 @@ export async function pinAnnouncementAction(
     const errorKey = mapAnnouncementDbError(err, "announcement_pin_failed");
     if (errorKey === "announcement_pin_failed") {
       console.error("[announcements] pinAnnouncementAction unexpected:", err);
+    }
+    return { ok: false, errorKey };
+  }
+}
+
+const editAnnouncementSchema = z.object({
+  tripId: z.string().uuid(),
+  announcementId: z.string().uuid(),
+  body: z.string().trim().min(1).max(5000),
+});
+
+export type EditAnnouncementInput = z.infer<typeof editAnnouncementSchema>;
+
+export type EditAnnouncementResult =
+  | { ok: true }
+  | { ok: false; errorKey: ErrorKey };
+
+/**
+ * Edit an announcement's body in place. Organizer-only via RLS (UPDATE
+ * policy — same column-unrestricted policy `pinAnnouncementAction` relies
+ * on). The key is accepted per rule 9 and validated; edits are idempotent
+ * by desired-end-state so it isn't persisted (mirrors
+ * `pinAnnouncementAction`). No "edited" indicator (operator decision).
+ */
+export async function editAnnouncementAction(
+  input: EditAnnouncementInput,
+  idempotencyKey: string
+): Promise<EditAnnouncementResult> {
+  const parsed = editAnnouncementSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  const { announcementId, body } = parsed.data;
+
+  try {
+    await rateLimitedAction(RATE_LIMIT_SCOPES.EDIT_ANNOUNCEMENT, userId, () =>
+      updateAnnouncementBody(supabase, announcementId, body)
+    );
+
+    // F2 / #110: revalidate on the success branch only.
+    revalidatePath("/trips", "layout");
+    return { ok: true };
+  } catch (err) {
+    const errorKey = mapAnnouncementDbError(err, "announcement_edit_failed");
+    if (errorKey === "announcement_edit_failed") {
+      console.error("[announcements] editAnnouncementAction unexpected:", err);
     }
     return { ok: false, errorKey };
   }

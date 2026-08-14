@@ -24,6 +24,7 @@ import {
   getAnnouncements,
   setAnnouncementPinned,
   subscribeToAnnouncements,
+  updateAnnouncementBody,
 } from "../announcements";
 import type { Announcement } from "../types";
 
@@ -364,6 +365,69 @@ describe("setAnnouncementPinned", () => {
       client as unknown as SupabaseClient,
       "ann-1",
       true
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+    expect(err).toBeInstanceOf(AnnouncementDbError);
+    expect((err as AnnouncementDbError).code).toBe("42501");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateAnnouncementBody (#544)
+// ---------------------------------------------------------------------------
+
+describe("updateAnnouncementBody", () => {
+  it("updates the body with an exact count", async () => {
+    const { calls, client } = makeSequencedBuilder([
+      { data: null, error: null, count: 1 },
+    ]);
+
+    await updateAnnouncementBody(
+      client as unknown as SupabaseClient,
+      "ann-1",
+      "Updated body."
+    );
+
+    expect(calls.find((c) => c.method === "update")?.args).toEqual([
+      { body: "Updated body." },
+      { count: "exact" },
+    ]);
+    expect(calls.find((c) => c.method === "eq")?.args).toEqual([
+      "id",
+      "ann-1",
+    ]);
+  });
+
+  it("throws ANNOUNCEMENT_NO_ROW when nothing matched", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: null, count: 0 },
+    ]);
+
+    const err = await updateAnnouncementBody(
+      client as unknown as SupabaseClient,
+      "ann-1",
+      "Updated body."
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+    expect(err).toBeInstanceOf(AnnouncementDbError);
+    expect((err as AnnouncementDbError).code).toBe(ANNOUNCEMENT_NO_ROW);
+  });
+
+  it("preserves error.code on failure", async () => {
+    const { client } = makeSequencedBuilder([
+      { data: null, error: { code: "42501", message: "rls" }, count: null },
+    ]);
+
+    const err = await updateAnnouncementBody(
+      client as unknown as SupabaseClient,
+      "ann-1",
+      "Updated body."
     ).then(
       () => null,
       (e: unknown) => e

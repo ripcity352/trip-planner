@@ -68,6 +68,10 @@ export type ErrorKey =
   // written for these, so no `_rejected` sibling — see doge cut).
   | "announcement_delete_failed"
   | "announcement_pin_failed"
+  // #544 — organizer body-edit (fix a typo in place). Same transient-retry
+  // voice as its delete/pin siblings; no coded-PG rejection branch is
+  // wired for it either (mirrors the doge cut those two took).
+  | "announcement_edit_failed"
   | "trip_notes_save_failed"
   // Trip name/location edit from the dashboard header. Same
   // `<feature>_<verb>_failed` pattern; retry-framed (transient).
@@ -287,6 +291,10 @@ export const ERRORS: Record<ErrorKey, string> = {
   announcement_delete_failed:
     "Couldn't take that one down. Try once more in a sec.",
   announcement_pin_failed: "That didn't stick. Give it another tap.",
+  // #544 — organizer body-edit. Same transient-retry register as the
+  // delete/pin siblings above.
+  announcement_edit_failed:
+    "That edit didn't save. Give it another go in a sec.",
   trip_notes_save_failed: "Notes didn't save. Try once more in a sec.",
   trip_update_failed: "That didn't save. Give it another go in a sec.",
   travel_leg_save_failed:
