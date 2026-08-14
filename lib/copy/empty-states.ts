@@ -717,6 +717,9 @@ export const M5_UI_STRINGS = {
   pollsForm_add_option: "Add another option",
   pollsForm_closes_label: "Last call for votes? (fine to leave open)",
   pollsForm_visibility_label: "Who sees this?",
+  // #627 — organizer opt-in for multi-select voting. Precise, not
+  // cute: states the mechanic ("select more than one"), no framing.
+  pollsForm_allow_multiple_label: "Let people select more than one option",
   pollsForm_submit: "Ask the crew",
   pollsForm_cancel: "Never mind",
   polls_vote_count_one: "1 vote in",
@@ -731,6 +734,10 @@ export const M5_UI_STRINGS = {
   polls_closed_tie: "Dead heat. Sort it out over a drink.",
   polls_closed_no_votes: "Nobody weighed in. Organizer's call.",
   polls_option_vote_aria_template: "Vote {label}",
+  // #627 — multi-choice poll checkbox rows. Distinct from the
+  // single-choice aria template above: "select" (not "vote"), since
+  // any number of options can be checked at once.
+  polls_option_select_aria_template: "Select {label}",
   // #620 — flat comment thread on polls (part 1/3 of #616). Same shape
   // as the shopping-list Notes thread (notesHeading/notePlaceholder/
   // etc.), reused word-for-word where the register is identical.

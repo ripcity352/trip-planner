@@ -30,7 +30,8 @@ vi.mock("@/components/trip/pulse-poll", () => ({
 
 vi.mock("@/lib/actions/polls", () => ({
   createPollAction: vi.fn(),
-  votePollAction: vi.fn(),
+  castPollVoteAction: vi.fn(),
+  retractPollVoteAction: vi.fn(),
   postPollCommentAction: vi.fn(),
   deletePollCommentAction: vi.fn(),
   addPollOptionAction: vi.fn(),
@@ -51,6 +52,7 @@ const makePollView = (overrides: Partial<PollView["poll"]> = {}): PollView => ({
     created_by: "member-1",
     idempotency_key: null,
     created_at: "2026-07-01T10:00:00Z",
+    allow_multiple: false,
     ...overrides,
   },
   options: [
@@ -80,7 +82,7 @@ const makePollView = (overrides: Partial<PollView["poll"]> = {}): PollView => ({
     },
   ],
   total_votes: 3,
-  my_option_id: null,
+  my_option_ids: [],
 });
 
 describe("PollsDisclosure", () => {

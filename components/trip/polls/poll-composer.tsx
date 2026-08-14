@@ -66,6 +66,8 @@ const composerSchema = z
     options: z.array(z.string().trim().max(80)),
     closesOn: z.string(),
     visibility: z.enum(["everyone", "organizers_only", "hide_from_celebrant"]),
+    // #627 — organizer opt-in for multi-select voting.
+    allowMultiple: z.boolean(),
   })
   .superRefine((values, ctx) => {
     const filled = values.options.filter((o) => o.length > 0);
@@ -159,6 +161,7 @@ function ComposerForm({
       options: Array.from({ length: MAX_OPTIONS }, () => ""),
       closesOn: "",
       visibility: "everyone",
+      allowMultiple: false,
     },
   });
 
@@ -182,6 +185,7 @@ function ComposerForm({
           options,
           closesOn: values.closesOn ? values.closesOn : null,
           visibility: values.visibility,
+          allowMultiple: values.allowMultiple,
         },
         idempotencyKey
       )
@@ -268,6 +272,19 @@ function ComposerForm({
           </SelectContent>
         </Select>
       </div>
+
+      <label
+        htmlFor="poll-allow-multiple"
+        className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"
+      >
+        <input
+          id="poll-allow-multiple"
+          type="checkbox"
+          className="border-border h-4 w-4 shrink-0 rounded-xs"
+          {...register("allowMultiple")}
+        />
+        {M5_UI_STRINGS.pollsForm_allow_multiple_label}
+      </label>
 
       {errors.options || errors.question ? (
         <p role="alert" className={cn(ERROR_LINE_CLASS, "text-sm")}>

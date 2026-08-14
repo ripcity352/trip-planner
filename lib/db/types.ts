@@ -659,6 +659,10 @@ export interface Poll {
   created_by: string;
   idempotency_key: string | null;
   created_at: string;
+  /** #627. false = single-choice (tap replaces the prior vote, the
+   * only behavior before this column existed). true = members may
+   * select any number of options independently. */
+  allow_multiple: boolean;
 }
 
 export interface PollOption {
@@ -696,8 +700,10 @@ export interface PollVoteCount {
 }
 
 /**
- * The viewer's own poll vote (poll → chosen option), read from the
- * own-row-only `poll_votes` SELECT (#420). Drives the highlighted chip.
+ * One of the viewer's own poll votes (poll → chosen option), read from
+ * the own-row-only `poll_votes` SELECT (#420). Drives the highlighted
+ * chip(s) — a single-choice poll yields at most one row per poll_id, a
+ * multi-choice poll (#627) may yield several.
  */
 export interface MyPollVote {
   poll_id: string;
@@ -723,15 +729,16 @@ export interface PollOptionView {
 
 /**
  * Composite view-model for one poll — the shape the announcements page
- * renders. `my_option_id` is the viewer's current choice (null if they
- * haven't voted).
+ * renders. `my_option_ids` is the viewer's current choice(s) — empty
+ * if they haven't voted, one element for a single-choice poll, any
+ * number for a multi-choice poll (#627).
  */
 export interface PollView {
   poll: Poll;
   /** Ordered by `position`. */
   options: PollOptionView[];
   total_votes: number;
-  my_option_id: string | null;
+  my_option_ids: readonly string[];
 }
 
 /**

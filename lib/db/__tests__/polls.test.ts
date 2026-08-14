@@ -85,7 +85,11 @@ const POLL: Poll = {
   created_by: "member-org",
   idempotency_key: null,
   created_at: "2026-07-09T10:00:00.000Z",
+  allow_multiple: false,
 };
+
+// #627 — a multi-choice poll (same options set, allow_multiple: true).
+const MULTI_POLL: Poll = { ...POLL, id: "poll-multi", allow_multiple: true };
 
 const OPT_A: PollOption = {
   id: "opt-a",
@@ -147,17 +151,39 @@ describe("buildPollViews (pure)", () => {
     expect(views).toHaveLength(1);
     const view = views[0] as PollView;
     expect(view.total_votes).toBe(3);
-    expect(view.my_option_id).toBe("opt-b");
+    expect(view.my_option_ids).toEqual(["opt-b"]);
     expect(view.options.map((o) => o.votes)).toEqual([2, 1]);
     expect(view.options.map((o) => o.is_my_vote)).toEqual([false, true]);
   });
 
-  it("zero-buckets options with no counts and null my_option_id for non-voters", () => {
+  it("zero-buckets options with no counts and an empty my_option_ids for non-voters", () => {
     const views = buildPollViews([POLL], [OPT_A, OPT_B], [], []);
     const view = views[0] as PollView;
     expect(view.total_votes).toBe(0);
-    expect(view.my_option_id).toBeNull();
+    expect(view.my_option_ids).toEqual([]);
     expect(view.options.map((o) => o.votes)).toEqual([0, 0]);
+  });
+
+  // #627 — a multi-choice poll can carry more than one own-vote row.
+  it("folds multiple own-votes onto my_option_ids and marks every chosen option (multi-choice)", () => {
+    const views = buildPollViews(
+      [MULTI_POLL],
+      [
+        { ...OPT_A, poll_id: "poll-multi" },
+        { ...OPT_B, poll_id: "poll-multi" },
+      ],
+      [
+        { poll_id: "poll-multi", option_id: "opt-a", votes: 1 },
+        { poll_id: "poll-multi", option_id: "opt-b", votes: 1 },
+      ],
+      [
+        { poll_id: "poll-multi", option_id: "opt-a" },
+        { poll_id: "poll-multi", option_id: "opt-b" },
+      ]
+    );
+    const view = views[0] as PollView;
+    expect(view.my_option_ids).toEqual(["opt-a", "opt-b"]);
+    expect(view.options.map((o) => o.is_my_vote)).toEqual([true, true]);
   });
 
   it("orders options by position regardless of input order", () => {
@@ -245,7 +271,7 @@ describe("leadingOptions (pure)", () => {
       },
     ],
     total_votes: votesA + votesB,
-    my_option_id: null,
+    my_option_ids: [],
   });
 
   it("returns the single leader", () => {
@@ -285,7 +311,7 @@ describe("getPollsViewModel", () => {
     const views = await getPollsViewModel(client, "trip-1", "m2");
     expect(views).toHaveLength(1);
     expect(views[0]?.total_votes).toBe(2);
-    expect(views[0]?.my_option_id).toBe("opt-b");
+    expect(views[0]?.my_option_ids).toEqual(["opt-b"]);
     // Aggregate counts must come from the RPC, never a raw all-voter read.
     expect(client.rpc).toHaveBeenCalledWith("get_poll_vote_counts", {
       p_trip_id: "trip-1",
@@ -307,7 +333,7 @@ describe("getPollsViewModel", () => {
     );
     const views = await getPollsViewModel(client, "trip-1", undefined);
     expect(views[0]?.total_votes).toBe(2);
-    expect(views[0]?.my_option_id).toBeNull();
+    expect(views[0]?.my_option_ids).toEqual([]);
     // No member row → we never touch the votes table at all.
     expect(client.from).not.toHaveBeenCalledWith("poll_votes");
   });

@@ -38,7 +38,7 @@ import type {
 } from "./types";
 
 const POLL_COLUMNS =
-  "id, trip_id, question, visibility, closes_on, created_by, idempotency_key, created_at";
+  "id, trip_id, question, visibility, closes_on, created_by, idempotency_key, created_at, allow_multiple";
 // #621 — suggested_by_trip_member_id rides along for write-in
 // attribution (resolved to a display name in buildPollViews).
 const OPTION_COLUMNS =
@@ -184,6 +184,12 @@ export async function getPollsViewModel(
  * resolves via the map, falling back to the shared "Someone" author
  * fallback on a miss (departed member) — same convention as
  * `enrichPollComments`.
+ *
+ * #627: `myVotes` may carry more than one row per poll_id (a
+ * multi-choice poll) — every one of them is folded onto
+ * `my_option_ids` / marks its option `is_my_vote`, regardless of the
+ * poll's `allow_multiple` flag (a single-choice poll's own data never
+ * has more than one row per poll, by construction of `cast_poll_vote`).
  */
 export function buildPollViews(
   polls: ReadonlyArray<Poll>,
@@ -196,9 +202,10 @@ export function buildPollViews(
   for (const c of counts) {
     countsByOption.set(c.option_id, c.votes);
   }
-  const myOptionByPoll = new Map<string, string>();
+  const myOptionsByPoll = new Map<string, string[]>();
   for (const v of myVotes) {
-    myOptionByPoll.set(v.poll_id, v.option_id);
+    const existing = myOptionsByPoll.get(v.poll_id) ?? [];
+    myOptionsByPoll.set(v.poll_id, [...existing, v.option_id]);
   }
 
   return polls.map((poll) => {
@@ -207,12 +214,13 @@ export function buildPollViews(
       // Sort a copy — filter already returns a fresh array, but keep
       // the comparator explicit (immutability rule).
       .sort((a, b) => a.position - b.position);
-    const myOptionId = myOptionByPoll.get(poll.id) ?? null;
+    const myOptionIds = myOptionsByPoll.get(poll.id) ?? [];
+    const myOptionIdSet = new Set(myOptionIds);
 
     const optionViews: PollOptionView[] = pollOptions.map((option) => ({
       option,
       votes: countsByOption.get(option.id) ?? 0,
-      is_my_vote: option.id === myOptionId,
+      is_my_vote: myOptionIdSet.has(option.id),
       suggested_by_display_name: option.suggested_by_trip_member_id
         ? (memberMap.get(option.suggested_by_trip_member_id) ??
           M3_UI_STRINGS.announcements_author_fallback)
@@ -223,7 +231,7 @@ export function buildPollViews(
       poll,
       options: optionViews,
       total_votes: optionViews.reduce((sum, o) => sum + o.votes, 0),
-      my_option_id: myOptionId,
+      my_option_ids: myOptionIds,
     } satisfies PollView;
   });
 }

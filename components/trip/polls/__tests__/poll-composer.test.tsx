@@ -112,6 +112,7 @@ describe("PollComposer", () => {
         question: string;
         options: string[];
         visibility: string;
+        allowMultiple: boolean;
       },
       string,
     ];
@@ -119,10 +120,44 @@ describe("PollComposer", () => {
     expect(input.question).toBe("Steakhouse or omakase?");
     expect(input.options).toEqual(["Steakhouse", "Omakase"]);
     expect(input.visibility).toBe("everyone");
+    // #627 — defaults false (single-choice) when the checkbox is untouched.
+    expect(input.allowMultiple).toBe(false);
     expect(idempotencyKey).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
     );
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
+  });
+
+  // #627 — organizer opt-in for multi-select voting.
+  it("checking 'select more than one' passes allowMultiple: true", async () => {
+    render(<PollComposer tripId="trip-1" isOrganizer />);
+    fireEvent.click(
+      screen.getByRole("button", { name: M5_UI_STRINGS.polls_composer_cta })
+    );
+    fireEvent.change(
+      screen.getByLabelText(M5_UI_STRINGS.pollsForm_question_label),
+      { target: { value: "Which activities?" } }
+    );
+    const optionInputs = screen.getAllByLabelText(/Option \d/);
+    fireEvent.change(optionInputs[0] as HTMLElement, {
+      target: { value: "Go-karts" },
+    });
+    fireEvent.change(optionInputs[1] as HTMLElement, {
+      target: { value: "Escape room" },
+    });
+    fireEvent.click(
+      screen.getByLabelText(M5_UI_STRINGS.pollsForm_allow_multiple_label)
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: M5_UI_STRINGS.pollsForm_submit })
+    );
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const [input] = mockCreate.mock.calls[0] as [
+      { allowMultiple: boolean },
+      string,
+    ];
+    expect(input.allowMultiple).toBe(true);
   });
 
   it("adds option fields up to four, then hides the affordance", () => {

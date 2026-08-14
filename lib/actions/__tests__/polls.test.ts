@@ -101,11 +101,15 @@ const TRIP_ID = "11111111-1111-4111-8111-111111111111";
 const POLL_ID = "22222222-2222-4222-8222-222222222222";
 const OPTION_ID = "33333333-3333-4333-8333-333333333333";
 const IDEM_KEY = "44444444-4444-4444-8444-444444444444";
-const MEMBER_ID = "55555555-5555-4555-8555-555555555555";
 const USER_ID = "66666666-6666-4666-8666-666666666666";
 
 // Import AFTER the mocks so module-level imports resolve to them.
-import { addPollOptionAction, castPollVoteAction, createPollAction } from "../polls";
+import {
+  addPollOptionAction,
+  castPollVoteAction,
+  createPollAction,
+  retractPollVoteAction,
+} from "../polls";
 import type { CreatePollInput } from "../polls";
 
 function resetAll() {
@@ -230,23 +234,37 @@ describe("createPollAction", () => {
       p_closes_on: null,
       p_idempotency_key: IDEM_KEY,
       p_options: ["Steakhouse", "Omakase"],
+      p_allow_multiple: false,
     });
     expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  // #627 — organizer opt-in for multi-select voting.
+  it("passes allowMultiple through to p_allow_multiple", async () => {
+    primeAuth(USER_ID);
+    rpcMock.mockResolvedValue({ data: POLL_ID, error: null });
+    await createPollAction(
+      { ...VALID_CREATE, allowMultiple: true },
+      IDEM_KEY
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      "create_poll_with_options",
+      expect.objectContaining({ p_allow_multiple: true })
+    );
   });
 });
 
 describe("castPollVoteAction", () => {
   beforeEach(resetAll);
 
-  function primePollAndMember(closesOn: string | null) {
+  function primePoll(closesOn: string | null) {
     tableResolvers.set("polls", () => ({
-      data: { trip_id: TRIP_ID, closes_on: closesOn },
+      data: { closes_on: closesOn },
       error: null,
     }));
-    tableResolvers.set("trip_members", () => ({
-      data: { id: MEMBER_ID },
-      error: null,
-    }));
+    // Default RPC success — individual tests override via
+    // rpcMock.mockResolvedValueOnce / mockImplementation.
+    rpcMock.mockResolvedValue({ data: null, error: null });
   }
 
   it("rejects a non-uuid option id", async () => {
@@ -275,50 +293,50 @@ describe("castPollVoteAction", () => {
       IDEM_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
-    expect(upsertCalls).toHaveLength(0);
+    expect(rpcMock).not.toHaveBeenCalledWith(
+      "cast_poll_vote",
+      expect.anything()
+    );
   });
 
   it("returns poll_closed once closes_on has passed", async () => {
     primeAuth(USER_ID);
-    primePollAndMember("2020-01-01");
+    primePoll("2020-01-01");
     const result = await castPollVoteAction(
       { pollId: POLL_ID, optionId: OPTION_ID },
       IDEM_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "poll_closed" });
-    expect(upsertCalls).toHaveLength(0);
+    expect(rpcMock).not.toHaveBeenCalledWith(
+      "cast_poll_vote",
+      expect.anything()
+    );
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
-  it("upserts the caller's own member row — never a caller-supplied one", async () => {
+  it("casts via the cast_poll_vote RPC and revalidates on success", async () => {
     primeAuth(USER_ID);
-    primePollAndMember(null);
+    primePoll(null);
     const result = await castPollVoteAction(
       { pollId: POLL_ID, optionId: OPTION_ID },
       IDEM_KEY
     );
     expect(result).toEqual({ ok: true, optionId: OPTION_ID });
-    expect(upsertCalls).toHaveLength(1);
-    const call = upsertCalls[0] as {
-      table: string;
-      payload: Record<string, unknown>;
-      options: { onConflict: string };
-    };
-    expect(call.table).toBe("poll_votes");
-    expect(call.payload.trip_member_id).toBe(MEMBER_ID);
-    expect(call.payload.option_id).toBe(OPTION_ID);
-    expect(call.payload.idempotency_key).toBe(IDEM_KEY);
-    expect(call.options.onConflict).toBe("poll_id,trip_member_id");
+    expect(rpcMock).toHaveBeenCalledWith("cast_poll_vote", {
+      p_poll_id: POLL_ID,
+      p_option_id: OPTION_ID,
+      p_idempotency_key: IDEM_KEY,
+    });
     expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
   });
 
-  it("maps upsert 42501 to rls_denied without revalidating", async () => {
+  it("maps a cast_poll_vote 42501 to rls_denied without revalidating", async () => {
     primeAuth(USER_ID);
-    primePollAndMember(null);
-    tableResolvers.set("poll_votes", () => ({
+    primePoll(null);
+    rpcMock.mockResolvedValue({
       data: null,
       error: { code: "42501", message: "denied" },
-    }));
+    });
     const result = await castPollVoteAction(
       { pollId: POLL_ID, optionId: OPTION_ID },
       IDEM_KEY
@@ -329,11 +347,11 @@ describe("castPollVoteAction", () => {
 
   it("maps a pair-FK violation (cross-poll option) to validation_failed", async () => {
     primeAuth(USER_ID);
-    primePollAndMember(null);
-    tableResolvers.set("poll_votes", () => ({
+    primePoll(null);
+    rpcMock.mockResolvedValue({
       data: null,
       error: { code: "23503", message: "fk" },
-    }));
+    });
     const result = await castPollVoteAction(
       { pollId: POLL_ID, optionId: OPTION_ID },
       IDEM_KEY
@@ -350,6 +368,59 @@ describe("castPollVoteAction", () => {
       new RateLimitError("castPollVote", { remaining: 0, reset: 0 })
     );
     const result = await castPollVoteAction(
+      { pollId: POLL_ID, optionId: OPTION_ID },
+      IDEM_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+});
+
+// #627 — un-select one option on a multi-choice poll.
+describe("retractPollVoteAction", () => {
+  beforeEach(resetAll);
+
+  it("rejects a non-uuid option id", async () => {
+    primeAuth(USER_ID);
+    const result = await retractPollVoteAction(
+      { pollId: POLL_ID, optionId: "nope" },
+      IDEM_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns auth_failed when there is no user", async () => {
+    primeAuth(null);
+    const result = await retractPollVoteAction(
+      { pollId: POLL_ID, optionId: OPTION_ID },
+      IDEM_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+  });
+
+  it("retracts via the retract_poll_vote RPC and revalidates on success", async () => {
+    primeAuth(USER_ID);
+    rpcMock.mockResolvedValue({ data: null, error: null });
+    const result = await retractPollVoteAction(
+      { pollId: POLL_ID, optionId: OPTION_ID },
+      IDEM_KEY
+    );
+    expect(result).toEqual({ ok: true });
+    expect(rpcMock).toHaveBeenCalledWith("retract_poll_vote", {
+      p_poll_id: POLL_ID,
+      p_option_id: OPTION_ID,
+    });
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("maps a limiter throw to rate_limit", async () => {
+    primeAuth(USER_ID);
+    const { RateLimitError } = await vi.importActual<
+      typeof import("@/lib/rate-limit")
+    >("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("castPollVote", { remaining: 0, reset: 0 })
+    );
+    const result = await retractPollVoteAction(
       { pollId: POLL_ID, optionId: OPTION_ID },
       IDEM_KEY
     );
