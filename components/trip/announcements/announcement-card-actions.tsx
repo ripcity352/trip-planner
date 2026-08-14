@@ -3,13 +3,15 @@
 /**
  * AnnouncementCardActions — organizer-only overflow menu (#393).
  *
- * Pure UI leaf: the dropdown, the pin/unpin item, and the two-tap
- * delete confirm. Mutation + optimistic bookkeeping (the array the
- * pinned banner and regular feed both derive from) stays in
+ * Pure UI leaf: the dropdown, the pin/unpin item, the #544 edit item,
+ * and the two-tap delete confirm. Mutation + optimistic bookkeeping (the
+ * array the pinned banner and regular feed both derive from) stays in
  * `AnnouncementList`, which is why this component receives `onPin` /
  * `onDelete` as callbacks that already do the optimistic-update +
  * server-call + rollback dance and resolve to the failure `ErrorKey`
  * (or `null` on success) — same shape as `ReactionRow`'s handler.
+ * `onEdit` is a plain synchronous callback (just flips `AnnouncementList`
+ * into edit mode) — the save/cancel dance lives in the edit form itself.
  *
  * Delete confirm is a bare two-tap on the same menu item (per the doge
  * cut: no AlertDialog primitive) — first tap arms it (label swaps to
@@ -49,6 +51,12 @@ export interface AnnouncementCardActionsProps {
   /** Returns the failure key, or null on success. */
   onDelete: () => Promise<ErrorKey | null>;
   /**
+   * #544 — enters inline edit mode on the card. Optional: when omitted,
+   * no Edit item renders (e.g. these unit tests exercising Pin/Delete
+   * standalone).
+   */
+  onEdit?: () => void;
+  /**
    * Controlled error display, hoisted by `AnnouncementList` so it
    * survives the optimistic unmount/move this component undergoes on
    * delete/pin. `undefined` (the default) falls back to internal
@@ -61,6 +69,7 @@ export function AnnouncementCardActions({
   pinned,
   onPin,
   onDelete,
+  onEdit,
   errorKey: controlledErrorKey,
 }: AnnouncementCardActionsProps) {
   const [open, setOpen] = React.useState(false);
@@ -81,6 +90,11 @@ export function AnnouncementCardActions({
     void onPin(!pinned).then((err) => {
       if (err) setLocalErrorKey(err);
     });
+  };
+
+  const handleEditClick = () => {
+    setOpen(false);
+    onEdit?.();
   };
 
   const handleDeleteClick = () => {
@@ -114,6 +128,11 @@ export function AnnouncementCardActions({
               ? M3_UI_STRINGS.announcements_menu_unpin
               : M3_UI_STRINGS.announcements_menu_pin}
           </DropdownMenuItem>
+          {onEdit ? (
+            <DropdownMenuItem onClick={handleEditClick}>
+              {M3_UI_STRINGS.announcements_menu_edit}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             data-testid="confirm-delete"
             variant="destructive"

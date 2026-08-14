@@ -38,6 +38,8 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   // #393 — organizer delete/pin
   "announcement_delete_failed",
   "announcement_pin_failed",
+  // #544 — organizer body edit
+  "announcement_edit_failed",
   "trip_notes_save_failed",
   "trip_update_failed",
   "travel_leg_save_failed",

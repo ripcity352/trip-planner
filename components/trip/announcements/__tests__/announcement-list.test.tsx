@@ -40,11 +40,15 @@ vi.mock("@/lib/supabase/realtime-auth", () => ({
 // tests below control success/failure without a real network call.
 const deleteAnnouncementActionMock = vi.fn();
 const pinAnnouncementActionMock = vi.fn();
+// #544 — organizer edit server action, same mocking shape.
+const editAnnouncementActionMock = vi.fn();
 vi.mock("@/lib/actions/announcements", () => ({
   deleteAnnouncementAction: (...args: unknown[]) =>
     deleteAnnouncementActionMock(...args),
   pinAnnouncementAction: (...args: unknown[]) =>
     pinAnnouncementActionMock(...args),
+  editAnnouncementAction: (...args: unknown[]) =>
+    editAnnouncementActionMock(...args),
 }));
 
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
@@ -434,6 +438,112 @@ describe("AnnouncementList", () => {
         screen.queryByTestId("pinned-banner-headline")
       ).not.toBeInTheDocument();
       expect(screen.getByText("Unpin me.")).toBeInTheDocument();
+    });
+  });
+
+  // #544 — organizer edit. Mirrors the delete/pin optimistic tests above.
+  describe("organizer edit (#544)", () => {
+    it("renders the edit form in place of the body when Edit is tapped", async () => {
+      const items = [makeAnnouncement({ id: "ann-1", body: "Original body." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+      expect(screen.getByDisplayValue("Original body.")).toBeInTheDocument();
+      // The body <p> is gone — replaced by the edit form (a textarea's
+      // text-node value would still match a loose queryByText, so assert
+      // on the body's data-testid instead).
+      expect(screen.queryByTestId("announcement-body")).not.toBeInTheDocument();
+    });
+
+    it("optimistically updates the body and exits edit mode on a successful save", async () => {
+      editAnnouncementActionMock.mockResolvedValue({ ok: true });
+      const items = [makeAnnouncement({ id: "ann-1", body: "Original body." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+      const textarea = screen.getByDisplayValue("Original body.");
+      fireEvent.change(textarea, { target: { value: "Edited body." } });
+      fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+      await act(async () => {});
+
+      expect(screen.getByText("Edited body.")).toBeInTheDocument();
+      expect(screen.queryByDisplayValue("Edited body.")).not.toBeInTheDocument();
+      expect(editAnnouncementActionMock).toHaveBeenCalledWith(
+        {
+          tripId: "trip-1",
+          announcementId: "ann-1",
+          body: "Edited body.",
+        },
+        expect.any(String)
+      );
+    });
+
+    it("rolls back the body and surfaces the error when the save fails", async () => {
+      editAnnouncementActionMock.mockResolvedValue({
+        ok: false,
+        errorKey: "announcement_edit_failed",
+      });
+      const items = [makeAnnouncement({ id: "ann-1", body: "Original body." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+      const textarea = screen.getByDisplayValue("Original body.");
+      fireEvent.change(textarea, { target: { value: "Edited body." } });
+      fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+      await act(async () => {});
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+    });
+
+    it("cancels edit mode without saving when Cancel is tapped", async () => {
+      const items = [makeAnnouncement({ id: "ann-1", body: "Original body." })];
+      render(
+        <AnnouncementList
+          tripId="trip-1"
+          isOrganizer={true}
+          initialAnnouncements={items}
+          memberUserMap={EMPTY_MAP}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /post options/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Edit" }));
+
+      const textarea = screen.getByDisplayValue("Original body.");
+      fireEvent.change(textarea, { target: { value: "Edited body." } });
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      expect(screen.getByText("Original body.")).toBeInTheDocument();
+      expect(editAnnouncementActionMock).not.toHaveBeenCalled();
     });
   });
 });
