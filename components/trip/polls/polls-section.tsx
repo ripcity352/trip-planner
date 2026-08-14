@@ -30,6 +30,10 @@ interface PollsSectionProps {
   // poll_id — NOT threaded through PulsePoll's `fetchData` (comments
   // refresh via `router.refresh()` inside PollCommentThread, #349).
   commentsByPoll: Readonly<Record<string, readonly PollComment[]>>;
+  // #621 — trip_members.id -> display_name, plain object. Rebuilt into
+  // a Map here (client-side, doesn't cross the RSC boundary) for
+  // getPollsViewModel's write-in attribution on every refetch.
+  memberDisplayNameById: Readonly<Record<string, string | null>>;
   viewerDisplayName: string | null;
   now: Date;
 }
@@ -40,6 +44,7 @@ export function PollsSection({
   viewerTripMemberId,
   initialViews,
   commentsByPoll,
+  memberDisplayNameById,
   viewerDisplayName,
   now,
 }: PollsSectionProps) {
@@ -49,8 +54,9 @@ export function PollsSection({
     ReadonlyArray<PollView>
   > => {
     const supabase = createBrowserClient();
-    return getPollsViewModel(supabase, tripId, viewerTripMemberId);
-  }, [tripId, viewerTripMemberId]);
+    const memberMap = new Map(Object.entries(memberDisplayNameById));
+    return getPollsViewModel(supabase, tripId, viewerTripMemberId, memberMap);
+  }, [tripId, viewerTripMemberId, memberDisplayNameById]);
 
   const subscribeTableConfig = React.useMemo(
     () => [

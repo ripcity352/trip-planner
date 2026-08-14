@@ -742,6 +742,17 @@ export const M5_UI_STRINGS = {
   polls_comment_delete_aria: "Delete comment",
   polls_comment_delete_confirm: "Remove this comment? Can't undo.",
   polls_comment_composer_submit_aria: "Send comment",
+  // #621 — poll write-in options (part 2/3 of #616). A quiet "add your
+  // own" affordance under the option list, open-poll-only. Precise,
+  // not cute (per feedback: functional state-machine copy wants exact
+  // labels over vague hype).
+  polls_writein_add_cta: "Add your own option",
+  polls_writein_placeholder: "Type an option…",
+  polls_writein_submit_aria: "Add option",
+  // {name} interpolated via .replace, same pattern as
+  // polls_comment_author_line_template. Renders ONLY on write-ins —
+  // organizer-composed options show no attribution line.
+  polls_writein_suggested_by_template: "Suggested by {name}",
   // #387 — quiet per-name RSVP chips on the roster. Factual state only —
   // the anti-shame boundary is BINDING: no lateness ordering, no nudge
   // copy, no counts of shame. "going" deliberately has NO chip string

@@ -14,6 +14,7 @@ vi.mock("@/lib/actions/polls", () => ({
   castPollVoteAction: vi.fn(),
   postPollCommentAction: vi.fn(),
   deletePollCommentAction: vi.fn(),
+  addPollOptionAction: vi.fn(),
 }));
 
 // PollCommentThread calls router.refresh() after a successful delete (#349).
@@ -22,6 +23,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import {
+  addPollOptionAction,
   castPollVoteAction,
   deletePollCommentAction,
   postPollCommentAction,
@@ -29,11 +31,12 @@ import {
 import { PollCard } from "../poll-card";
 import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS } from "@/lib/copy/errors";
-import type { PollComment, PollView } from "@/lib/db/types";
+import type { PollComment, PollOptionView, PollView } from "@/lib/db/types";
 
 const mockVote = vi.mocked(castPollVoteAction);
 const mockPostComment = vi.mocked(postPollCommentAction);
 const mockDeleteComment = vi.mocked(deletePollCommentAction);
+const mockAddOption = vi.mocked(addPollOptionAction);
 
 // #620 — poll comments props, not under test here (see poll-card
 // comment-thread tests further down). Defaults keep the comment thread
@@ -52,10 +55,52 @@ function makeView(overrides?: {
   my_option_id?: string | null;
   votesA?: number;
   votesB?: number;
+  // #621 — an optional write-in third option, for attribution tests.
+  writeIn?: { suggestedByDisplayName: string | null; votes?: number };
 }): PollView {
   const votesA = overrides?.votesA ?? 2;
   const votesB = overrides?.votesB ?? 1;
   const myOptionId = overrides?.my_option_id ?? null;
+  const options: PollOptionView[] = [
+    {
+      option: {
+        id: "opt-a",
+        poll_id: "poll-1",
+        label: "Steakhouse",
+        position: 0,
+        suggested_by_trip_member_id: null,
+      },
+      votes: votesA,
+      is_my_vote: myOptionId === "opt-a",
+      suggested_by_display_name: null,
+    },
+    {
+      option: {
+        id: "opt-b",
+        poll_id: "poll-1",
+        label: "Omakase",
+        position: 1,
+        suggested_by_trip_member_id: null,
+      },
+      votes: votesB,
+      is_my_vote: myOptionId === "opt-b",
+      suggested_by_display_name: null,
+    },
+  ];
+  if (overrides?.writeIn) {
+    options.push({
+      option: {
+        id: "opt-writein",
+        poll_id: "poll-1",
+        label: "Sunday brunch",
+        position: 2,
+        suggested_by_trip_member_id: "member-o",
+      },
+      votes: overrides.writeIn.votes ?? 0,
+      is_my_vote: myOptionId === "opt-writein",
+      suggested_by_display_name: overrides.writeIn.suggestedByDisplayName,
+    });
+  }
   return {
     poll: {
       id: "poll-1",
@@ -67,19 +112,8 @@ function makeView(overrides?: {
       idempotency_key: null,
       created_at: "2026-07-09T10:00:00.000Z",
     },
-    options: [
-      {
-        option: { id: "opt-a", poll_id: "poll-1", label: "Steakhouse", position: 0 },
-        votes: votesA,
-        is_my_vote: myOptionId === "opt-a",
-      },
-      {
-        option: { id: "opt-b", poll_id: "poll-1", label: "Omakase", position: 1 },
-        votes: votesB,
-        is_my_vote: myOptionId === "opt-b",
-      },
-    ],
-    total_votes: votesA + votesB,
+    options,
+    total_votes: votesA + votesB + (overrides?.writeIn?.votes ?? 0),
     my_option_id: myOptionId,
   };
 }
@@ -88,6 +122,7 @@ describe("PollCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockVote.mockResolvedValue({ ok: true, optionId: "opt-a" });
+    mockAddOption.mockResolvedValue({ ok: true, optionId: "opt-writein" });
   });
 
   it("renders the question and both option labels with aggregate counts only", () => {
@@ -212,6 +247,7 @@ describe("PollCard comment thread (#620)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockVote.mockResolvedValue({ ok: true, optionId: "opt-a" });
+    mockAddOption.mockResolvedValue({ ok: true, optionId: "opt-writein" });
   });
 
   it("renders the empty state when there are no comments", () => {
@@ -423,5 +459,165 @@ describe("PollCard comment thread (#620)", () => {
       )
     );
     expect(screen.getByText("Omakase, obviously.")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PollWriteInComposer, mounted inside PollCard (#621, part 2/3 of #616).
+// ---------------------------------------------------------------------------
+
+describe("PollCard write-in composer (#621)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVote.mockResolvedValue({ ok: true, optionId: "opt-a" });
+    mockAddOption.mockResolvedValue({ ok: true, optionId: "opt-writein" });
+  });
+
+  it("hides the write-in affordance when the viewer has no member seat", () => {
+    render(
+      <PollCard
+        view={makeView()}
+        canVote={false}
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    expect(
+      screen.queryByPlaceholderText(M5_UI_STRINGS.polls_writein_placeholder)
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides the write-in affordance on a closed poll, even with a seat", () => {
+    render(
+      <PollCard
+        view={makeView({ closes_on: "2020-01-01" })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+        viewerTripMemberId="member-1"
+      />
+    );
+    expect(
+      screen.queryByPlaceholderText(M5_UI_STRINGS.polls_writein_placeholder)
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the write-in affordance on an open poll for a seated viewer", () => {
+    render(
+      <PollCard
+        view={makeView()}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+        viewerTripMemberId="member-1"
+      />
+    );
+    expect(
+      screen.getByPlaceholderText(M5_UI_STRINGS.polls_writein_placeholder)
+    ).toBeInTheDocument();
+  });
+
+  it("submits a write-in and calls onMutated on success", async () => {
+    const onMutated = vi.fn();
+    render(
+      <PollCard
+        view={makeView()}
+        canVote
+        onMutated={onMutated}
+        {...defaultCommentProps}
+        viewerTripMemberId="member-1"
+      />
+    );
+
+    const input = screen.getByPlaceholderText(
+      M5_UI_STRINGS.polls_writein_placeholder
+    );
+    fireEvent.change(input, { target: { value: "Sunday brunch" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M5_UI_STRINGS.polls_writein_submit_aria,
+      })
+    );
+
+    await waitFor(() => expect(mockAddOption).toHaveBeenCalledTimes(1));
+    expect(mockAddOption).toHaveBeenCalledWith(
+      { pollId: "poll-1", label: "Sunday brunch" },
+      expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      )
+    );
+    await waitFor(() => expect(onMutated).toHaveBeenCalled());
+  });
+
+  it("surfaces the error copy when a write-in add is rejected (poll full)", async () => {
+    mockAddOption.mockResolvedValue({ ok: false, errorKey: "poll_option_full" });
+    render(
+      <PollCard
+        view={makeView()}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+        viewerTripMemberId="member-1"
+      />
+    );
+
+    fireEvent.change(
+      screen.getByPlaceholderText(M5_UI_STRINGS.polls_writein_placeholder),
+      { target: { value: "One more, please" } }
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M5_UI_STRINGS.polls_writein_submit_aria,
+      })
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        ERRORS.poll_option_full
+      )
+    );
+  });
+
+  it("renders a 'suggested by' line on a write-in option, none on organizer options", () => {
+    render(
+      <PollCard
+        view={makeView({ writeIn: { suggestedByDisplayName: "Olivia" } })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+        viewerTripMemberId="member-1"
+      />
+    );
+    expect(
+      screen.getByText(
+        M5_UI_STRINGS.polls_writein_suggested_by_template.replace(
+          "{name}",
+          "Olivia"
+        )
+      )
+    ).toBeInTheDocument();
+    // The organizer options ("Steakhouse", "Omakase") appear once each
+    // and carry no attribution line — a spot-check that the template
+    // string only rendered for the write-in.
+    expect(screen.getAllByText(/Suggested by/)).toHaveLength(1);
+  });
+
+  it("a viewer can still vote on a write-in option like any other", async () => {
+    const onMutated = vi.fn();
+    render(
+      <PollCard
+        view={makeView({ writeIn: { suggestedByDisplayName: "Olivia" } })}
+        canVote
+        onMutated={onMutated}
+        {...defaultCommentProps}
+        viewerTripMemberId="member-1"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Sunday brunch/ }));
+    await waitFor(() => expect(mockVote).toHaveBeenCalledTimes(1));
+    expect(mockVote.mock.calls[0]?.[0]).toEqual({
+      pollId: "poll-1",
+      optionId: "opt-writein",
+    });
   });
 });

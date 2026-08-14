@@ -105,7 +105,7 @@ const MEMBER_ID = "55555555-5555-4555-8555-555555555555";
 const USER_ID = "66666666-6666-4666-8666-666666666666";
 
 // Import AFTER the mocks so module-level imports resolve to them.
-import { castPollVoteAction, createPollAction } from "../polls";
+import { addPollOptionAction, castPollVoteAction, createPollAction } from "../polls";
 import type { CreatePollInput } from "../polls";
 
 function resetAll() {
@@ -354,5 +354,109 @@ describe("castPollVoteAction", () => {
       IDEM_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+});
+
+// #621 — poll write-in options (part 2/3 of #616).
+describe("addPollOptionAction", () => {
+  beforeEach(resetAll);
+
+  const VALID_ADD = { pollId: POLL_ID, label: "Sunday brunch" };
+
+  it("rejects a non-uuid idempotency key", async () => {
+    primeAuth(USER_ID);
+    const result = await addPollOptionAction(VALID_ADD, "not-a-uuid");
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty label", async () => {
+    primeAuth(USER_ID);
+    const result = await addPollOptionAction(
+      { ...VALID_ADD, label: "   " },
+      IDEM_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a label over 80 characters", async () => {
+    primeAuth(USER_ID);
+    const result = await addPollOptionAction(
+      { ...VALID_ADD, label: "x".repeat(81) },
+      IDEM_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("rejects a bad poll id", async () => {
+    primeAuth(USER_ID);
+    const result = await addPollOptionAction(
+      { ...VALID_ADD, pollId: "nope" },
+      IDEM_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns auth_failed when there is no user", async () => {
+    primeAuth(null);
+    const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+  });
+
+  it("maps a limiter throw to rate_limit", async () => {
+    primeAuth(USER_ID);
+    const { RateLimitError } = await vi.importActual<
+      typeof import("@/lib/rate-limit")
+    >("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("addPollOption", { remaining: 0, reset: 0 })
+    );
+    const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+
+  it("maps RPC 42501 to rls_denied without revalidating", async () => {
+    primeAuth(USER_ID);
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "denied" },
+    });
+    const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("maps a 22023 'this poll is full' message to poll_option_full", async () => {
+    primeAuth(USER_ID);
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { code: "22023", message: "this poll is full" },
+    });
+    const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "poll_option_full" });
+  });
+
+  it("maps a 22023 bad-label message to validation_failed", async () => {
+    primeAuth(USER_ID);
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { code: "22023", message: "option labels must be 1-80 characters" },
+    });
+    const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("adds via the RPC and revalidates on success", async () => {
+    primeAuth(USER_ID);
+    rpcMock.mockResolvedValue({ data: OPTION_ID, error: null });
+    const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
+    expect(result).toEqual({ ok: true, optionId: OPTION_ID });
+    expect(rpcMock).toHaveBeenCalledWith("add_poll_option", {
+      p_poll_id: POLL_ID,
+      p_label: "Sunday brunch",
+      p_idempotency_key: IDEM_KEY,
+    });
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
   });
 });

@@ -251,7 +251,12 @@ export type ErrorKey =
   // comment keys above.
   | "poll_comment_save_failed"
   | "poll_comment_save_rejected"
-  | "poll_comment_delete_failed";
+  | "poll_comment_delete_failed"
+  // #621 — poll write-in options (part 2/3 of #616). `_failed` is
+  // transient-retry voice; `poll_option_full` is a DETERMINISTIC
+  // rejection (the 10-option cap) — no retry framing.
+  | "poll_option_add_failed"
+  | "poll_option_full";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -466,4 +471,10 @@ export const ERRORS: Record<ErrorKey, string> = {
   poll_comment_save_rejected:
     "That comment didn't go through. Give it another shot.",
   poll_comment_delete_failed: "Couldn't remove that comment. Try again in a sec.",
+  // #621 — poll write-in options. Transient-retry voice for the
+  // generic save failure; the full-poll cap is stated plainly, no
+  // retry bait (retrying can't make room).
+  poll_option_add_failed:
+    "That option didn't save. Give it another shot in a sec.",
+  poll_option_full: "This poll's full up. No more options fit.",
 };

@@ -28,6 +28,7 @@ import { castPollVoteAction } from "@/lib/actions/polls";
 import { isPollClosed, leadingOptions } from "@/lib/db/polls";
 import { PollCommentThread } from "./poll-comment-thread";
 import { PollCommentComposer } from "./poll-comment-composer";
+import { PollWriteInComposer } from "./poll-writein-composer";
 import type { PollComment, PollOptionView, PollView } from "@/lib/db/types";
 
 interface PollCardProps {
@@ -163,6 +164,17 @@ export function PollCard({
           ))}
         </ul>
 
+        {/* #621 — write-in affordance: open poll + a seat to attribute
+            it to. No affordance at all for a closed poll or a
+            read-only viewer (rule 11 — no disabled control, no
+            "you can't" message). */}
+        {!closed && viewerTripMemberId !== undefined ? (
+          <PollWriteInComposer
+            pollId={view.poll.id}
+            onAdded={() => onMutated?.()}
+          />
+        ) : null}
+
         <p className="text-muted-foreground text-xs">{totalLine(view)}</p>
 
         {closed ? (
@@ -228,21 +240,35 @@ function OptionRow({
   disabled: boolean;
   onVote: (optionId: string) => void;
 }) {
-  const { option, votes } = optionView;
+  const { option, votes, suggested_by_display_name: suggestedBy } =
+    optionView;
+  // #621 — renders ONLY on write-ins (suggested_by_display_name is
+  // null for organizer-composed options — see buildPollViews).
+  const attribution = suggestedBy
+    ? M5_UI_STRINGS.polls_writein_suggested_by_template.replace(
+        "{name}",
+        suggestedBy
+      )
+    : null;
 
   if (!interactive) {
     // Read-only row (closed poll, or viewer without a member seat).
     return (
       <div
         className={cn(
-          "border-border flex items-center justify-between rounded-xs border px-3 py-2 text-sm",
+          "border-border flex flex-col gap-0.5 rounded-xs border px-3 py-2 text-sm",
           isMine ? "border-primary" : undefined
         )}
       >
-        <span>{option.label}</span>
-        <span className="text-muted-foreground text-xs tabular-nums">
-          {votes}
-        </span>
+        <div className="flex items-center justify-between">
+          <span>{option.label}</span>
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {votes}
+          </span>
+        </div>
+        {attribution ? (
+          <span className="text-muted-foreground text-xs">{attribution}</span>
+        ) : null}
       </div>
     );
   }
@@ -260,14 +286,26 @@ function OptionRow({
       className={cn(
         // Full-width tap row, 2px hairline radius (buttons are never
         // pill — design-system radius rule). Hit target ≥44px.
-        "focus-visible:ring-ring flex min-h-11 w-full items-center justify-between rounded-xs border px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
+        "focus-visible:ring-ring flex min-h-11 w-full flex-col gap-0.5 rounded-xs border px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60",
         isMine
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-muted text-muted-foreground hover:bg-muted/80"
       )}
     >
-      <span>{option.label}</span>
-      <span className="text-xs tabular-nums">{votes}</span>
+      <span className="flex items-center justify-between">
+        <span>{option.label}</span>
+        <span className="text-xs tabular-nums">{votes}</span>
+      </span>
+      {attribution ? (
+        <span
+          className={cn(
+            "text-xs font-normal",
+            isMine ? "text-primary-foreground/80" : "text-muted-foreground"
+          )}
+        >
+          {attribution}
+        </span>
+      ) : null}
     </button>
   );
 }
