@@ -125,12 +125,22 @@ export default async function AnnouncementsPage({ params }: PageProps) {
     members.map((m) => [m.id, m.display_name])
   );
   const enrichedPollComments = enrichPollComments(pollComments, memberMapById);
-  const commentsByPoll = enrichedPollComments.reduce<
-    Record<string, PollComment[]>
-  >((acc, comment) => {
-    const existing = acc[comment.poll_id] ?? [];
-    return { ...acc, [comment.poll_id]: [...existing, comment] };
-  }, {});
+  // Single-pass O(n) group-by (the naive `reduce` + object-spread version
+  // is O(n²) — it copies every key seen so far on every comment). The
+  // `Map` here is a function-scoped build accumulator, discarded once
+  // converted to the plain object PollCard/PollsSection expect — not
+  // shared or passed-in state, so appending to it in place doesn't run
+  // afoul of the no-mutation rule.
+  const commentsByPollMap = new Map<string, PollComment[]>();
+  for (const comment of enrichedPollComments) {
+    const existing = commentsByPollMap.get(comment.poll_id);
+    if (existing) {
+      existing.push(comment);
+    } else {
+      commentsByPollMap.set(comment.poll_id, [comment]);
+    }
+  }
+  const commentsByPoll = Object.fromEntries(commentsByPollMap);
 
   const now = new Date();
 

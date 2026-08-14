@@ -4,14 +4,14 @@
 -- Adversarial RLS harness for public.poll_comments (#620, part 1/3 of
 -- #616). Mirrors supabase/tests/shopping_social_rls.test.sql's comment
 -- half, adapted: parent is `polls`, visibility routes through the
--- poll's OWN can_see_content(trip_id, visibility). Proves 7 cases
+-- poll's OWN can_see_content(trip_id, visibility). Proves 8 cases
 -- against a LIVE local Postgres — this is a local gate, not a CI gate.
 --
 -- RUN (after `pnpm dlx supabase db reset`):
 --   docker exec -i supabase_db_trip-planner psql -U postgres \
 --     -v ON_ERROR_STOP=1 < supabase/tests/poll_comments_rls.test.sql
 --
--- Expect: prints "ALL 7 POLL COMMENT RLS CASES PASSED" and exits 0.
+-- Expect: prints "ALL 8 POLL COMMENT RLS CASES PASSED" and exits 0.
 -- Any FAILED case raises an exception, which under -v ON_ERROR_STOP=1
 -- aborts the script with a non-zero exit code.
 --
@@ -296,6 +296,31 @@ reset role;
 select set_config('request.jwt.claims', '', true);
 
 -- =============================================================
-select 'ALL 7 POLL COMMENT RLS CASES PASSED' as result;
+-- CASE 8: happy-path positive — a normal member of the trip (M) CAN
+-- read another member's (O's) comment on an everyone-visible poll.
+-- Every SELECT case above is a negative (0 rows); this closes the gap
+-- by proving the read side actually works, not just that it's denied
+-- to the wrong callers.
+-- =============================================================
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '22222222-2222-2222-2222-222222222222', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  n_comments int;
+begin
+  select count(*) into n_comments from public.poll_comments where poll_id = 'c3000000-0000-0000-0000-000000000001';
+  if n_comments = 0 then
+    raise exception 'CASE 8 FAILED: member M could not SELECT any comments on an everyone-visible poll (got 0 rows)';
+  end if;
+  raise notice 'CASE 8 PASSED: member M reads % comment(s) on the everyone-visible poll', n_comments;
+end $$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- =============================================================
+select 'ALL 8 POLL COMMENT RLS CASES PASSED' as result;
 
 rollback;
