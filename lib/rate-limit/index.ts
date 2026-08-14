@@ -220,6 +220,13 @@ export const RATE_LIMIT_SCOPES = {
   CREATE_SHOPPING_ITEM: "createShoppingItem",
   TOGGLE_SHOPPING_ITEM: "toggleShoppingItem",
   MUTATE_SHOPPING_ITEM: "mutateShoppingItem",
+  // #620 — poll comments (part 1/3 of #616). One shared bucket for
+  // post + delete, mirroring MUTATE_SHOPPING_ITEM — a comment thread is
+  // not a high-tap surface the way vote-switching or shopping toggles
+  // are, so a single 30/60s budget is plenty. Fail-OPEN on shim (a
+  // comment is content, not credential minting) — same posture as the
+  // other authed trip-content mutations.
+  MUTATE_POLL_COMMENT: "mutatePollComment",
 } as const;
 
 export type RateLimitScope =

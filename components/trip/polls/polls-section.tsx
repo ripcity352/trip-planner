@@ -13,7 +13,7 @@ import * as React from "react";
 
 import { createClient as createBrowserClient } from "@/lib/supabase/browser";
 import { getPollsViewModel } from "@/lib/db/polls";
-import type { PollView } from "@/lib/db/types";
+import type { PollComment, PollView } from "@/lib/db/types";
 
 import { PulsePoll } from "@/components/trip/pulse-poll";
 import { PollComposer } from "./poll-composer";
@@ -26,6 +26,12 @@ interface PollsSectionProps {
    * seat (renders read-only). */
   viewerTripMemberId: string | undefined;
   initialViews: ReadonlyArray<PollView>;
+  // #620 — poll comments (part 1/3 of #616). Server-side fold, keyed by
+  // poll_id — NOT threaded through PulsePoll's `fetchData` (comments
+  // refresh via `router.refresh()` inside PollCommentThread, #349).
+  commentsByPoll: Readonly<Record<string, readonly PollComment[]>>;
+  viewerDisplayName: string | null;
+  now: Date;
 }
 
 export function PollsSection({
@@ -33,6 +39,9 @@ export function PollsSection({
   isOrganizer,
   viewerTripMemberId,
   initialViews,
+  commentsByPoll,
+  viewerDisplayName,
+  now,
 }: PollsSectionProps) {
   // `useCallback` is essential — PulsePoll's effect depends on a stable
   // function identity.
@@ -78,6 +87,11 @@ export function PollsSection({
                       view={view}
                       canVote={viewerTripMemberId !== undefined}
                       onMutated={refetch}
+                      comments={commentsByPoll[view.poll.id] ?? []}
+                      viewerTripMemberId={viewerTripMemberId}
+                      isViewerOrganizer={isOrganizer}
+                      viewerDisplayName={viewerDisplayName}
+                      now={now}
                     />
                   </li>
                 ))}

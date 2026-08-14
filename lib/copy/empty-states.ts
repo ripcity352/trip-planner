@@ -731,6 +731,17 @@ export const M5_UI_STRINGS = {
   polls_closed_tie: "Dead heat. Sort it out over a drink.",
   polls_closed_no_votes: "Nobody weighed in. Organizer's call.",
   polls_option_vote_aria_template: "Vote {label}",
+  // #620 — flat comment thread on polls (part 1/3 of #616). Same shape
+  // as the shopping-list Notes thread (notesHeading/notePlaceholder/
+  // etc.), reused word-for-word where the register is identical.
+  polls_comments_heading: "Comments",
+  polls_comment_placeholder: "Add a comment…",
+  polls_comments_empty: "Nothing here yet. Weigh in.",
+  polls_comment_author_line_template: "{name} · {when}",
+  polls_comment_delete_cta: "Remove",
+  polls_comment_delete_aria: "Delete comment",
+  polls_comment_delete_confirm: "Remove this comment? Can't undo.",
+  polls_comment_composer_submit_aria: "Send comment",
   // #387 — quiet per-name RSVP chips on the roster. Factual state only —
   // the anti-shame boundary is BINDING: no lateness ordering, no nudge
   // copy, no counts of shame. "going" deliberately has NO chip string

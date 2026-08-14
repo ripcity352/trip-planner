@@ -31,10 +31,15 @@ import {
 } from "@/lib/db/announcement-reactions";
 import { isDatePollDecided } from "@/lib/db/date-poll";
 import { getPollsViewModel } from "@/lib/db/polls";
+import {
+  enrichPollComments,
+  getCommentsForTrip as getPollCommentsForTrip,
+} from "@/lib/db/poll-comments";
 import { AnnouncementsFeed } from "@/components/trip/announcements/announcements-feed";
 import { DatePollLinkRow } from "@/components/trip/announcements/date-poll-link-row";
 import { PollsDisclosure } from "@/components/trip/polls/polls-disclosure";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
+import type { PollComment } from "@/lib/db/types";
 
 type PageProps = {
   // Next.js 16 — dynamic segment params are async.
@@ -58,15 +63,18 @@ export default async function AnnouncementsPage({ params }: PageProps) {
     notFound();
   }
 
-  // Fan out: announcements + reactions + members + organizer check in
-  // parallel. Members are needed to build the memberUserMap for author
-  // attribution (#239); reactions feed the per-card ack row (#389).
-  const [announcements, reactions, members, organizerCheck] =
+  // Fan out: announcements + reactions + members + organizer check +
+  // poll comments in parallel. Members are needed to build the
+  // memberUserMap for author attribution (#239); reactions feed the
+  // per-card ack row (#389); poll comments (#620) fold onto each
+  // PollView server-side, same shape as the shopping-list social layer.
+  const [announcements, reactions, members, organizerCheck, pollComments] =
     await Promise.all([
       getAnnouncements(supabase, trip.id),
       getReactionsForTrip(supabase, trip.id),
       getTripMembers(supabase, trip.id),
       supabase.rpc("is_trip_organizer", { p_trip_id: trip.id }),
+      getPollCommentsForTrip(supabase, trip.id),
     ]);
 
   const isOrganizer = organizerCheck.data === true;
@@ -110,6 +118,32 @@ export default async function AnnouncementsPage({ params }: PageProps) {
   const viewerDisplayName =
     members.find((m) => m.user_id === user.id)?.display_name ?? null;
 
+  // #620 — poll comments. enrichPollComments expects a memberMap keyed
+  // by trip_members.id (the author_trip_member_id FK target) — NOT
+  // user_id — same contract as the shopping-list comments precedent.
+  const memberMapById = new Map<string, string | null>(
+    members.map((m) => [m.id, m.display_name])
+  );
+  const enrichedPollComments = enrichPollComments(pollComments, memberMapById);
+  // Single-pass O(n) group-by (the naive `reduce` + object-spread version
+  // is O(n²) — it copies every key seen so far on every comment). The
+  // `Map` here is a function-scoped build accumulator, discarded once
+  // converted to the plain object PollCard/PollsSection expect — not
+  // shared or passed-in state, so appending to it in place doesn't run
+  // afoul of the no-mutation rule.
+  const commentsByPollMap = new Map<string, PollComment[]>();
+  for (const comment of enrichedPollComments) {
+    const existing = commentsByPollMap.get(comment.poll_id);
+    if (existing) {
+      existing.push(comment);
+    } else {
+      commentsByPollMap.set(comment.poll_id, [comment]);
+    }
+  }
+  const commentsByPoll = Object.fromEntries(commentsByPollMap);
+
+  const now = new Date();
+
   return (
     <section className="mx-auto w-full max-w-3xl px-4 py-6">
       <header className="mb-6">
@@ -133,6 +167,9 @@ export default async function AnnouncementsPage({ params }: PageProps) {
             isOrganizer={isOrganizer}
             viewerTripMemberId={viewerTripMemberId}
             initialViews={pollViews}
+            commentsByPoll={commentsByPoll}
+            viewerDisplayName={viewerDisplayName}
+            now={now}
           />
         }
         datePollLinkRow={
