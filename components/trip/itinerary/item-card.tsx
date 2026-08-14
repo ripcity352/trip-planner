@@ -60,6 +60,10 @@ export interface ItemCardProps {
   /** #171: the viewer's own trip_member_id. Excludes self from the
    * organizer on-behalf target picker (self uses the normal picker). */
   viewerMemberId: string;
+  /** Any-member-can-edit-own: the viewer's auth user id — compared
+   * against `item.created_by` to decide whether the non-organizer viewer
+   * gets the edit/delete affordance on their OWN plan. */
+  viewerUserId: string;
   /** IANA timezone from `trips.timezone` — forwarded to EditItemFormSheet. */
   tripTimezone: string;
   /** #365: member flags for this item. Under organizer RLS this is every
@@ -83,12 +87,14 @@ export function ItemCard({
   lodgingAssignments,
   tripMembers,
   viewerMemberId,
+  viewerUserId,
   tripTimezone,
   itemFlags,
   inCount,
   isNow = false,
   isNext = false,
 }: ItemCardProps) {
+  const isOwnItem = item.created_by === viewerUserId;
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
   // Non-default visibility badge for organizers_only / custom — parity with
   // AnnouncementCard's VISIBILITY_LABEL mapping (#F8). hide_from_celebrant
@@ -159,8 +165,12 @@ export function ItemCard({
             </p>
           ) : null}
         </div>
-        {isOrganizer ? (
-          <EditItemFormSheet item={item} tripTimezone={tripTimezone} />
+        {isOrganizer || isOwnItem ? (
+          <EditItemFormSheet
+            item={item}
+            tripTimezone={tripTimezone}
+            isOrganizer={isOrganizer}
+          />
         ) : null}
       </div>
 

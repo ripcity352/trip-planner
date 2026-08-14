@@ -25,6 +25,9 @@ export interface AddItemFormSheetProps {
   /** #484: trip date bounds — forwarded to AddItemForm's range check. */
   tripStartsAt?: string | null;
   tripEndsAt?: string | null;
+  /** Any member can add a plan; only organizers get the visibility picker
+   * (non-organizer plans are always 'everyone'). */
+  isOrganizer: boolean;
 }
 
 export function AddItemFormSheet({
@@ -32,6 +35,7 @@ export function AddItemFormSheet({
   tripTimezone,
   tripStartsAt,
   tripEndsAt,
+  isOrganizer,
 }: AddItemFormSheetProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -63,6 +67,7 @@ export function AddItemFormSheet({
             tripTimezone={tripTimezone}
             tripStartsAt={tripStartsAt}
             tripEndsAt={tripEndsAt}
+            isOrganizer={isOrganizer}
             onSuccess={handleSuccess}
             onCancel={() => setOpen(false)}
           />

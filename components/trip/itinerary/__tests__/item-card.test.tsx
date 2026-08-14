@@ -133,6 +133,9 @@ const baseProps = {
   tripMembers: [] as TripMember[],
   // #171: viewer's own trip_member_id (organizer on-behalf picker excludes self)
   viewerMemberId: "viewer-1",
+  // Any-member-can-edit-own: viewer's auth user id — defaults to a
+  // non-owner so existing organizer-gated tests are unaffected.
+  viewerUserId: "viewer-user-1",
   // W2b: tripTimezone required by EditItemFormSheet
   tripTimezone: "America/New_York",
   // #365: member flags for this item (organizer read surface / rehydrate)
@@ -358,6 +361,33 @@ describe("ItemCard", () => {
 
   it("does not render EditItemFormSheet when isOrganizer=false", () => {
     render(<ItemCard item={makeItem()} {...baseProps} isOrganizer={false} />);
+    expect(screen.queryByTestId("edit-item-sheet")).not.toBeInTheDocument();
+  });
+
+  // Any-member-can-edit-own: a non-organizer viewing their OWN item (item.
+  // created_by === viewerUserId) still gets the edit affordance.
+  it("renders EditItemFormSheet for a non-organizer's OWN item", () => {
+    render(
+      <ItemCard
+        item={makeItem({ created_by: "viewer-user-1" })}
+        {...baseProps}
+        isOrganizer={false}
+        viewerUserId="viewer-user-1"
+      />
+    );
+    expect(screen.getByTestId("edit-item-sheet")).toBeInTheDocument();
+  });
+
+  // A non-organizer viewing someone ELSE's item still gets no affordance.
+  it("does not render EditItemFormSheet for a non-organizer's non-owned item", () => {
+    render(
+      <ItemCard
+        item={makeItem({ created_by: "someone-else" })}
+        {...baseProps}
+        isOrganizer={false}
+        viewerUserId="viewer-user-1"
+      />
+    );
     expect(screen.queryByTestId("edit-item-sheet")).not.toBeInTheDocument();
   });
 

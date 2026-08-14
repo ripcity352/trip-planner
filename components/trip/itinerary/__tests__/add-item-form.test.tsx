@@ -1,5 +1,6 @@
 /**
- * Unit tests for AddItemForm — organizer-only bottom sheet form.
+ * Unit tests for AddItemForm — bottom sheet form for adding a plan. Any
+ * trip member can submit; isOrganizer controls the visibility picker.
  * TDD: written before implementation.
  */
 
@@ -24,6 +25,10 @@ describe("AddItemForm", () => {
     // Fix B: tripTimezone is now required so the new optional start/end
     // time fields render in the correct timezone (mirrors EditItemForm).
     tripTimezone: "America/New_York",
+    // Existing tests below exercise the organizer path (full visibility
+    // range); the member path (picker hidden, forced 'everyone') has its
+    // own describe block further down.
+    isOrganizer: true,
     onSuccess: vi.fn(),
     onCancel: vi.fn(),
   };
@@ -447,6 +452,49 @@ describe("AddItemForm", () => {
         );
       });
       expect(screen.queryByText(/outside the trip dates/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // Any-member-can-add: a non-organizer never sees the visibility picker
+  // and always submits 'everyone', regardless of isOrganizer being
+  // omitted (defaults false) or explicitly false.
+  describe("non-organizer (member) path", () => {
+    const memberProps = { ...defaultProps, isOrganizer: false };
+
+    it("hides the visibility select", () => {
+      render(<AddItemForm {...memberProps} />);
+      expect(screen.queryByLabelText(/who sees this\?/i)).not.toBeInTheDocument();
+    });
+
+    it("submits visibility: everyone", async () => {
+      render(<AddItemForm {...memberProps} />);
+      fireEvent.change(screen.getByLabelText(/what is it\?/i), {
+        target: { value: "Group breakfast" },
+      });
+      fireEvent.change(
+        screen.getByLabelText(/starts/i, { selector: "input[type='date']" }),
+        { target: { value: "2026-08-01" } }
+      );
+      fireEvent.click(screen.getByRole("button", { name: /add it/i }));
+
+      await waitFor(() => {
+        expect(mockAdd).toHaveBeenCalledWith(
+          expect.objectContaining({ visibility: "everyone" }),
+          expect.any(String)
+        );
+      });
+    });
+
+    it("defaults to hiding the picker when isOrganizer is omitted", () => {
+      render(
+        <AddItemForm
+          tripId={memberProps.tripId}
+          tripTimezone={memberProps.tripTimezone}
+          onSuccess={memberProps.onSuccess}
+          onCancel={memberProps.onCancel}
+        />
+      );
+      expect(screen.queryByLabelText(/who sees this\?/i)).not.toBeInTheDocument();
     });
   });
 });

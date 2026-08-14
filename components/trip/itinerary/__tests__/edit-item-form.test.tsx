@@ -53,6 +53,10 @@ describe("EditItemForm", () => {
     // W2b: tripTimezone is now required so the datetime-local widget renders
     // in the correct timezone. Use America/New_York as a representative value.
     tripTimezone: "America/New_York",
+    // Existing tests below exercise the organizer path (full visibility
+    // range); the member-editing-their-own-item path has its own
+    // describe block further down.
+    isOrganizer: true,
     onSuccess: vi.fn(),
     onCancel: vi.fn(),
     onDeleted: vi.fn(),
@@ -424,6 +428,33 @@ describe("EditItemForm", () => {
         );
       });
       expect(screen.queryByText(/outside the trip dates/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // Any-member-can-edit-own: a member editing their OWN item never sees
+  // the visibility picker and always submits 'everyone' — mirrors
+  // AddItemForm's non-organizer path.
+  describe("non-organizer (member editing own item) path", () => {
+    const memberProps = { ...defaultProps, isOrganizer: false };
+
+    it("hides the visibility select", () => {
+      render(<EditItemForm {...memberProps} />);
+      expect(screen.queryByLabelText(/who sees this\?/i)).not.toBeInTheDocument();
+    });
+
+    it("submits visibility: everyone on save", async () => {
+      render(<EditItemForm {...memberProps} />);
+      fireEvent.change(screen.getByLabelText(/what is it\?/i), {
+        target: { value: "Renamed by owner" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ visibility: "everyone" }),
+          expect.any(String)
+        );
+      });
     });
   });
 });
