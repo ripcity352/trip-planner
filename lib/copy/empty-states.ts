@@ -454,6 +454,9 @@ export const M3_UI_STRINGS = {
     "When do you take off? Drop the departure in so nobody plans around you.",
   // Inbound legs without a landing time (legacy rows) group under this.
   arrivals_inbound_time_tbd: "Landing time TBD",
+  // #614 — outbound legs without a departure time group under this (mirrors
+  // the inbound TBD bucket so departures day-group like arrivals).
+  arrivals_outbound_time_tbd: "Departure time TBD",
   // #579 — compact chronological view. The toggle switches between the
   // dense one-line glance (Compact, default) and today's detail cards
   // (Full — the surface for editing / confirming / adding to a flight).

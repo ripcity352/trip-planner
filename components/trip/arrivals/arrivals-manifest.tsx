@@ -74,19 +74,30 @@ interface RideSheetState {
   seedMemberIds: string[];
 }
 
-function groupInboundByDay(
+/**
+ * #614 — direction-agnostic day grouper. Buckets legs by their trip-local day
+ * on the given timestamp field (`arrive_at` for inbound, `depart_at` for
+ * outbound), rendering each bucket under a `formatTripDayHeader` label. Legs
+ * with a null/unparseable timestamp fall into a single TBD bucket labeled
+ * `tbdLabel`. Input order is preserved within each bucket, so pre-sorting the
+ * legs chronologically yields chronological buckets and rows.
+ */
+function groupLegsByDay(
   legs: TravelLeg[],
-  tripTimezone: string
+  tripTimezone: string,
+  timestampField: "arrive_at" | "depart_at",
+  tbdLabel: string
 ): DayGroup[] {
   const groups: DayGroup[] = [];
   for (const leg of legs) {
     let key = "tbd";
-    let label: string = M3_UI_STRINGS.arrivals_inbound_time_tbd;
-    if (leg.arrive_at) {
-      const date = parseISO(leg.arrive_at);
+    let label: string = tbdLabel;
+    const timestamp = leg[timestampField];
+    if (timestamp) {
+      const date = parseISO(timestamp);
       try {
         key = formatInTimeZone(date, tripTimezone, "yyyy-MM-dd");
-        label = formatTripDayHeader(leg.arrive_at, tripTimezone);
+        label = formatTripDayHeader(timestamp, tripTimezone);
       } catch {
         // Unparseable stored timestamp — fall through to the TBD bucket.
       }
@@ -199,7 +210,19 @@ export function ArrivalsManifest({
     return a.depart_at.localeCompare(b.depart_at);
   });
 
-  const dayGroups = groupInboundByDay(inboundLegs, tripTimezone);
+  const dayGroups = groupLegsByDay(
+    inboundLegs,
+    tripTimezone,
+    "arrive_at",
+    M3_UI_STRINGS.arrivals_inbound_time_tbd
+  );
+  // #614 — outbound legs day-group on depart_at, same as inbound on arrive_at.
+  const outboundDayGroups = groupLegsByDay(
+    outboundLegs,
+    tripTimezone,
+    "depart_at",
+    M3_UI_STRINGS.arrivals_outbound_time_tbd
+  );
 
   // #581 — rides + clusters split by direction. A cluster's nudge is
   // suppressed once a ride at that airport exists in the same direction.
@@ -400,11 +423,17 @@ export function ArrivalsManifest({
 
           {ridesBlock(outboundRides)}
 
-          {isCompact ? (
-            <ul className="flex flex-col">{outboundLegs.map(renderRow)}</ul>
-          ) : (
-            outboundLegs.map(renderCard)
-          )}
+          {/* #614 — departures day-group under the same headers as arrivals */}
+          {outboundDayGroups.map((group) => (
+            <section key={group.key} className="flex flex-col gap-3">
+              <h2 className={dayHeaderClass}>{group.label}</h2>
+              {isCompact ? (
+                <ul className="flex flex-col">{group.legs.map(renderRow)}</ul>
+              ) : (
+                group.legs.map(renderCard)
+              )}
+            </section>
+          ))}
 
           {manualStartAffordance("outbound")}
         </section>
