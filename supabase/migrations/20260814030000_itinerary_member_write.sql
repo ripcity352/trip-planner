@@ -52,17 +52,30 @@ comment on policy "itinerary: members insert" on public.itinerary_items is
 -- A member may edit their OWN plan. Can't reassign created_by to someone
 -- else (the using/with-check both pin auth.uid() = created_by, so a
 -- member can never "adopt" or steal another member's row), and can't
--- escalate visibility off 'everyone'. The existing organizer update
--- policy (full visibility range, any row) stays untouched.
+-- escalate visibility off 'everyone'. The with-check ALSO re-pins
+-- is_trip_member(trip_id) — without it, a member could UPDATE their own
+-- row and set trip_id to a DIFFERENT trip (created_by and visibility
+-- still hold, so the check would otherwise pass), silently moving the
+-- item into a trip they aren't even a member of: a cross-tenant write
+-- (CLAUDE.md rule #6 — every query/write must be trip-scoped). Mirrors
+-- the insert policy's tenant pin. The USING clause stays owner-only
+-- (row visibility for the update target); the tenant pin lives in the
+-- WITH CHECK (post-state validation) since that's what a forged trip_id
+-- would violate. The existing organizer update policy (full visibility
+-- range, any row, any trip_id) stays untouched.
 create policy "itinerary: members update own"
   on public.itinerary_items
   for update
   to authenticated
   using (auth.uid() = created_by)
-  with check (auth.uid() = created_by and visibility = 'everyone');
+  with check (
+    auth.uid() = created_by
+    and visibility = 'everyone'
+    and public.is_trip_member(trip_id)
+  );
 
 comment on policy "itinerary: members update own" on public.itinerary_items is
-  'Additive to "itinerary: organizers update" (RLS ORs permissive policies — organizer policy untouched). A member may edit their OWN plan only; visibility pinned to everyone.';
+  'Additive to "itinerary: organizers update" (RLS ORs permissive policies — organizer policy untouched). A member may edit their OWN plan only; visibility pinned to everyone; trip_id re-pinned to a trip they are a member of (blocks a cross-tenant trip_id reassignment on update).';
 
 -- A member may delete their OWN plan. The existing organizer delete
 -- policy (any row) stays untouched.

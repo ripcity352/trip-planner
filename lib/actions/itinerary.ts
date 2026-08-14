@@ -344,7 +344,7 @@ export async function updateItineraryItem(
 
   const { itemId, ...fields } = parsed.data;
 
-  // #664: `visibility` carries a zod `.default("everyone")` inherited from
+  // `visibility` carries a zod `.default("everyone")` inherited from
   // addItemSchema — under `.partial()` that default still fires on parse,
   // so `fields.visibility` is NEVER undefined regardless of whether the
   // caller actually passed it. Read the caller's INTENT off the raw
