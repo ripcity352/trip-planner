@@ -24,6 +24,7 @@
 
 import * as React from "react";
 import { format, parseISO } from "date-fns";
+import { CheckIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,6 +81,12 @@ export function PollCard({
   const [multiOverrides, setMultiOverrides] = React.useState<
     Record<string, boolean>
   >({});
+  // Multi-choice: which options currently have an in-flight
+  // add/retract, so ONE toggle doesn't lock every checkbox in the
+  // list — the whole point of independent per-option round-trips.
+  const [pendingToggleIds, setPendingToggleIds] = React.useState<
+    ReadonlySet<string>
+  >(new Set());
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
   // Optimistic comments appended locally between "submitted" and the
@@ -103,6 +110,32 @@ export function PollCard({
         : optionId === myOptionId,
     [isMultiChoice, multiOverrides, myOptionId, view.my_option_ids]
   );
+
+  // Drop any override once the server-confirmed `my_option_ids` agrees
+  // with it — otherwise a stale override permanently masks a change
+  // made elsewhere (another device, a Realtime-driven refetch) for
+  // that option, since `isSelected` above always prefers the override.
+  // React's documented "adjust state on a prop change" pattern —
+  // comparing during render (not inside useEffect) so the reconciled
+  // value is ready for THIS render instead of triggering an extra one.
+  const [reconciledFor, setReconciledFor] = React.useState(
+    view.my_option_ids
+  );
+  if (reconciledFor !== view.my_option_ids) {
+    setReconciledFor(view.my_option_ids);
+    setMultiOverrides((prev) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const [optionId, overridden] of Object.entries(prev)) {
+        if (overridden === view.my_option_ids.includes(optionId)) {
+          changed = true;
+          continue;
+        }
+        next[optionId] = overridden;
+      }
+      return changed ? next : prev;
+    });
+  }
 
   const handleVote = React.useCallback(
     (optionId: string) => {
@@ -139,6 +172,7 @@ export function PollCard({
       const wasSelected = isSelected(optionId);
       const nextSelected = !wasSelected;
       setMultiOverrides((prev) => ({ ...prev, [optionId]: nextSelected }));
+      setPendingToggleIds((prev) => new Set(prev).add(optionId));
       setErrorKey(null);
       const idempotencyKey = crypto.randomUUID();
       startTransition(async () => {
@@ -162,6 +196,12 @@ export function PollCard({
           console.error("[polls] toggle poll vote threw:", err);
           setMultiOverrides((prev) => ({ ...prev, [optionId]: wasSelected }));
           setErrorKey("network");
+        } finally {
+          setPendingToggleIds((prev) => {
+            const next = new Set(prev);
+            next.delete(optionId);
+            return next;
+          });
         }
       });
     },
@@ -216,7 +256,11 @@ export function PollCard({
                 isMine={isSelected(optionView.option.id)}
                 isMultiChoice={isMultiChoice}
                 interactive={interactive}
-                disabled={isPending}
+                disabled={
+                  isMultiChoice
+                    ? pendingToggleIds.has(optionView.option.id)
+                    : isPending
+                }
                 onVote={isMultiChoice ? handleToggle : handleVote}
               />
             </li>
@@ -370,13 +414,13 @@ function OptionRow({
             <span
               aria-hidden="true"
               className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded-xs border text-[10px] leading-none",
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded-xs border",
                 isMine
                   ? "border-primary-foreground bg-primary-foreground text-primary"
                   : "border-current"
               )}
             >
-              {isMine ? "✓" : null}
+              {isMine ? <CheckIcon className="h-3 w-3" /> : null}
             </span>
           ) : null}
           <span>{option.label}</span>

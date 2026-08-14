@@ -319,6 +319,85 @@ describe("PollCard multi-choice (#627)", () => {
       screen.getByRole("checkbox", { name: /Steakhouse/ })
     ).toHaveAttribute("aria-checked", "false");
   });
+
+  it("reconciles a stale override once the server truth agrees, so a later external change is reflected", async () => {
+    const { rerender } = render(
+      <PollCard
+        view={makeView({ allowMultiple: true })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Steakhouse/ }));
+    await waitFor(() => expect(mockVote).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByRole("checkbox", { name: /Steakhouse/ })
+    ).toHaveAttribute("aria-checked", "true");
+
+    // A refetch lands the server-confirmed state — the override should
+    // reconcile away (not needed anymore, since truth now agrees).
+    rerender(
+      <PollCard
+        view={makeView({ allowMultiple: true, my_option_ids: ["opt-a"] })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+
+    // A later external change (another device un-selects it) now shows
+    // through — proof the override was actually cleared, not just
+    // coincidentally matching.
+    rerender(
+      <PollCard
+        view={makeView({ allowMultiple: true, my_option_ids: [] })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: /Steakhouse/ })
+      ).toHaveAttribute("aria-checked", "false")
+    );
+  });
+
+  it("keeps other checkboxes interactive while one option's toggle is in flight", async () => {
+    let resolveVote!: (value: { ok: true; optionId: string }) => void;
+    mockVote.mockReturnValue(
+      new Promise((resolve) => {
+        resolveVote = resolve;
+      })
+    );
+    render(
+      <PollCard
+        view={makeView({ allowMultiple: true })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Steakhouse/ }));
+    await waitFor(() => expect(mockVote).toHaveBeenCalledTimes(1));
+
+    // Steakhouse's own request is in flight and disabled...
+    expect(
+      screen.getByRole("checkbox", { name: /Steakhouse/ })
+    ).toBeDisabled();
+    // ...but Omakase, an independent option, is NOT locked by it.
+    expect(
+      screen.getByRole("checkbox", { name: /Omakase/ })
+    ).not.toBeDisabled();
+
+    resolveVote({ ok: true, optionId: "opt-a" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: /Steakhouse/ })
+      ).not.toBeDisabled()
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
  *   - Members see polls + aggregate vote counts (never voter names —
  *     aggregate-only ADR; per-name visibility is reserved for a future
  *     voter-opt-in surface)
- *   - The viewer's own choice (`my_option_id`) rides along for the
+ *   - The viewer's own choice(s) (`my_option_ids`) ride along for the
  *     highlighted-chip initial render
  *   - Assembly is a pure function (`buildPollViews`) — unit-testable
  *     without a DB
@@ -101,7 +101,7 @@ export async function countOpenPolls(
  *
  * `viewerTripMemberId` may be undefined for a viewer without a member
  * row (shouldn't reach this surface, but defensive) — their views come
- * back with `my_option_id: null`.
+ * back with `my_option_ids: []`.
  *
  * `memberMap` (#621) resolves write-in attribution — trip_members.id ->
  * display_name, same contract as `enrichPollComments`'s memberMap.
@@ -230,6 +230,11 @@ export function buildPollViews(
     return {
       poll,
       options: optionViews,
+      // #627: a raw vote-row count, not a distinct-voter count — on a
+      // multi-choice poll one member picking 2 options contributes 2
+      // here. Deliberate: "{count} votes in" is a literal count of
+      // ballots cast, not a headcount; a distinct-voter figure would
+      // need its own query and isn't asked for by the copy today.
       total_votes: optionViews.reduce((sum, o) => sum + o.votes, 0),
       my_option_ids: myOptionIds,
     } satisfies PollView;
