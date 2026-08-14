@@ -40,6 +40,14 @@ interface AnnouncementCardProps {
    * viewer is an organizer and only then supplies the client leaf.
    */
   actionsSlot?: ReactNode;
+  /**
+   * #544 — organizer inline edit form, rendered in place of the body `<p>`
+   * when present. A slot (same pattern as `actionsSlot`) so this leaf
+   * stays server-friendly; the caller decides whether the card is in
+   * edit mode and only then supplies the client leaf. Footer + reactions
+   * still render underneath.
+   */
+  editSlot?: ReactNode;
 }
 
 /**
@@ -57,6 +65,7 @@ export function AnnouncementCard({
   celebrantName,
   reactionsSlot,
   actionsSlot,
+  editSlot,
 }: AnnouncementCardProps) {
   const relativeTime = formatDistanceToNow(new Date(announcement.created_at), {
     addSuffix: true,
@@ -93,30 +102,36 @@ export function AnnouncementCard({
         </div>
       )}
 
-      {/* Body — whitespace-pre-wrap preserves stored newlines (#464);
-          linkifyText makes http(s)/www URLs tappable (#469). The tokenizer
-          passes whitespace through untouched, so the two compose. */}
-      <p
-        data-testid="announcement-body"
-        className="whitespace-pre-wrap text-sm leading-relaxed"
-      >
-        {linkifyText(announcement.body).map((token, index) =>
-          token.type === "link" ? (
-            <a
-              // Position-keyed: the token list is derived, static per render.
-              key={index}
-              href={token.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="break-all text-primary underline underline-offset-2"
-            >
-              {token.value}
-            </a>
-          ) : (
-            <span key={index}>{token.value}</span>
-          )
-        )}
-      </p>
+      {/* #544 — editSlot replaces the body entirely when the card is in
+          edit mode; footer + reactions stay put underneath. */}
+      {editSlot ? (
+        editSlot
+      ) : (
+        /* Body — whitespace-pre-wrap preserves stored newlines (#464);
+           linkifyText makes http(s)/www URLs tappable (#469). The tokenizer
+           passes whitespace through untouched, so the two compose. */
+        <p
+          data-testid="announcement-body"
+          className="whitespace-pre-wrap text-sm leading-relaxed"
+        >
+          {linkifyText(announcement.body).map((token, index) =>
+            token.type === "link" ? (
+              <a
+                // Position-keyed: the token list is derived, static per render.
+                key={index}
+                href={token.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all text-primary underline underline-offset-2"
+              >
+                {token.value}
+              </a>
+            ) : (
+              <span key={index}>{token.value}</span>
+            )
+          )}
+        </p>
+      )}
 
       {/* Footer: author + relative time */}
       <footer className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">

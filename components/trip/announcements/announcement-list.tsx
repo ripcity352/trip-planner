@@ -38,6 +38,11 @@
  * live-update other connected viewers — they see it on next
  * fetch/revalidate. Not expanded to postgres_changes UPDATE/DELETE here.
  *
+ * #544: same rationale extends to organizer edit — `editingId` +
+ * `handleEditSave` live here, not in `AnnouncementCardActions` or
+ * `AnnouncementCard`, for the exact same reason (the array both surfaces
+ * derive from). No "edited" indicator (operator decision).
+ *
  * Error state for a failed delete/pin is *also* hoisted here
  * (`errorByAnnouncement`), not left local to `AnnouncementCardActions`.
  * The mutating card instance gets unmounted (delete) or moved between
@@ -63,12 +68,14 @@ import { ensureRealtimeAuth } from "@/lib/supabase/realtime-auth";
 import { subscribeToAnnouncements } from "@/lib/db/announcements";
 import {
   deleteAnnouncementAction,
+  editAnnouncementAction,
   pinAnnouncementAction,
 } from "@/lib/actions/announcements";
 import { callAction } from "@/lib/ui/call-action";
 import type { ErrorKey } from "@/lib/copy/errors";
 import { AnnouncementCard } from "./announcement-card";
 import { AnnouncementCardActions } from "./announcement-card-actions";
+import { AnnouncementEditForm } from "./announcement-edit-form";
 import { ReactionRow } from "./reaction-row";
 import { PinnedAnnouncementBanner } from "./pinned-announcement-banner";
 import { EMPTY_STATES } from "@/lib/copy/empty-states";
@@ -147,6 +154,9 @@ export const AnnouncementList = forwardRef<
   const [errorByAnnouncement, setErrorByAnnouncement] = useState<
     Record<string, ErrorKey | null>
   >({});
+  // #544 — organizer inline edit: which announcement (if any) is currently
+  // showing its edit form in place of the body.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useImperativeHandle(
     ref,
@@ -220,6 +230,40 @@ export const AnnouncementList = forwardRef<
     [announcements]
   );
 
+  // #544 — organizer edit: optimistic body update + re-sort (a save can't
+  // change pinned state, but re-sort is cheap and keeps this symmetric
+  // with handlePin), rollback on failure. Exits edit mode on success.
+  //
+  // Unlike handleDelete/handlePin, the failure is NOT hoisted into
+  // `errorByAnnouncement` — editing never unmounts or moves the card (the
+  // pinned/regular split only depends on `pinned`, which edit doesn't
+  // touch), so the edit form's own local error state survives the
+  // rollback fine. Hoisting it too would double-render the same alert
+  // (once from AnnouncementCardActions, once from the edit form).
+  const handleEditSave = useCallback(
+    async (announcementId: string, body: string): Promise<ErrorKey | null> => {
+      const snapshot = announcements;
+      setAnnouncements((prev) =>
+        sortAnnouncements(
+          prev.map((a) => (a.id === announcementId ? { ...a, body } : a))
+        )
+      );
+      const result = await callAction(() =>
+        editAnnouncementAction(
+          { tripId, announcementId, body },
+          crypto.randomUUID()
+        )
+      );
+      if (!result.ok) {
+        setAnnouncements(snapshot);
+        return result.errorKey;
+      }
+      setEditingId(null);
+      return null;
+    },
+    [announcements, tripId]
+  );
+
   useEffect(() => {
     const supabase = createClient();
 
@@ -288,6 +332,22 @@ export const AnnouncementList = forwardRef<
         errorKey={errorByAnnouncement[announcementId] ?? null}
         onPin={(next) => handlePin(announcementId, next)}
         onDelete={() => handleDelete(announcementId)}
+        onEdit={() => setEditingId(announcementId)}
+      />
+    );
+  };
+
+  // #544 — organizer-only inline edit form, same regular-feed + pinned-
+  // banner coverage requirement as actionsSlotFor.
+  const editSlotFor = (announcementId: string) => {
+    if (!isOrganizer || editingId !== announcementId) return null;
+    const current = announcements.find((a) => a.id === announcementId);
+    if (!current) return null;
+    return (
+      <AnnouncementEditForm
+        initialBody={current.body}
+        onSave={(body) => handleEditSave(announcementId, body)}
+        onCancel={() => setEditingId(null)}
       />
     );
   };
@@ -313,6 +373,7 @@ export const AnnouncementList = forwardRef<
         celebrantName={celebrantName}
         reactionsSlotFor={reactionsSlotFor}
         actionsSlotFor={actionsSlotFor}
+        editSlotFor={editSlotFor}
       />
 
       {pollsSlot}
@@ -333,6 +394,7 @@ export const AnnouncementList = forwardRef<
                 celebrantName={celebrantName}
                 reactionsSlot={reactionsSlotFor(a.id)}
                 actionsSlot={actionsSlotFor(a.id, a.pinned)}
+                editSlot={editSlotFor(a.id)}
               />
             </li>
           ))}

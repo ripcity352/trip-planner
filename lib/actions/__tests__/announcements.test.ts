@@ -693,3 +693,228 @@ describe("pinAnnouncementAction", () => {
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// editAnnouncementAction (#544)
+// ---------------------------------------------------------------------------
+
+describe("editAnnouncementAction", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    revalidatePathMock.mockReset();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("returns validation_failed on a non-uuid idempotency key", async () => {
+    primeAuth(VALID_USER_ID);
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      "bad-key"
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed on an empty body", async () => {
+    primeAuth(VALID_USER_ID);
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: VALID_ANNOUNCEMENT_ID, body: "" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns validation_failed on a non-uuid announcementId", async () => {
+    primeAuth(VALID_USER_ID);
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      { tripId: VALID_TRIP_ID, announcementId: "not-a-uuid", body: "Updated." },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "validation_failed" });
+  });
+
+  it("returns auth_failed when not authenticated", async () => {
+    primeAuth(null);
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "auth_failed" });
+  });
+
+  it("returns rate_limit when the limiter throws", async () => {
+    primeAuth(VALID_USER_ID);
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitedActionMock.mockRejectedValueOnce(
+      new RateLimitError("editAnnouncement", {
+        reset: Date.now() + 60000,
+        remaining: 0,
+      })
+    );
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rate_limit" });
+  });
+
+  it("returns ok:true on a successful edit and calls updateAnnouncementBody", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 1,
+    }));
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("returns rls_denied when the update matches no row (non-organizer)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    }));
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns rls_denied on a coded 42501", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "42501", message: "rls" },
+      count: null,
+    }));
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+  });
+
+  it("returns announcement_edit_failed on an unexpected error", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: { code: "XXXXX", message: "unexpected" },
+      count: null,
+    }));
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    const result = await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result).toEqual({
+      ok: false,
+      errorKey: "announcement_edit_failed",
+    });
+  });
+
+  it("calls revalidatePath('/trips', 'layout') on success (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 1,
+    }));
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
+  });
+
+  it("does NOT call revalidatePath on failure (F2/#110)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("announcements", () => ({
+      data: null,
+      error: null,
+      count: 0,
+    }));
+    const { editAnnouncementAction } = await import(
+      "@/lib/actions/announcements"
+    );
+    await editAnnouncementAction(
+      {
+        tripId: VALID_TRIP_ID,
+        announcementId: VALID_ANNOUNCEMENT_ID,
+        body: "Updated body.",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+});

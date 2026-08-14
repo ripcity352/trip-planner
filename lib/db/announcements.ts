@@ -151,6 +151,36 @@ export async function setAnnouncementPinned(
   }
 }
 
+/**
+ * Update an announcement's body text. Organizer-only via RLS (UPDATE
+ * policy — `"announcements: organizers update"` is column-unrestricted,
+ * so this reuses the same policy `setAnnouncementPinned` relies on; no
+ * migration needed). Mirrors `setAnnouncementPinned` exactly (#544).
+ */
+export async function updateAnnouncementBody(
+  supabase: SupabaseClient,
+  announcementId: string,
+  body: string
+): Promise<void> {
+  const { error, count } = await supabase
+    .from("announcements")
+    .update({ body }, { count: "exact" })
+    .eq("id", announcementId);
+
+  if (error) {
+    throw new AnnouncementDbError(
+      `updateAnnouncementBody failed: ${error.message}`,
+      error.code ?? null
+    );
+  }
+  if (!count) {
+    throw new AnnouncementDbError(
+      "updateAnnouncementBody matched no row",
+      ANNOUNCEMENT_NO_ROW
+    );
+  }
+}
+
 /** Slim shape for the dashboard glance line — body + timestamp only. */
 export type LatestAnnouncement = Pick<Announcement, "body" | "created_at">;
 

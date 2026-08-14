@@ -202,6 +202,11 @@ export const RATE_LIMIT_SCOPES = {
   // credential minting) — same posture as the other authed mutations.
   DELETE_ANNOUNCEMENT: "deleteAnnouncement",
   PIN_ANNOUNCEMENT: "pinAnnouncement",
+  // #544 — organizer edit (body correction) on announcements. Own bucket,
+  // same posture as DELETE_ANNOUNCEMENT/PIN_ANNOUNCEMENT — default 30/60s,
+  // fail-OPEN on shim (organizer content moderation, not credential
+  // minting).
+  EDIT_ANNOUNCEMENT: "editAnnouncement",
   // #549 — organizer-sent RSVP confirm-prompt (send/replace/dismiss). Low-
   // tap coordination surface; own bucket so a burst can't starve other
   // budgets. Default 30/60s; fail-OPEN on shim (a pending ask, never a

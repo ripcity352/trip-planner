@@ -405,8 +405,15 @@ export const M3_UI_STRINGS = {
   announcements_menu_aria: "Post options",
   announcements_menu_pin: "Pin",
   announcements_menu_unpin: "Unpin",
+  announcements_menu_edit: "Edit",
   announcements_menu_delete: "Delete",
   announcements_menu_delete_confirm: "Tap again to delete",
+  // #544 — organizer inline body edit (fix a typo without deleting +
+  // re-posting, which loses pin state/reactions/timestamp). No "edited"
+  // indicator — operator decision.
+  announcements_edit_body_label: "Edit the update",
+  announcements_edit_save: "Save it",
+  announcements_edit_cancel: "Cancel",
   // Travel legs / arrivals manifest (#37, Wave 4a)
   arrivals_pageTitle: "Arrivals",
   arrivals_heading: "Who's landing when",

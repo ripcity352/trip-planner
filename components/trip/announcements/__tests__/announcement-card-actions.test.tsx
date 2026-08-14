@@ -19,6 +19,7 @@ describe("AnnouncementCardActions", () => {
     typeof vi.fn<(pinned: boolean) => Promise<ErrorKey | null>>
   >;
   let onDeleteMock: ReturnType<typeof vi.fn<() => Promise<ErrorKey | null>>>;
+  let onEditMock: ReturnType<typeof vi.fn<() => void>>;
   let onPin: (pinned: boolean) => Promise<ErrorKey | null>;
   let onDelete: () => Promise<ErrorKey | null>;
 
@@ -27,6 +28,7 @@ describe("AnnouncementCardActions", () => {
       async () => null
     );
     onDeleteMock = vi.fn<() => Promise<ErrorKey | null>>(async () => null);
+    onEditMock = vi.fn<() => void>();
     onPin = onPinMock;
     onDelete = onDeleteMock;
   });
@@ -104,5 +106,54 @@ describe("AnnouncementCardActions", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /didn't stick/i
     );
+  });
+
+  // #544 — organizer edit item.
+  describe("Edit item (#544)", () => {
+    it("renders an Edit item and calls onEdit", async () => {
+      render(
+        <AnnouncementCardActions
+          pinned={false}
+          onPin={onPin}
+          onDelete={onDelete}
+          onEdit={onEditMock}
+        />
+      );
+      openMenu();
+      const item = await screen.findByRole("menuitem", { name: "Edit" });
+      fireEvent.click(item);
+      expect(onEditMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("still shows Pin and Delete alongside Edit", async () => {
+      render(
+        <AnnouncementCardActions
+          pinned={false}
+          onPin={onPin}
+          onDelete={onDelete}
+          onEdit={onEditMock}
+        />
+      );
+      openMenu();
+      expect(
+        await screen.findByRole("menuitem", { name: "Pin" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Edit" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("confirm-delete")
+      ).toBeInTheDocument();
+    });
+
+    it("does not render an Edit item when onEdit is omitted", async () => {
+      render(
+        <AnnouncementCardActions pinned={false} onPin={onPin} onDelete={onDelete} />
+      );
+      openMenu();
+      expect(
+        screen.queryByRole("menuitem", { name: "Edit" })
+      ).not.toBeInTheDocument();
+    });
   });
 });
