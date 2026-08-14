@@ -245,7 +245,13 @@ export type ErrorKey =
   // the tap (item deleted elsewhere mid-session). Deterministic, distinct
   // from the generic rls_denied so the sheet can close instead of blaming
   // the user's access.
-  | "shopping_item_gone";
+  | "shopping_item_gone"
+  // #620 — poll comments. Same `<feature>_<verb>_failed` (transient) /
+  // `<feature>_<verb>_rejected` (deterministic) split as the shopping
+  // comment keys above.
+  | "poll_comment_save_failed"
+  | "poll_comment_save_rejected"
+  | "poll_comment_delete_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -453,4 +459,11 @@ export const ERRORS: Record<ErrorKey, string> = {
   shopping_comment_delete_failed:
     "Couldn't remove that note. Try again in a sec.",
   shopping_item_gone: "That one's already gone from the list.",
+  // #620 — poll comments. Same transient/deterministic split as the
+  // shopping comment strings above.
+  poll_comment_save_failed:
+    "That comment didn't save — you might be offline. Try again in a sec.",
+  poll_comment_save_rejected:
+    "That comment didn't go through. Give it another shot.",
+  poll_comment_delete_failed: "Couldn't remove that comment. Try again in a sec.",
 };

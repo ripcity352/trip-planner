@@ -26,7 +26,9 @@ import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
 import { castPollVoteAction } from "@/lib/actions/polls";
 import { isPollClosed, leadingOptions } from "@/lib/db/polls";
-import type { PollOptionView, PollView } from "@/lib/db/types";
+import { PollCommentThread } from "./poll-comment-thread";
+import { PollCommentComposer } from "./poll-comment-composer";
+import type { PollComment, PollOptionView, PollView } from "@/lib/db/types";
 
 interface PollCardProps {
   view: PollView;
@@ -34,14 +36,43 @@ interface PollCardProps {
   canVote: boolean;
   /** F2/#400: PulsePoll's `refetch`, called after a successful vote. */
   onMutated?: () => void;
+  // #620 — poll comments (part 1/3 of #616). Threaded straight from the
+  // page's server-side fold (PollsDisclosure → PollsSection), NOT
+  // through PulsePoll's `view` — comments refresh via `router.refresh()`
+  // inside PollCommentThread (#349), never the Realtime channel.
+  /** This poll's comments, pre-enriched (authorDisplayName always set). */
+  comments: readonly PollComment[];
+  /** The viewer's trip_members.id — undefined hides the composer
+   * (no seat to author a comment as). */
+  viewerTripMemberId: string | undefined;
+  isViewerOrganizer: boolean;
+  viewerDisplayName: string | null;
+  /** Server-provided reference clock — see PollCommentThread re: hydration. */
+  now: Date;
 }
 
-export function PollCard({ view, canVote, onMutated }: PollCardProps) {
+export function PollCard({
+  view,
+  canVote,
+  onMutated,
+  comments,
+  viewerTripMemberId,
+  isViewerOrganizer,
+  viewerDisplayName,
+  now,
+}: PollCardProps) {
   const [pendingOption, setPendingOption] = React.useState<string | null>(
     null
   );
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
+  // Optimistic comments appended locally between "submitted" and the
+  // next `router.refresh()` reconciling real props (mirrors
+  // ShoppingItemSheet's `optimisticComments` — deduped against
+  // `comments` by idempotency_key so a refresh never double-renders one).
+  const [optimisticComments, setOptimisticComments] = React.useState<
+    readonly PollComment[]
+  >([]);
 
   const myOptionId = pendingOption ?? view.my_option_id;
   // Client-local "today" (date-only register). The server + RLS enforce
@@ -77,6 +108,26 @@ export function PollCard({ view, canVote, onMutated }: PollCardProps) {
     },
     [myOptionId, view.poll.id, onMutated]
   );
+
+  const mergedComments = React.useMemo(() => {
+    const known = new Set(
+      comments
+        .map((c) => c.idempotency_key)
+        .filter((k): k is string => k != null)
+    );
+    const stillPending = optimisticComments.filter(
+      (c) => c.idempotency_key == null || !known.has(c.idempotency_key)
+    );
+    return [...comments, ...stillPending];
+  }, [comments, optimisticComments]);
+
+  const handleCommentSubmitted = React.useCallback((comment: PollComment) => {
+    setOptimisticComments((prev) => [...prev, comment]);
+  }, []);
+
+  const handleCommentDeleted = React.useCallback((commentId: string) => {
+    setOptimisticComments((prev) => prev.filter((c) => c.id !== commentId));
+  }, []);
 
   const interactive = canVote && !closed;
 
@@ -123,6 +174,23 @@ export function PollCard({ view, canVote, onMutated }: PollCardProps) {
             {ERRORS[errorKey]}
           </p>
         ) : null}
+
+        <div className="border-border mt-1 flex flex-col gap-3 border-t pt-3">
+          <PollCommentThread
+            comments={mergedComments}
+            viewerTripMemberId={viewerTripMemberId}
+            isViewerOrganizer={isViewerOrganizer}
+            viewerDisplayName={viewerDisplayName}
+            now={now}
+            onDeleted={handleCommentDeleted}
+          />
+          {viewerTripMemberId !== undefined ? (
+            <PollCommentComposer
+              pollId={view.poll.id}
+              onSubmitted={handleCommentSubmitted}
+            />
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

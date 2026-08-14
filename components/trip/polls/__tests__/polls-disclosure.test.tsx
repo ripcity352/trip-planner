@@ -31,6 +31,13 @@ vi.mock("@/components/trip/pulse-poll", () => ({
 vi.mock("@/lib/actions/polls", () => ({
   createPollAction: vi.fn(),
   votePollAction: vi.fn(),
+  postPollCommentAction: vi.fn(),
+  deletePollCommentAction: vi.fn(),
+}));
+
+// PollCommentThread calls router.refresh() after a successful delete (#349).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
 }));
 
 const makePollView = (overrides: Partial<PollView["poll"]> = {}): PollView => ({
@@ -66,6 +73,10 @@ describe("PollsDisclosure", () => {
     tripId: "trip-1",
     isOrganizer: false,
     viewerTripMemberId: "member-1",
+    // #620 — poll comments. Not under test here; empty/neutral defaults.
+    commentsByPoll: {},
+    viewerDisplayName: null,
+    now: new Date("2026-08-13T12:00:00.000Z"),
   };
 
   beforeEach(() => {

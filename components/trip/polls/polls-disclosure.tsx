@@ -37,7 +37,7 @@ import {
   DASHBOARD_GLANCE_STRINGS,
   M5_UI_STRINGS,
 } from "@/lib/copy/empty-states";
-import type { PollView } from "@/lib/db/types";
+import type { PollComment, PollView } from "@/lib/db/types";
 
 import { PollsSection } from "./polls-section";
 
@@ -47,6 +47,12 @@ interface PollsDisclosureProps {
   /** The viewer's trip_members.id — undefined renders read-only polls. */
   viewerTripMemberId: string | undefined;
   initialViews: ReadonlyArray<PollView>;
+  // #620 — poll comments (part 1/3 of #616). Threaded straight through
+  // to PollsSection — see its module comment for why comments bypass
+  // PulsePoll's `fetchData`.
+  commentsByPoll: Readonly<Record<string, readonly PollComment[]>>;
+  viewerDisplayName: string | null;
+  now: Date;
 }
 
 export function PollsDisclosure({
@@ -54,6 +60,9 @@ export function PollsDisclosure({
   isOrganizer,
   viewerTripMemberId,
   initialViews,
+  commentsByPoll,
+  viewerDisplayName,
+  now,
 }: PollsDisclosureProps) {
   const [open, setOpen] = React.useState(false);
   const panelId = React.useId();
@@ -115,6 +124,9 @@ export function PollsDisclosure({
             isOrganizer={isOrganizer}
             viewerTripMemberId={viewerTripMemberId}
             initialViews={initialViews}
+            commentsByPoll={commentsByPoll}
+            viewerDisplayName={viewerDisplayName}
+            now={now}
           />
         </div>
       ) : null}

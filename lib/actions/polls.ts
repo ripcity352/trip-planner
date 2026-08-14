@@ -35,8 +35,18 @@ import {
   rateLimitedAction,
 } from "@/lib/rate-limit";
 import { isPollClosed } from "@/lib/db/polls";
+import {
+  POLL_COMMENT_COLUMNS,
+  POLL_COMMENT_NO_ROW,
+  PollCommentDbError,
+  deleteComment as deletePollCommentRow,
+} from "@/lib/db/poll-comments";
 import type { ErrorKey } from "@/lib/copy/errors";
-import type { TripVisibility } from "@/lib/db/types";
+import type { PollComment, TripVisibility } from "@/lib/db/types";
+
+type ServerSupabase = Awaited<
+  ReturnType<typeof import("@/lib/supabase/server").createClient>
+>;
 
 // =============================================================
 // zod schemas
@@ -73,6 +83,16 @@ const CAST_VOTE_SCHEMA = z.object({
   optionId: z.string().uuid(),
 });
 
+// #620 — poll comments (part 1/3 of #616).
+const POST_COMMENT_SCHEMA = z.object({
+  pollId: z.string().uuid(),
+  body: z.string().trim().min(1).max(500),
+});
+
+const DELETE_COMMENT_SCHEMA = z.object({
+  commentId: z.string().uuid(),
+});
+
 // =============================================================
 // Types
 // =============================================================
@@ -101,6 +121,24 @@ export interface CastPollVoteInput {
 
 export type CastPollVoteResult =
   | { ok: true; optionId: string }
+  | { ok: false; errorKey: ErrorKey };
+
+// #620 — poll comments.
+export interface PostPollCommentInput {
+  pollId: string;
+  body: string;
+}
+
+export type PostPollCommentResult =
+  | { ok: true; comment: PollComment }
+  | { ok: false; errorKey: ErrorKey };
+
+export interface DeletePollCommentInput {
+  commentId: string;
+}
+
+export type DeletePollCommentResult =
+  | { ok: true }
   | { ok: false; errorKey: ErrorKey };
 
 // =============================================================
@@ -343,5 +381,222 @@ export async function castPollVoteAction(
     }
     console.error("[polls] castPollVote unexpected:", err);
     return { ok: false, errorKey: "poll_vote_failed" };
+  }
+}
+
+// =============================================================
+// Poll comments (#620, part 1/3 of #616)
+//
+// A flat thread on each poll, visibility inherited from the poll's own
+// can_see_content(). Same envelope shape as the vote actions above
+// (discriminated union, zod at the boundary, rate-limited, idempotent),
+// but the error split follows the shopping-comment precedent
+// (lib/actions/shopping-item-comments.ts): `save_rejected` (deterministic
+// server rejection, e.g. a CHECK constraint) vs `save_failed` (codeless/
+// transient) are distinct copy, not both collapsed into the generic
+// `mapDbError` "validation_failed" bucket.
+// =============================================================
+
+type PollCommentErrorReason = "rls_denied" | "save_rejected" | "save_failed";
+
+class PollCommentActionError extends Error {
+  readonly reason: PollCommentErrorReason;
+  constructor(reason: PollCommentErrorReason) {
+    super(`poll_comment_action_error:${reason}`);
+    this.name = "PollCommentActionError";
+    this.reason = reason;
+  }
+}
+
+function pollCommentErrorKey(reason: PollCommentErrorReason): ErrorKey {
+  switch (reason) {
+    case "rls_denied":
+      return "rls_denied";
+    case "save_rejected":
+      return "poll_comment_save_rejected";
+    case "save_failed":
+      return "poll_comment_save_failed";
+  }
+}
+
+/**
+ * Resolve the parent poll's trip and the caller's own member row. The
+ * poll select runs under RLS — a poll the caller can't see (wrong trip,
+ * non-member, or hidden by visibility) resolves to null. Mirrors
+ * `resolveCommentContext` in shopping-item-comments.ts, kept as a local
+ * copy since the two files intentionally have no shared import
+ * (different table, different write shape).
+ */
+async function resolvePollCommentContext(
+  supabase: ServerSupabase,
+  pollId: string,
+  userId: string
+): Promise<{ tripId: string; tripMemberId: string } | null> {
+  const { data: poll } = await supabase
+    .from("polls")
+    .select("trip_id")
+    .eq("id", pollId)
+    .maybeSingle();
+
+  if (!poll) return null;
+  const tripId = (poll as { trip_id: string }).trip_id;
+
+  const { data: member } = await supabase
+    .from("trip_members")
+    .select("id")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!member) return null;
+
+  return { tripId, tripMemberId: (member as { id: string }).id };
+}
+
+/**
+ * Post a comment to a poll's thread. Idempotent on
+ * (poll_id, author_trip_member_id, idempotency_key) — a drunk
+ * double-tap replays the existing row instead of inserting a
+ * duplicate. Revalidates on success only (F2 — matches
+ * createPollAction / castPollVoteAction above); the client additionally
+ * calls `router.refresh()` after a confirmed success (#349 — the
+ * comment thread must not depend on the Realtime channel landing the
+ * INSERT).
+ */
+export async function postPollCommentAction(
+  input: PostPollCommentInput,
+  idempotencyKey: string
+): Promise<PostPollCommentResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const parsed = POST_COMMENT_SCHEMA.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { pollId, body } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  const context = await resolvePollCommentContext(supabase, pollId, userId);
+  if (!context) return { ok: false, errorKey: "rls_denied" };
+  const { tripId, tripMemberId } = context;
+
+  try {
+    const comment = await rateLimitedAction(
+      RATE_LIMIT_SCOPES.MUTATE_POLL_COMMENT,
+      userId,
+      async () => {
+        const { data, error } = await supabase
+          .from("poll_comments")
+          .insert({
+            poll_id: pollId,
+            trip_id: tripId,
+            author_trip_member_id: tripMemberId,
+            body,
+            idempotency_key: idempotencyKey,
+          })
+          .select(POLL_COMMENT_COLUMNS)
+          .single();
+
+        if (error) {
+          if (error.code === "23505") {
+            const { data: existing, error: fetchErr } = await supabase
+              .from("poll_comments")
+              .select(POLL_COMMENT_COLUMNS)
+              .eq("poll_id", pollId)
+              .eq("author_trip_member_id", tripMemberId)
+              .eq("idempotency_key", idempotencyKey)
+              .single();
+            if (fetchErr || !existing) {
+              throw new PollCommentActionError("save_failed");
+            }
+            return existing as PollComment;
+          }
+          if (error.code === "42501") {
+            throw new PollCommentActionError("rls_denied");
+          }
+          throw new PollCommentActionError(
+            error.code ? "save_rejected" : "save_failed"
+          );
+        }
+        return data as PollComment;
+      }
+    );
+    // F2: revalidate only on a genuine success.
+    revalidatePath("/trips", "layout");
+    return { ok: true, comment };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    if (err instanceof PollCommentActionError) {
+      return { ok: false, errorKey: pollCommentErrorKey(err.reason) };
+    }
+    console.error("[polls] postPollComment unexpected:", err);
+    return { ok: false, errorKey: "poll_comment_save_failed" };
+  }
+}
+
+/**
+ * Delete a comment. RLS (DELETE policy) restricts this to the comment's
+ * author or an organizer. A no-row match (already gone — double-tapped
+ * delete, or someone else beat the caller to it) converges to
+ * `{ ok: true }` — the desired end state (gone) already holds, mirroring
+ * `deleteShoppingComment`'s precedent. `idempotencyKey` is validated for
+ * shape (rule 9 surface consistency with every other action in this
+ * file) but unused for the write itself — a DELETE is naturally
+ * idempotent via the no-row convergence above, so there is no
+ * idempotency_key column to persist it against.
+ */
+export async function deletePollCommentAction(
+  input: DeletePollCommentInput,
+  idempotencyKey: string
+): Promise<DeletePollCommentResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const parsed = DELETE_COMMENT_SCHEMA.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { commentId } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  try {
+    await rateLimitedAction(
+      RATE_LIMIT_SCOPES.MUTATE_POLL_COMMENT,
+      userId,
+      () => deletePollCommentRow(supabase, commentId)
+    );
+    // F2: revalidate only on a genuine success.
+    revalidatePath("/trips", "layout");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    // Already gone — a double-tapped delete converges to success rather
+    // than falling into the shared NO_ROW->rls_denied collapse below.
+    if (
+      err instanceof PollCommentDbError &&
+      err.code === POLL_COMMENT_NO_ROW
+    ) {
+      return { ok: true };
+    }
+    if (err instanceof PollCommentDbError && err.code === "42501") {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    console.error("[polls] deletePollComment unexpected:", err);
+    return { ok: false, errorKey: "poll_comment_delete_failed" };
   }
 }

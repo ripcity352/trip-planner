@@ -721,3 +721,23 @@ export interface PollView {
   total_votes: number;
   my_option_id: string | null;
 }
+
+/**
+ * A flat comment on a poll (#620, part 1/3 of #616). Mirrors
+ * `ShoppingItemComment` exactly — `author_trip_member_id` FKs
+ * `trip_members(id) ON DELETE SET NULL` directly, so enrichment
+ * (`enrichPollComments`, lib/db/poll-comments.ts) resolves it against a
+ * trip_member_id-keyed map. null/missing resolves to
+ * M3_UI_STRINGS.announcements_author_fallback ("Someone") at the UI
+ * boundary, not "Guest" (resolveMemberName's roster fallback).
+ */
+export interface PollComment {
+  id: string;
+  poll_id: string;
+  trip_id: string;
+  author_trip_member_id: string | null;
+  body: string;
+  idempotency_key: string | null;
+  created_at: string;
+  authorDisplayName?: string;
+}
