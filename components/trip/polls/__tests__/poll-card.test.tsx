@@ -12,6 +12,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 vi.mock("@/lib/actions/polls", () => ({
   castPollVoteAction: vi.fn(),
+  retractPollVoteAction: vi.fn(),
   postPollCommentAction: vi.fn(),
   deletePollCommentAction: vi.fn(),
   addPollOptionAction: vi.fn(),
@@ -27,6 +28,7 @@ import {
   castPollVoteAction,
   deletePollCommentAction,
   postPollCommentAction,
+  retractPollVoteAction,
 } from "@/lib/actions/polls";
 import { PollCard } from "../poll-card";
 import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
@@ -34,6 +36,7 @@ import { ERRORS } from "@/lib/copy/errors";
 import type { PollComment, PollOptionView, PollView } from "@/lib/db/types";
 
 const mockVote = vi.mocked(castPollVoteAction);
+const mockRetract = vi.mocked(retractPollVoteAction);
 const mockPostComment = vi.mocked(postPollCommentAction);
 const mockDeleteComment = vi.mocked(deletePollCommentAction);
 const mockAddOption = vi.mocked(addPollOptionAction);
@@ -53,6 +56,10 @@ const defaultCommentProps = {
 function makeView(overrides?: {
   closes_on?: string | null;
   my_option_id?: string | null;
+  /** #627 — multi-choice own-selection set. Overrides my_option_id
+   * when provided. */
+  my_option_ids?: string[];
+  allowMultiple?: boolean;
   votesA?: number;
   votesB?: number;
   // #621 — an optional write-in third option, for attribution tests.
@@ -60,7 +67,10 @@ function makeView(overrides?: {
 }): PollView {
   const votesA = overrides?.votesA ?? 2;
   const votesB = overrides?.votesB ?? 1;
-  const myOptionId = overrides?.my_option_id ?? null;
+  const myOptionIds =
+    overrides?.my_option_ids ??
+    (overrides?.my_option_id ? [overrides.my_option_id] : []);
+  const isMine = (id: string) => myOptionIds.includes(id);
   const options: PollOptionView[] = [
     {
       option: {
@@ -71,7 +81,7 @@ function makeView(overrides?: {
         suggested_by_trip_member_id: null,
       },
       votes: votesA,
-      is_my_vote: myOptionId === "opt-a",
+      is_my_vote: isMine("opt-a"),
       suggested_by_display_name: null,
     },
     {
@@ -83,7 +93,7 @@ function makeView(overrides?: {
         suggested_by_trip_member_id: null,
       },
       votes: votesB,
-      is_my_vote: myOptionId === "opt-b",
+      is_my_vote: isMine("opt-b"),
       suggested_by_display_name: null,
     },
   ];
@@ -97,7 +107,7 @@ function makeView(overrides?: {
         suggested_by_trip_member_id: "member-o",
       },
       votes: overrides.writeIn.votes ?? 0,
-      is_my_vote: myOptionId === "opt-writein",
+      is_my_vote: isMine("opt-writein"),
       suggested_by_display_name: overrides.writeIn.suggestedByDisplayName,
     });
   }
@@ -111,10 +121,11 @@ function makeView(overrides?: {
       created_by: "member-org",
       idempotency_key: null,
       created_at: "2026-07-09T10:00:00.000Z",
+      allow_multiple: overrides?.allowMultiple ?? false,
     },
     options,
     total_votes: votesA + votesB + (overrides?.writeIn?.votes ?? 0),
-    my_option_id: myOptionId,
+    my_option_ids: myOptionIds,
   };
 }
 
@@ -122,6 +133,7 @@ describe("PollCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockVote.mockResolvedValue({ ok: true, optionId: "opt-a" });
+    mockRetract.mockResolvedValue({ ok: true });
     mockAddOption.mockResolvedValue({ ok: true, optionId: "opt-writein" });
   });
 
@@ -226,6 +238,168 @@ describe("PollCard", () => {
   });
 });
 
+// #627 — multi-choice poll voting.
+describe("PollCard multi-choice (#627)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockVote.mockResolvedValue({ ok: true, optionId: "opt-a" });
+    mockRetract.mockResolvedValue({ ok: true });
+    mockAddOption.mockResolvedValue({ ok: true, optionId: "opt-writein" });
+  });
+
+  it("renders checkbox rows (role=checkbox) instead of toggle buttons", () => {
+    render(
+      <PollCard
+        view={makeView({ allowMultiple: true })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    expect(screen.getByRole("checkbox", { name: /Steakhouse/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Omakase/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Steakhouse/ })).not.toBeInTheDocument();
+  });
+
+  it("selecting one option casts a vote WITHOUT deselecting an already-selected option", async () => {
+    render(
+      <PollCard
+        view={makeView({ allowMultiple: true, my_option_ids: ["opt-a"] })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Omakase/ }));
+    await waitFor(() => expect(mockVote).toHaveBeenCalledTimes(1));
+    expect(mockVote).toHaveBeenCalledWith(
+      { pollId: "poll-1", optionId: "opt-b" },
+      expect.any(String)
+    );
+    // The already-selected option stays checked — no retract call for it.
+    expect(mockRetract).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("checkbox", { name: /Steakhouse/ })
+    ).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("tapping an already-selected option retracts it (un-select)", async () => {
+    render(
+      <PollCard
+        view={makeView({ allowMultiple: true, my_option_ids: ["opt-a"] })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Steakhouse/ }));
+    await waitFor(() => expect(mockRetract).toHaveBeenCalledTimes(1));
+    expect(mockRetract).toHaveBeenCalledWith(
+      { pollId: "poll-1", optionId: "opt-a" },
+      expect.any(String)
+    );
+    expect(mockVote).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the optimistic check on a failed toggle", async () => {
+    mockVote.mockResolvedValue({ ok: false, errorKey: "poll_closed" });
+    render(
+      <PollCard
+        view={makeView({ allowMultiple: true })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Steakhouse/ }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(ERRORS.poll_closed)
+    );
+    expect(
+      screen.getByRole("checkbox", { name: /Steakhouse/ })
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("reconciles a stale override once the server truth agrees, so a later external change is reflected", async () => {
+    const { rerender } = render(
+      <PollCard
+        view={makeView({ allowMultiple: true })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Steakhouse/ }));
+    await waitFor(() => expect(mockVote).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByRole("checkbox", { name: /Steakhouse/ })
+    ).toHaveAttribute("aria-checked", "true");
+
+    // A refetch lands the server-confirmed state — the override should
+    // reconcile away (not needed anymore, since truth now agrees).
+    rerender(
+      <PollCard
+        view={makeView({ allowMultiple: true, my_option_ids: ["opt-a"] })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+
+    // A later external change (another device un-selects it) now shows
+    // through — proof the override was actually cleared, not just
+    // coincidentally matching.
+    rerender(
+      <PollCard
+        view={makeView({ allowMultiple: true, my_option_ids: [] })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: /Steakhouse/ })
+      ).toHaveAttribute("aria-checked", "false")
+    );
+  });
+
+  it("keeps other checkboxes interactive while one option's toggle is in flight", async () => {
+    let resolveVote!: (value: { ok: true; optionId: string }) => void;
+    mockVote.mockReturnValue(
+      new Promise((resolve) => {
+        resolveVote = resolve;
+      })
+    );
+    render(
+      <PollCard
+        view={makeView({ allowMultiple: true })}
+        canVote
+        onMutated={vi.fn()}
+        {...defaultCommentProps}
+      />
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /Steakhouse/ }));
+    await waitFor(() => expect(mockVote).toHaveBeenCalledTimes(1));
+
+    // Steakhouse's own request is in flight and disabled...
+    expect(
+      screen.getByRole("checkbox", { name: /Steakhouse/ })
+    ).toBeDisabled();
+    // ...but Omakase, an independent option, is NOT locked by it.
+    expect(
+      screen.getByRole("checkbox", { name: /Omakase/ })
+    ).not.toBeDisabled();
+
+    resolveVote({ ok: true, optionId: "opt-a" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: /Steakhouse/ })
+      ).not.toBeDisabled()
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // PollCommentThread + PollCommentComposer, mounted inside PollCard (#620,
 // part 1/3 of #616).
@@ -247,6 +421,7 @@ describe("PollCard comment thread (#620)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockVote.mockResolvedValue({ ok: true, optionId: "opt-a" });
+    mockRetract.mockResolvedValue({ ok: true });
     mockAddOption.mockResolvedValue({ ok: true, optionId: "opt-writein" });
   });
 
@@ -470,6 +645,7 @@ describe("PollCard write-in composer (#621)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockVote.mockResolvedValue({ ok: true, optionId: "opt-a" });
+    mockRetract.mockResolvedValue({ ok: true });
     mockAddOption.mockResolvedValue({ ok: true, optionId: "opt-writein" });
   });
 

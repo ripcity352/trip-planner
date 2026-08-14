@@ -8,15 +8,23 @@
  * Aggregate-only hard rule: counts, never voter names.
  *
  * Optimistic UI mirrors the date-poll member card: a transient pending
- * override wins over `view.my_option_id` while the action is in
+ * override wins over `view.my_option_ids` while the action is in
  * flight; on success we keep it AND call `onMutated` (PulsePoll's
  * `refetch`, F2/#400) so the voter's own tally updates without
  * depending on the Realtime channel. On failure we roll back and
  * surface an inline alert.
+ *
+ * #627 — `view.poll.allow_multiple` splits the interaction: a
+ * single-choice poll keeps the original tap-to-replace behavior (one
+ * pending override, all other rows implicitly deselect); a
+ * multi-choice poll renders checkboxes and tracks an independent
+ * optimistic override PER option, since any number can be selected at
+ * once and each toggle is its own add/remove round-trip.
  */
 
 import * as React from "react";
 import { format, parseISO } from "date-fns";
+import { CheckIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { M5_UI_STRINGS } from "@/lib/copy/empty-states";
 import { ERRORS, type ErrorKey } from "@/lib/copy/errors";
 import { ERROR_LINE_CLASS } from "@/lib/ui/error-surface";
-import { castPollVoteAction } from "@/lib/actions/polls";
+import { castPollVoteAction, retractPollVoteAction } from "@/lib/actions/polls";
 import { isPollClosed, leadingOptions } from "@/lib/db/polls";
 import { PollCommentThread } from "./poll-comment-thread";
 import { PollCommentComposer } from "./poll-comment-composer";
@@ -62,9 +70,23 @@ export function PollCard({
   viewerDisplayName,
   now,
 }: PollCardProps) {
+  // Single-choice: one pending override (the new sole selection) —
+  // unchanged from pre-#627 behavior.
   const [pendingOption, setPendingOption] = React.useState<string | null>(
     null
   );
+  // Multi-choice: an independent optimistic override PER option,
+  // keyed by option id — each toggle is its own add/remove round-trip
+  // and other options must not be affected.
+  const [multiOverrides, setMultiOverrides] = React.useState<
+    Record<string, boolean>
+  >({});
+  // Multi-choice: which options currently have an in-flight
+  // add/retract, so ONE toggle doesn't lock every checkbox in the
+  // list — the whole point of independent per-option round-trips.
+  const [pendingToggleIds, setPendingToggleIds] = React.useState<
+    ReadonlySet<string>
+  >(new Set());
   const [errorKey, setErrorKey] = React.useState<ErrorKey | null>(null);
   const [isPending, startTransition] = React.useTransition();
   // Optimistic comments appended locally between "submitted" and the
@@ -75,10 +97,45 @@ export function PollCard({
     readonly PollComment[]
   >([]);
 
-  const myOptionId = pendingOption ?? view.my_option_id;
+  const isMultiChoice = view.poll.allow_multiple;
+  const myOptionId = pendingOption ?? (view.my_option_ids[0] ?? null);
   // Client-local "today" (date-only register). The server + RLS enforce
   // the real deadline; this only picks the rendering.
   const closed = isPollClosed(view.poll.closes_on, format(new Date(), "yyyy-MM-dd"));
+
+  const isSelected = React.useCallback(
+    (optionId: string): boolean =>
+      isMultiChoice
+        ? (multiOverrides[optionId] ?? view.my_option_ids.includes(optionId))
+        : optionId === myOptionId,
+    [isMultiChoice, multiOverrides, myOptionId, view.my_option_ids]
+  );
+
+  // Drop any override once the server-confirmed `my_option_ids` agrees
+  // with it — otherwise a stale override permanently masks a change
+  // made elsewhere (another device, a Realtime-driven refetch) for
+  // that option, since `isSelected` above always prefers the override.
+  // React's documented "adjust state on a prop change" pattern —
+  // comparing during render (not inside useEffect) so the reconciled
+  // value is ready for THIS render instead of triggering an extra one.
+  const [reconciledFor, setReconciledFor] = React.useState(
+    view.my_option_ids
+  );
+  if (reconciledFor !== view.my_option_ids) {
+    setReconciledFor(view.my_option_ids);
+    setMultiOverrides((prev) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const [optionId, overridden] of Object.entries(prev)) {
+        if (overridden === view.my_option_ids.includes(optionId)) {
+          changed = true;
+          continue;
+        }
+        next[optionId] = overridden;
+      }
+      return changed ? next : prev;
+    });
+  }
 
   const handleVote = React.useCallback(
     (optionId: string) => {
@@ -98,7 +155,7 @@ export function PollCard({
             setErrorKey(result.errorKey);
             return;
           }
-          // Keep the override until the refetch lands the new my_option_id.
+          // Keep the override until the refetch lands the new my_option_ids.
           onMutated?.();
         } catch (err) {
           console.error("[polls] castPollVote threw:", err);
@@ -108,6 +165,47 @@ export function PollCard({
       });
     },
     [myOptionId, view.poll.id, onMutated]
+  );
+
+  const handleToggle = React.useCallback(
+    (optionId: string) => {
+      const wasSelected = isSelected(optionId);
+      const nextSelected = !wasSelected;
+      setMultiOverrides((prev) => ({ ...prev, [optionId]: nextSelected }));
+      setPendingToggleIds((prev) => new Set(prev).add(optionId));
+      setErrorKey(null);
+      const idempotencyKey = crypto.randomUUID();
+      startTransition(async () => {
+        try {
+          const result = nextSelected
+            ? await castPollVoteAction(
+                { pollId: view.poll.id, optionId },
+                idempotencyKey
+              )
+            : await retractPollVoteAction(
+                { pollId: view.poll.id, optionId },
+                idempotencyKey
+              );
+          if (!result.ok) {
+            setMultiOverrides((prev) => ({ ...prev, [optionId]: wasSelected }));
+            setErrorKey(result.errorKey);
+            return;
+          }
+          onMutated?.();
+        } catch (err) {
+          console.error("[polls] toggle poll vote threw:", err);
+          setMultiOverrides((prev) => ({ ...prev, [optionId]: wasSelected }));
+          setErrorKey("network");
+        } finally {
+          setPendingToggleIds((prev) => {
+            const next = new Set(prev);
+            next.delete(optionId);
+            return next;
+          });
+        }
+      });
+    },
+    [isSelected, view.poll.id, onMutated]
   );
 
   const mergedComments = React.useMemo(() => {
@@ -155,10 +253,15 @@ export function PollCard({
             <li key={optionView.option.id}>
               <OptionRow
                 optionView={optionView}
-                isMine={optionView.option.id === myOptionId}
+                isMine={isSelected(optionView.option.id)}
+                isMultiChoice={isMultiChoice}
                 interactive={interactive}
-                disabled={isPending}
-                onVote={handleVote}
+                disabled={
+                  isMultiChoice
+                    ? pendingToggleIds.has(optionView.option.id)
+                    : isPending
+                }
+                onVote={isMultiChoice ? handleToggle : handleVote}
               />
             </li>
           ))}
@@ -230,12 +333,17 @@ function outcomeLine(view: PollView): string {
 function OptionRow({
   optionView,
   isMine,
+  isMultiChoice,
   interactive,
   disabled,
   onVote,
 }: {
   optionView: PollOptionView;
   isMine: boolean;
+  /** #627 — a checkbox row (role="checkbox") instead of a toggle
+   * button (role="button", aria-pressed) — any number of these can be
+   * checked at once, unlike single-choice's mutually-exclusive rows. */
+  isMultiChoice: boolean;
   interactive: boolean;
   disabled: boolean;
   onVote: (optionId: string) => void;
@@ -273,14 +381,19 @@ function OptionRow({
     );
   }
 
+  const ariaLabel = (
+    isMultiChoice
+      ? M5_UI_STRINGS.polls_option_select_aria_template
+      : M5_UI_STRINGS.polls_option_vote_aria_template
+  ).replace("{label}", option.label);
+
   return (
     <button
       type="button"
-      aria-pressed={isMine}
-      aria-label={M5_UI_STRINGS.polls_option_vote_aria_template.replace(
-        "{label}",
-        option.label
-      )}
+      role={isMultiChoice ? "checkbox" : undefined}
+      aria-checked={isMultiChoice ? isMine : undefined}
+      aria-pressed={isMultiChoice ? undefined : isMine}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={() => onVote(option.id)}
       className={cn(
@@ -292,8 +405,26 @@ function OptionRow({
           : "border-border bg-muted text-muted-foreground hover:bg-muted/80"
       )}
     >
-      <span className="flex items-center justify-between">
-        <span>{option.label}</span>
+      <span className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2">
+          {/* #627 — a visible checkbox glyph on multi-choice rows so
+              "any number selectable" reads at a glance, distinct from
+              single-choice's tap-to-replace rows. */}
+          {isMultiChoice ? (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded-xs border",
+                isMine
+                  ? "border-primary-foreground bg-primary-foreground text-primary"
+                  : "border-current"
+              )}
+            >
+              {isMine ? <CheckIcon className="h-3 w-3" /> : null}
+            </span>
+          ) : null}
+          <span>{option.label}</span>
+        </span>
         <span className="text-xs tabular-nums">{votes}</span>
       </span>
       {attribution ? (

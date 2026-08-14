@@ -76,9 +76,19 @@ const CREATE_POLL_SCHEMA = z.object({
     .enum(["everyone", "organizers_only", "hide_from_celebrant"])
     .optional()
     .default("everyone"),
+  // #627 — organizer opt-in for multi-select voting. Defaults false:
+  // every poll before this axis existed (and every composer that
+  // hasn't wired the toggle yet) keeps single-choice behavior.
+  allowMultiple: z.boolean().optional().default(false),
 });
 
 const CAST_VOTE_SCHEMA = z.object({
+  pollId: z.string().uuid(),
+  optionId: z.string().uuid(),
+});
+
+// #627 — retract one option on a multi-choice poll.
+const RETRACT_VOTE_SCHEMA = z.object({
   pollId: z.string().uuid(),
   optionId: z.string().uuid(),
 });
@@ -116,6 +126,9 @@ export interface CreatePollInput {
   // back to "everyone" — an illusion of restriction. The action's zod
   // enum enforces this too.
   visibility?: Exclude<TripVisibility, "custom">;
+  /** #627. true = members may select any number of options. Defaults
+   * false (single-choice) — the only behavior before this axis existed. */
+  allowMultiple?: boolean;
 }
 
 export type CreatePollResult =
@@ -129,6 +142,16 @@ export interface CastPollVoteInput {
 
 export type CastPollVoteResult =
   | { ok: true; optionId: string }
+  | { ok: false; errorKey: ErrorKey };
+
+// #627 — un-select one option on a multi-choice poll.
+export interface RetractPollVoteInput {
+  pollId: string;
+  optionId: string;
+}
+
+export type RetractPollVoteResult =
+  | { ok: true }
   | { ok: false; errorKey: ErrorKey };
 
 // #621 — poll write-in options.
@@ -211,7 +234,8 @@ export async function createPollAction(
   if (!parsed.success) {
     return { ok: false, errorKey: "validation_failed" };
   }
-  const { tripId, question, options, closesOn, visibility } = parsed.data;
+  const { tripId, question, options, closesOn, visibility, allowMultiple } =
+    parsed.data;
 
   // A poll born closed is nonsense — closes_on must be today or later.
   if (closesOn && closesOn < todayIsoUtc()) {
@@ -259,6 +283,7 @@ export async function createPollAction(
             p_closes_on: closesOn ?? null,
             p_idempotency_key: idempotencyKey,
             p_options: options,
+            p_allow_multiple: allowMultiple,
           }
         );
 
@@ -292,12 +317,16 @@ export async function createPollAction(
 // =============================================================
 
 /**
- * Member action: cast (or switch) a single-choice vote. Upsert on the
- * (poll_id, trip_member_id) PK — a revote lands on the same row. RLS
- * WITH CHECK binds trip_member_id to the caller's own trip_members row
- * (H1 pattern — vote stuffing is structurally impossible) and enforces
- * the closes_on deadline at the DB; the checks here are the friendly
- * early rejections.
+ * Member action: cast a vote via the `cast_poll_vote` RPC (#627,
+ * SECURITY INVOKER — RLS on poll_votes is the real gate). On a
+ * single-choice poll this REPLACES any prior vote (the RPC deletes the
+ * caller's other rows on this poll before inserting); on a
+ * multi-choice poll it ADDS this option alongside any others already
+ * selected — un-selecting one is `retractPollVoteAction`. RLS's WITH
+ * CHECK binds trip_member_id to the caller's own trip_members row (H1
+ * pattern — vote stuffing is structurally impossible) and enforces the
+ * closes_on deadline at the DB; the checks here are the friendly early
+ * rejections.
  */
 export async function castPollVoteAction(
   input: CastPollVoteInput,
@@ -326,10 +355,14 @@ export async function castPollVoteAction(
       userId,
       async () => {
         // RLS-gated read: an invisible poll (non-member, or celebrant
-        // vs hide_from_celebrant) comes back empty — rls_denied.
+        // vs hide_from_celebrant) comes back empty — rls_denied. Kept
+        // as a friendly early check purely for the distinct
+        // `poll_closed` copy — cast_poll_vote's own RLS re-enforces
+        // the deadline regardless (H1 — never trust this app-layer
+        // check alone).
         const { data: poll, error: pollError } = await supabase
           .from("polls")
-          .select("trip_id, closes_on")
+          .select("closes_on")
           .eq("id", pollId)
           .maybeSingle();
         if (pollError) {
@@ -338,53 +371,28 @@ export async function castPollVoteAction(
         if (!poll) {
           return { ok: false as const, errorKey: "rls_denied" as const };
         }
-        const { trip_id: tripId, closes_on: closesOn } = poll as {
-          trip_id: string;
-          closes_on: string | null;
-        };
+        const { closes_on: closesOn } = poll as { closes_on: string | null };
 
         if (isPollClosed(closesOn, todayIsoUtc())) {
           return { ok: false as const, errorKey: "poll_closed" as const };
         }
 
-        // Resolve the caller's OWN member row — never trust a
-        // caller-supplied trip_member_id (H1).
-        const { data: member, error: memberError } = await supabase
-          .from("trip_members")
-          .select("id")
-          .eq("trip_id", tripId)
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (memberError) {
-          return { ok: false as const, errorKey: mapDbError(memberError) };
-        }
-        if (!member) {
-          return { ok: false as const, errorKey: "rls_denied" as const };
-        }
-        const { id: tripMemberId } = member as { id: string };
+        // #627 — single RPC handles both cardinalities: replace
+        // (single-choice) or add (multi-choice). Resolves the
+        // caller's OWN member row internally (H1 — never trusts a
+        // caller-supplied trip_member_id).
+        const { error: voteError } = await supabase.rpc("cast_poll_vote", {
+          p_poll_id: pollId,
+          p_option_id: optionId,
+          p_idempotency_key: idempotencyKey,
+        });
 
-        // Upsert on the PK so a revote is a single round-trip. The
-        // idempotency partial unique makes a same-key replay a no-op;
-        // the pair FK (option_id, poll_id) refuses cross-poll options.
-        const { error: upsertError } = await supabase
-          .from("poll_votes")
-          .upsert(
-            {
-              poll_id: pollId,
-              option_id: optionId,
-              trip_member_id: tripMemberId,
-              idempotency_key: idempotencyKey,
-              voted_at: new Date().toISOString(),
-            },
-            { onConflict: "poll_id,trip_member_id" }
-          );
-
-        if (upsertError) {
+        if (voteError) {
           console.error("[polls] castPollVote failed:", {
-            code: upsertError.code,
-            message: upsertError.message,
+            code: voteError.code,
+            message: voteError.message,
           });
-          return { ok: false as const, errorKey: mapDbError(upsertError) };
+          return { ok: false as const, errorKey: mapDbError(voteError) };
         }
 
         // F2 / #400: revalidate only on a genuine success — the voter's
@@ -398,6 +406,72 @@ export async function castPollVoteAction(
       return { ok: false, errorKey: "rate_limit" };
     }
     console.error("[polls] castPollVote unexpected:", err);
+    return { ok: false, errorKey: "poll_vote_failed" };
+  }
+}
+
+// =============================================================
+// retractPollVoteAction (#627 — multi-choice un-select)
+// =============================================================
+
+/**
+ * Member action: un-select ONE option on a multi-choice poll, via the
+ * `retract_poll_vote` RPC (SECURITY INVOKER — gated entirely by the
+ * existing "votes: retract own vote" RLS policy). Deleting an
+ * already-retracted vote converges to `{ ok: true }` — a double-tapped
+ * un-select is the desired end state (gone), not an error, mirroring
+ * `deletePollCommentAction`'s no-row convergence. Shares the
+ * CAST_POLL_VOTE rate-limit bucket — same tap-rate budget as casting.
+ */
+export async function retractPollVoteAction(
+  input: RetractPollVoteInput,
+  idempotencyKey: string
+): Promise<RetractPollVoteResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const parsed = RETRACT_VOTE_SCHEMA.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { pollId, optionId } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  try {
+    return await rateLimitedAction(
+      RATE_LIMIT_SCOPES.CAST_POLL_VOTE,
+      userId,
+      async () => {
+        const { error } = await supabase.rpc("retract_poll_vote", {
+          p_poll_id: pollId,
+          p_option_id: optionId,
+        });
+
+        if (error) {
+          console.error("[polls] retractPollVote failed:", {
+            code: error.code,
+            message: error.message,
+          });
+          return { ok: false as const, errorKey: mapDbError(error) };
+        }
+
+        // F2 / #400: revalidate only on a genuine success.
+        revalidatePath("/trips", "layout");
+        return { ok: true as const };
+      }
+    );
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[polls] retractPollVote unexpected:", err);
     return { ok: false, errorKey: "poll_vote_failed" };
   }
 }
