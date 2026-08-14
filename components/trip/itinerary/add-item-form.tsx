@@ -1,9 +1,12 @@
 "use client";
 
 /**
- * AddItemForm — organizer-only form to create an itinerary item.
+ * AddItemForm — form to create an itinerary item. Any trip member may
+ * add one; only organizers see the visibility picker (a non-organizer's
+ * plan is always 'everyone' — the server action forces this too, RLS is
+ * the real gate).
  *
- * Bottom-sheet triggered by the organizer. Fields match the Wave 1
+ * Bottom-sheet triggered from the itinerary page. Fields match the
  * addItineraryItem action schema: title, kind, day (starts_at), ends_at,
  * address, dress_code, visibility, activity_tag.
  *
@@ -143,6 +146,9 @@ export interface AddItemFormProps {
    * set (null-trip-dates gotcha). */
   tripStartsAt?: string | null;
   tripEndsAt?: string | null;
+  /** Only organizers get the visibility picker; a non-organizer's plan is
+   * always submitted as 'everyone' (the server also forces this). */
+  isOrganizer?: boolean;
   onSuccess: (item?: ItineraryItem) => void;
   onCancel: () => void;
 }
@@ -152,6 +158,7 @@ export function AddItemForm({
   tripTimezone,
   tripStartsAt,
   tripEndsAt,
+  isOrganizer = false,
   onSuccess,
   onCancel,
 }: AddItemFormProps) {
@@ -206,7 +213,7 @@ export function AddItemForm({
           endTime: values.endTime ?? null,
           address: values.address || null,
           dressCode: values.dressCode || null,
-          visibility: values.visibility,
+          visibility: isOrganizer ? values.visibility : "everyone",
           activityTag,
           costCents,
         },
@@ -375,24 +382,28 @@ export function AddItemForm({
         />
       </div>
 
-      {/* Visibility */}
-      <div>
-        <label htmlFor="add-visibility" className={labelClass}>
-          {M3_UI_STRINGS.itineraryForm_visibility_label}
-        </label>
-        <select
-          id="add-visibility"
-          {...register("visibility")}
-          disabled={isSubmitting}
-          className={inputClass}
-        >
-          {VISIBILITY_OPTIONS.map((v) => (
-            <option key={v} value={v}>
-              {VISIBILITY_LABELS[v]}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Visibility — organizer-only. A member's plan is always
+          'everyone' (server-forced, RLS-enforced); no picker to imply
+          otherwise. */}
+      {isOrganizer ? (
+        <div>
+          <label htmlFor="add-visibility" className={labelClass}>
+            {M3_UI_STRINGS.itineraryForm_visibility_label}
+          </label>
+          <select
+            id="add-visibility"
+            {...register("visibility")}
+            disabled={isSubmitting}
+            className={inputClass}
+          >
+            {VISIBILITY_OPTIONS.map((v) => (
+              <option key={v} value={v}>
+                {VISIBILITY_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       {/* Server error */}
       {serverErrorKey ? (

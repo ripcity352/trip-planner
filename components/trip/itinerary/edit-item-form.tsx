@@ -1,7 +1,11 @@
 "use client";
 
 /**
- * EditItemForm — organizer-only form to update or delete an itinerary item.
+ * EditItemForm — form to update or delete an itinerary item. Rendered for
+ * an organizer (any item) or a member editing their OWN item (RLS-gated;
+ * see EditItemFormSheet/ItemCard for the isOwnItem check that decides
+ * whether this mounts at all). Only organizers see the visibility picker
+ * — a non-organizer's item stays 'everyone' (the server also forces this).
  *
  * W2b: added startTime / endTime fields (UTC ISO-8601) rendered via the
  * trip's timezone. tripTimezone is a new required prop.
@@ -120,6 +124,10 @@ export interface EditItemFormProps {
   item: ItineraryItem;
   /** IANA timezone from `trips.timezone` — passed from the page level. */
   tripTimezone: string;
+  /** Only organizers get the visibility picker; a non-organizer editing
+   * their own item always submits 'everyone' (the server also forces
+   * this). */
+  isOrganizer?: boolean;
   onSuccess: (item: ItineraryItem) => void;
   onCancel: () => void;
   onDeleted: () => void;
@@ -128,6 +136,7 @@ export interface EditItemFormProps {
 export function EditItemForm({
   item,
   tripTimezone,
+  isOrganizer = false,
   onSuccess,
   onCancel,
   onDeleted,
@@ -198,7 +207,7 @@ export function EditItemForm({
           addressPlaceId: values.addressPlaceId || null,
           addressProvider: values.addressProvider || null,
           dressCode: values.dressCode || null,
-          visibility: values.visibility,
+          visibility: isOrganizer ? values.visibility : "everyone",
           activityTag: values.activityTags ?? [],
           costCents,
         },
@@ -351,24 +360,27 @@ export function EditItemForm({
         ) : null}
       </div>
 
-      {/* Visibility */}
-      <div>
-        <label htmlFor="edit-visibility" className={labelClass}>
-          {M3_UI_STRINGS.itineraryForm_visibility_label}
-        </label>
-        <select
-          id="edit-visibility"
-          {...register("visibility")}
-          disabled={isBusy}
-          className={inputClass}
-        >
-          {VISIBILITY_OPTIONS.map((v) => (
-            <option key={v} value={v}>
-              {VISIBILITY_LABELS[v]}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Visibility — organizer-only. A member's own item stays 'everyone'
+          (server-forced, RLS-enforced); no picker to imply otherwise. */}
+      {isOrganizer ? (
+        <div>
+          <label htmlFor="edit-visibility" className={labelClass}>
+            {M3_UI_STRINGS.itineraryForm_visibility_label}
+          </label>
+          <select
+            id="edit-visibility"
+            {...register("visibility")}
+            disabled={isBusy}
+            className={inputClass}
+          >
+            {VISIBILITY_OPTIONS.map((v) => (
+              <option key={v} value={v}>
+                {VISIBILITY_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
 
       {/* Delete confirmation text */}
       {deleteConfirm ? (

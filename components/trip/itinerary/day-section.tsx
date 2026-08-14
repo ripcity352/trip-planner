@@ -31,6 +31,9 @@ export interface DaySectionProps {
   /** #171: the viewer's own trip_member_id — forwarded to ItemCard for the
    * organizer on-behalf target picker (excludes self). */
   viewerMemberId: string;
+  /** Any-member-can-edit-own: the viewer's auth user id — forwarded to
+   * ItemCard for the own-item edit/delete affordance. */
+  viewerUserId: string;
   /** IANA timezone from `trips.timezone` — forwarded to ItemCard → EditItemFormSheet. */
   tripTimezone: string;
   /** #365: itemId → member flags (organizer: all members; member: own). */
@@ -59,6 +62,7 @@ export function DaySection({
   lodgingAssignmentsMap,
   tripMembers,
   viewerMemberId,
+  viewerUserId,
   tripTimezone,
   itemFlagsMap,
   inCount,
@@ -139,6 +143,7 @@ export function DaySection({
               lodgingAssignments={lodgingAssignmentsMap.get(item.id) ?? []}
               tripMembers={tripMembers}
               viewerMemberId={viewerMemberId}
+              viewerUserId={viewerUserId}
               tripTimezone={tripTimezone}
               itemFlags={itemFlagsMap.get(item.id) ?? []}
               inCount={inCount}

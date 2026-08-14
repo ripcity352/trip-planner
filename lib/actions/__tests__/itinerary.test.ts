@@ -290,6 +290,195 @@ describe("addItineraryItem", () => {
 });
 
 // ---------------------------------------------------------------------------
+// addItineraryItem / updateItineraryItem — any-member-can-add/edit-own
+// ---------------------------------------------------------------------------
+
+describe("addItineraryItem — any-member-can-add visibility forcing", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("forces visibility to 'everyone' for a non-organizer even when organizers_only is requested", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: "member-x", role: "attendee" },
+      error: null,
+    }));
+    tableResolvers.set("itinerary_items", () => ({
+      data: { ...mockItem, visibility: "everyone" },
+      error: null,
+    }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    await addItineraryItem(
+      {
+        tripId: VALID_TRIP_ID,
+        title: "Group breakfast",
+        kind: "meal",
+        day: "2026-06-15",
+        visibility: "organizers_only",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(insertCalls).toHaveLength(1);
+    expect(
+      (insertCalls[0].payload as Record<string, unknown>).visibility
+    ).toBe("everyone");
+  });
+
+  it("honors an organizer's requested visibility", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: "member-x", role: "organizer" },
+      error: null,
+    }));
+    tableResolvers.set("itinerary_items", () => ({
+      data: { ...mockItem, visibility: "organizers_only" },
+      error: null,
+    }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    await addItineraryItem(
+      {
+        tripId: VALID_TRIP_ID,
+        title: "Organizer-only briefing",
+        kind: "meal",
+        day: "2026-06-15",
+        visibility: "organizers_only",
+      },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(insertCalls).toHaveLength(1);
+    expect(
+      (insertCalls[0].payload as Record<string, unknown>).visibility
+    ).toBe("organizers_only");
+  });
+
+  it("a non-organizer's add still reaches the DB (ok: true) — RLS is the real gate, not this app-layer check", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: "member-x", role: "attendee" },
+      error: null,
+    }));
+    tableResolvers.set("itinerary_items", () => ({
+      data: mockItem,
+      error: null,
+    }));
+    const { addItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await addItineraryItem(
+      { tripId: VALID_TRIP_ID, title: "Dinner", kind: "meal", day: "2026-06-15" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("updateItineraryItem — any-member-can-edit-own visibility forcing", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("forces visibility to 'everyone' for a non-organizer even when organizers_only is requested", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: "member-x", role: "attendee" },
+      error: null,
+    }));
+    tableResolvers.set("itinerary_items", () => ({
+      data: { ...mockItem, visibility: "everyone" },
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    await updateItineraryItem(
+      { itemId: VALID_ITEM_ID, visibility: "organizers_only" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(updateCalls).toHaveLength(1);
+    expect(
+      (updateCalls[0].payload as Record<string, unknown>).visibility
+    ).toBe("everyone");
+  });
+
+  it("honors an organizer's requested visibility change", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("trip_members", () => ({
+      data: { id: "member-x", role: "organizer" },
+      error: null,
+    }));
+    tableResolvers.set("itinerary_items", () => ({
+      data: { ...mockItem, visibility: "organizers_only" },
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    await updateItineraryItem(
+      { itemId: VALID_ITEM_ID, visibility: "organizers_only" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(updateCalls).toHaveLength(1);
+    expect(
+      (updateCalls[0].payload as Record<string, unknown>).visibility
+    ).toBe("organizers_only");
+  });
+
+  it("a member's update of their own item (no visibility change) reaches the DB — RLS is the real own-vs-organizer gate", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({
+      data: mockItem,
+      error: null,
+    }));
+    const { updateItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await updateItineraryItem(
+      { itemId: VALID_ITEM_ID, title: "Renamed by owner" },
+      VALID_IDEMPOTENCY_KEY
+    );
+    expect(result.ok).toBe(true);
+    expect(updateCalls).toHaveLength(1);
+    // No visibility field in the payload — omitted entirely rather than
+    // forced, since the caller never asked to touch it.
+    expect(
+      (updateCalls[0].payload as Record<string, unknown>).visibility
+    ).toBeUndefined();
+  });
+});
+
+describe("deleteItineraryItem — any-member-can-delete-own", () => {
+  beforeEach(() => {
+    getUserMock.mockReset();
+    tableResolvers.clear();
+    insertCalls.length = 0;
+    updateCalls.length = 0;
+    deleteCalls.length = 0;
+    rateLimitedActionMock.mockClear();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => vi.resetModules());
+
+  it("a member's delete of their own item reaches the DB — RLS is the own-vs-organizer gate (no app-layer organizer check)", async () => {
+    primeAuth(VALID_USER_ID);
+    tableResolvers.set("itinerary_items", () => ({ data: null, error: null }));
+    const { deleteItineraryItem } = await import("@/lib/actions/itinerary");
+    const result = await deleteItineraryItem(VALID_ITEM_ID);
+    expect(result).toEqual({ ok: true });
+    expect(deleteCalls).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // addItineraryItem — Fix B: startTime/endTime write conversion
 // ---------------------------------------------------------------------------
 

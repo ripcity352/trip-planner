@@ -1,7 +1,9 @@
 "use client";
 
 /**
- * EditItemFormSheet — organizer-only client shell that toggles EditItemForm.
+ * EditItemFormSheet — client shell that toggles EditItemForm. Rendered by
+ * ItemCard for an organizer (any item) or a member on their OWN item
+ * (isOrganizer controls the visibility picker inside EditItemForm).
  *
  * Renders an "Edit" button in the ItemCard header (top-right corner).
  * On click, replaces the card content inline with the EditItemForm.
@@ -23,12 +25,15 @@ export interface EditItemFormSheetProps {
   item: ItineraryItem;
   /** IANA timezone from `trips.timezone` — passed from the page level. */
   tripTimezone: string;
+  /** Only organizers get the visibility picker in the mounted form. */
+  isOrganizer?: boolean;
   className?: string;
 }
 
 export function EditItemFormSheet({
   item,
   tripTimezone,
+  isOrganizer = false,
   className,
 }: EditItemFormSheetProps) {
   const router = useRouter();
@@ -50,6 +55,7 @@ export function EditItemFormSheet({
         <EditItemForm
           item={item}
           tripTimezone={tripTimezone}
+          isOrganizer={isOrganizer}
           onSuccess={handleSuccess}
           onCancel={() => setOpen(false)}
           onDeleted={handleDeleted}

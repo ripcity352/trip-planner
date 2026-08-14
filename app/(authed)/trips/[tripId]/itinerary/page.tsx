@@ -15,8 +15,13 @@
  *     able to read, though in practice RLS would hide those too).
  *   - The organizer sees all items + the visibility badge on each.
  *
- * Organizer add-item: wired via `<AddItemFormSheet>` at the bottom of
- * the page — client shell that toggles the form in/out of view.
+ * Add-item: wired via `<AddItemFormSheet>` at the bottom of the page —
+ * client shell that toggles the form in/out of view. ANY trip member can
+ * add a plan (task brief: tactical open-up); organizers get the full
+ * visibility picker, everyone else is pinned to 'everyone' inside the
+ * form/action (RLS is the real gate — see 20260814030000_itinerary_
+ * member_write.sql). `isOwnItem`/edit-delete affordances on existing
+ * items are threaded down via `viewerUserId`.
  */
 
 import { notFound } from "next/navigation";
@@ -136,6 +141,7 @@ export default async function ItineraryPage({ params }: PageProps) {
               lodgingAssignmentsMap={lodgingAssignmentsMap}
               tripMembers={tripMembers}
               viewerMemberId={viewer.id}
+              viewerUserId={user.id}
               tripTimezone={trip.timezone}
               itemFlagsMap={itemFlagsMap}
               inCount={rsvpCounts.going}
@@ -147,17 +153,17 @@ export default async function ItineraryPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* Organizer add-item CTA (client shell) */}
-      {isOrganizer ? (
-        <div className="mt-8">
-          <AddItemFormSheet
-            tripId={trip.id}
-            tripTimezone={trip.timezone}
-            tripStartsAt={trip.starts_at}
-            tripEndsAt={trip.ends_at}
-          />
-        </div>
-      ) : null}
+      {/* Add-item CTA (client shell) — any trip member gets the sheet;
+          isOrganizer controls whether the visibility picker renders. */}
+      <div className="mt-8">
+        <AddItemFormSheet
+          tripId={trip.id}
+          tripTimezone={trip.timezone}
+          tripStartsAt={trip.starts_at}
+          tripEndsAt={trip.ends_at}
+          isOrganizer={isOrganizer}
+        />
+      </div>
     </section>
   );
 }

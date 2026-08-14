@@ -9,11 +9,18 @@
  *     union — no throwing to the caller.
  *   - Idempotency key is required for addItineraryItem and
  *     updateItineraryItem (organizer-acting-on-behalf pattern).
- *   - RLS enforces organizer-only write access; the app-layer auth check
- *     is defense-in-depth and provides the user id for rate-limiting.
+ *   - Tactical "any member can add a plan" change (see task brief): ANY
+ *     authenticated trip member may add a plan; a member may edit/delete
+ *     the plans they created; organizers keep full access to every plan
+ *     (any visibility, any row). RLS (20260814030000_itinerary_member_write.sql)
+ *     is the real gate — the app-layer isOrganizer resolution here is
+ *     defense-in-depth AND is what forces a non-organizer's visibility to
+ *     'everyone' before the row is even sent (correct UX: the client never
+ *     gets to imply a hidden plan it can't actually create).
  *   - deleteItineraryItem does not use an idempotency key — deletes are
  *     idempotent by nature (second delete returns rls_denied which
- *     the UI treats as success).
+ *     the UI treats as success). It has never had an app-layer organizer
+ *     gate — own-or-organizer is entirely RLS-governed.
  */
 
 import { z } from "zod";
@@ -25,9 +32,23 @@ import {
 } from "@/lib/rate-limit";
 import type { ErrorKey } from "@/lib/copy/errors";
 import type { ItineraryItem } from "@/lib/db/types";
-import { getTripById } from "@/lib/db/trips";
+import { getTripById, getViewerMember } from "@/lib/db/trips";
 import { getItineraryItem } from "@/lib/db/itinerary";
 import { isoToDbDate, isoToDbTime } from "@/lib/utils/format-trip-tz";
+
+/**
+ * Resolve whether `userId` is an organizer/co-organizer of `tripId`.
+ * Returns false for a non-member (RLS is still the real gate for that
+ * case — this only decides whether to force visibility = 'everyone').
+ */
+async function resolveIsOrganizer(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tripId: string,
+  userId: string
+): Promise<boolean> {
+  const member = await getViewerMember(supabase, tripId, userId);
+  return member?.role === "organizer" || member?.role === "co_organizer";
+}
 
 // ---------------------------------------------------------------------------
 // Shared schemas
@@ -120,7 +141,11 @@ export interface AddItineraryItemInput {
 }
 
 /**
- * Create an itinerary item. Organizer-only via RLS.
+ * Create an itinerary item. Any trip member may add one (RLS-gated); a
+ * non-organizer's plan is always forced to visibility = 'everyone'
+ * regardless of what the client sent — RLS also enforces this, but
+ * forcing it here means the caller's own optimistic UI never shows a
+ * visibility that wouldn't actually persist.
  * Idempotency key prevents duplicate inserts on retry.
  */
 export async function addItineraryItem(
@@ -177,6 +202,12 @@ export async function addItineraryItem(
     tripTimezone = trip.timezone;
   }
 
+  // Any-member-can-add: a non-organizer is pinned to visibility =
+  // 'everyone' regardless of what was requested. RLS enforces this too
+  // (the real gate) — this is defense-in-depth + correct client UX.
+  const isOrganizer = await resolveIsOrganizer(supabase, tripId, userId);
+  const effectiveVisibility = isOrganizer ? (visibility ?? "everyone") : "everyone";
+
   try {
     const item = await rateLimitedAction(
       RATE_LIMIT_SCOPES.CREATE_ITINERARY_ITEM,
@@ -203,7 +234,7 @@ export async function addItineraryItem(
             currency: currency ?? "USD",
             activity_tag: activityTag ?? [],
             dress_code: dressCode ?? null,
-            visibility: visibility ?? "everyone",
+            visibility: effectiveVisibility,
             idempotency_key: idempotencyKey,
             created_by: userId,
           })
@@ -284,7 +315,10 @@ export interface UpdateItineraryItemInput {
 }
 
 /**
- * Update an itinerary item. Organizer-only via RLS.
+ * Update an itinerary item. Own-or-organizer via RLS: a non-organizer may
+ * update only the plan they created; an organizer may update any plan.
+ * A non-organizer's visibility is always forced to 'everyone' — they can
+ * never move their own plan off the default (RLS also enforces this).
  * Idempotency key is required for replay safety on flaky connections.
  */
 export async function updateItineraryItem(
@@ -310,20 +344,40 @@ export async function updateItineraryItem(
 
   const { itemId, ...fields } = parsed.data;
 
-  // Fix B (P0): same trip-tz reduction as addItineraryItem. Only fetch the
-  // item's trip + the trip's timezone (two extra round-trips) when a time
-  // field was actually provided in this update.
+  // #664: `visibility` carries a zod `.default("everyone")` inherited from
+  // addItemSchema — under `.partial()` that default still fires on parse,
+  // so `fields.visibility` is NEVER undefined regardless of whether the
+  // caller actually passed it. Read the caller's INTENT off the raw
+  // `input` (pre-parse) instead, so an omitted visibility behaves like
+  // "not touching visibility" (matches every pre-existing caller/test),
+  // while an explicit visibility (organizer or member UI both always
+  // send one) still drives the isOrganizer-forcing decision below.
+  const visibilityRequested = input.visibility !== undefined;
+
+  // Any-member-can-edit-own: only look up the item's trip (extra round
+  // trip) when we actually need it — either for the Fix B tz reduction
+  // (time fields provided) or to resolve isOrganizer (visibility being
+  // changed, which decides whether the request is honored or pinned to
+  // 'everyone'). Own-vs-organizer row access itself is entirely
+  // RLS-governed; this lookup never gates access, only the visibility
+  // decision below.
   let tripTimezone: string | null = null;
-  if (fields.startTime !== undefined || fields.endTime !== undefined) {
+  let isOrganizer = false;
+  const needsTripLookup =
+    fields.startTime !== undefined || fields.endTime !== undefined || visibilityRequested;
+  if (needsTripLookup) {
     const existingItem = await getItineraryItem(supabase, itemId);
     if (!existingItem) {
       return { ok: false, errorKey: "rls_denied" };
     }
-    const trip = await getTripById(supabase, existingItem.trip_id);
-    if (!trip) {
-      return { ok: false, errorKey: "rls_denied" };
+    isOrganizer = await resolveIsOrganizer(supabase, existingItem.trip_id, userId);
+    if (fields.startTime !== undefined || fields.endTime !== undefined) {
+      const trip = await getTripById(supabase, existingItem.trip_id);
+      if (!trip) {
+        return { ok: false, errorKey: "rls_denied" };
+      }
+      tripTimezone = trip.timezone;
     }
-    tripTimezone = trip.timezone;
   }
 
   // Build partial update payload — only include fields that were provided
@@ -353,7 +407,16 @@ export async function updateItineraryItem(
   if (fields.currency !== undefined) updatePayload.currency = fields.currency;
   if (fields.activityTag !== undefined) updatePayload.activity_tag = fields.activityTag;
   if (fields.dressCode !== undefined) updatePayload.dress_code = fields.dressCode;
-  if (fields.visibility !== undefined) updatePayload.visibility = fields.visibility;
+  // Any-member-can-edit-own: a non-organizer's requested visibility is
+  // pinned to 'everyone' — they can never move their own plan off the
+  // default. RLS's with-check enforces this too; this keeps the write
+  // consistent with what will actually persist. Gated on
+  // `visibilityRequested` (the caller's actual intent), not
+  // `fields.visibility !== undefined` (always true — see the comment
+  // above where visibilityRequested is computed).
+  if (visibilityRequested) {
+    updatePayload.visibility = isOrganizer ? fields.visibility : "everyone";
+  }
 
   try {
     const item = await rateLimitedAction(
