@@ -61,6 +61,11 @@ const baseFormSchema = z.object({
   // W2a: Places autocomplete columns (#166).
   addressPlaceId: z.string().trim().max(255).optional(),
   addressProvider: z.enum(["google"]).optional(),
+  // #633: venue name — a simpler plain-text field, distinct from the
+  // Places-autocomplete `address` (deep-linkable) field above.
+  location: z.string().trim().max(200).optional(),
+  // #632: freeform notes.
+  notes: z.string().trim().max(2000).optional(),
   dressCode: z.string().trim().max(200).optional(),
   visibility: z.enum(VISIBILITY_OPTIONS),
   // W1b: chip picker emits string[]; server action takes string[] (#164).
@@ -170,6 +175,8 @@ export function EditItemForm({
       address: item.address ?? "",
       addressPlaceId: item.address_place_id ?? undefined,
       addressProvider: (item.address_provider as "google" | undefined) ?? undefined,
+      location: item.location ?? "",
+      notes: item.notes ?? "",
       dressCode: item.dress_code ?? "",
       visibility:
         (item.visibility as (typeof VISIBILITY_OPTIONS)[number]) ?? "everyone",
@@ -206,6 +213,8 @@ export function EditItemForm({
           address: values.address || null,
           addressPlaceId: values.addressPlaceId || null,
           addressProvider: values.addressProvider || null,
+          location: values.location || null,
+          notes: values.notes || null,
           dressCode: values.dressCode || null,
           visibility: isOrganizer ? values.visibility : "everyone",
           activityTag: values.activityTags ?? [],
@@ -313,6 +322,25 @@ export function EditItemForm({
         />
       </div>
 
+      {/* Location — #633: plain-text venue name, distinct from the
+          Places-autocomplete address below (venue name reads first). */}
+      <div>
+        <label htmlFor="edit-location" className={labelClass}>
+          {M3_UI_STRINGS.itineraryForm_location_label}
+        </label>
+        <input
+          id="edit-location"
+          type="text"
+          {...register("location")}
+          placeholder={M3_UI_STRINGS.itineraryForm_location_placeholder}
+          disabled={isBusy}
+          className={inputClass}
+        />
+        {errors.location ? (
+          <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.location.message}</p>
+        ) : null}
+      </div>
+
       {/* Address — W2a: places-API autocomplete widget (#166) */}
       <AddressField
         address={watch("address") ?? ""}
@@ -338,6 +366,25 @@ export function EditItemForm({
         onChange={(v) => setValue("activityTags", v, { shouldValidate: true })}
         disabled={isBusy}
       />
+
+      {/* Notes — #632: freeform notes, no UI previously despite full DB
+          plumbing. */}
+      <div>
+        <label htmlFor="edit-notes" className={labelClass}>
+          {M3_UI_STRINGS.itineraryForm_notes_label}
+        </label>
+        <textarea
+          id="edit-notes"
+          rows={3}
+          {...register("notes")}
+          placeholder={M3_UI_STRINGS.itineraryForm_notes_placeholder}
+          disabled={isBusy}
+          className={inputClass}
+        />
+        {errors.notes ? (
+          <p className={cn(ERROR_LINE_CLASS, "mt-1 text-xs")}>{errors.notes.message}</p>
+        ) : null}
+      </div>
 
       {/* Cost — optional, no asterisk (hard-banned). Clearing this field
           clears the item's cost (#394 — see the LOAD-BEARING note above

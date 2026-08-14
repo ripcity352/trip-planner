@@ -84,6 +84,64 @@ describe("EditItemForm", () => {
     expect(dressInput.value).toBe("Smart casual");
   });
 
+  // #633: location field
+  describe("location", () => {
+    it("pre-fills the location from the item", () => {
+      render(
+        <EditItemForm {...defaultProps} item={{ ...baseItem, location: "The Airbnb" }} />
+      );
+      const locationInput = screen.getByLabelText(/location/i) as HTMLInputElement;
+      expect(locationInput.value).toBe("The Airbnb");
+    });
+
+    it("includes the updated location in the updateItineraryItem call", async () => {
+      render(<EditItemForm {...defaultProps} />);
+      fireEvent.change(screen.getByLabelText(/location/i), {
+        target: { value: "Rafting Co. HQ" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({ itemId: "item-abc", location: "Rafting Co. HQ" }),
+          expect.any(String)
+        );
+      });
+    });
+  });
+
+  // #632: notes field
+  describe("notes", () => {
+    it("pre-fills the notes from the item", () => {
+      render(
+        <EditItemForm
+          {...defaultProps}
+          item={{ ...baseItem, notes: "Bring cash for the door" }}
+        />
+      );
+      const notesInput = screen.getByLabelText(/notes/i) as HTMLTextAreaElement;
+      expect(notesInput.value).toBe("Bring cash for the door");
+    });
+
+    it("includes the updated notes in the updateItineraryItem call", async () => {
+      render(<EditItemForm {...defaultProps} />);
+      fireEvent.change(screen.getByLabelText(/notes/i), {
+        target: { value: "Meet at the lobby at 7" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /save it/i }));
+
+      await waitFor(() => {
+        expect(mockUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            itemId: "item-abc",
+            notes: "Meet at the lobby at 7",
+          }),
+          expect.any(String)
+        );
+      });
+    });
+  });
+
   it("renders Save it, Cancel, and Delete buttons", () => {
     render(<EditItemForm {...defaultProps} />);
     expect(screen.getByRole("button", { name: /save it/i })).toBeInTheDocument();
