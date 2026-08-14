@@ -560,6 +560,46 @@ describe("ArrivalsManifest — two sections (#477)", () => {
     );
   });
 
+  // #614 — departures ("Heading home") day-group under trip-local headers on
+  // depart_at, just like arrivals do on arrive_at. Multi-day departures were
+  // previously a flat, undated list.
+  it("renders outbound legs under trip-local day headers for multi-day departures", () => {
+    renderManifest([
+      legFor(1, { arrive_at: "2026-08-14T10:00:00Z" }),
+      legFor(2, {
+        direction: "outbound",
+        arrive_at: null,
+        depart_at: "2026-08-16T17:30:00Z",
+      }),
+      legFor(3, {
+        direction: "outbound",
+        arrive_at: null,
+        depart_at: "2026-08-17T06:01:00Z",
+      }),
+    ]);
+
+    // Two distinct departure days each get their own header.
+    expect(screen.getByText("sun 16")).toBeInTheDocument();
+    expect(screen.getByText("mon 17")).toBeInTheDocument();
+  });
+
+  // #614 — the same day-grouping holds in Full (card) density.
+  it("renders outbound day headers in Full density too", () => {
+    renderManifest([
+      legFor(2, {
+        direction: "outbound",
+        arrive_at: null,
+        depart_at: "2026-08-16T17:30:00Z",
+      }),
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: M3_UI_STRINGS.arrivals_view_toggle_full,
+      })
+    );
+    expect(screen.getByText("sun 16")).toBeInTheDocument();
+  });
+
   it("renders the ride-share line when 2+ people land at the same airport within an hour", () => {
     renderManifest([
       legFor(1, { airport: "LAX", arrive_at: "2026-08-14T10:00:00Z" }),
