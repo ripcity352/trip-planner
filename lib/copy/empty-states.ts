@@ -746,9 +746,12 @@ export const M5_UI_STRINGS = {
   // own" affordance under the option list, open-poll-only. Precise,
   // not cute (per feedback: functional state-machine copy wants exact
   // labels over vague hype).
+  // No separate submit aria-label: the button's visible text ("Add
+  // your own option") already yields a fine accessible name — an
+  // aria-label that doesn't contain the visible label would violate
+  // WCAG 2.5.3 (label-in-name).
   polls_writein_add_cta: "Add your own option",
   polls_writein_placeholder: "Type an option…",
-  polls_writein_submit_aria: "Add option",
   // {name} interpolated via .replace, same pattern as
   // polls_comment_author_line_template. Renders ONLY on write-ins —
   // organizer-composed options show no attribution line.

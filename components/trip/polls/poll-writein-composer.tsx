@@ -99,7 +99,6 @@ export function PollWriteInComposer({
           variant="outline"
           disabled={!canSubmit}
           aria-busy={isPending}
-          aria-label={M5_UI_STRINGS.polls_writein_submit_aria}
         >
           {M5_UI_STRINGS.polls_writein_add_cta}
         </Button>

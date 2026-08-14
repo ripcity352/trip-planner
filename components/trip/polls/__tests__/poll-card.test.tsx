@@ -535,7 +535,7 @@ describe("PollCard write-in composer (#621)", () => {
     fireEvent.change(input, { target: { value: "Sunday brunch" } });
     fireEvent.click(
       screen.getByRole("button", {
-        name: M5_UI_STRINGS.polls_writein_submit_aria,
+        name: M5_UI_STRINGS.polls_writein_add_cta,
       })
     );
 
@@ -567,7 +567,7 @@ describe("PollCard write-in composer (#621)", () => {
     );
     fireEvent.click(
       screen.getByRole("button", {
-        name: M5_UI_STRINGS.polls_writein_submit_aria,
+        name: M5_UI_STRINGS.polls_writein_add_cta,
       })
     );
 

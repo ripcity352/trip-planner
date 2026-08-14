@@ -256,10 +256,14 @@ begin
     raise exception 'CASE 7b FAILED: 11th add_poll_option on a full (10-option) poll was NOT denied';
   exception
     when others then
-      if sqlstate <> '22023' then
-        raise exception 'CASE 7b FAILED: expected 22023 (poll full), got % (%)', sqlstate, sqlerrm;
+      -- #474 convention: the full-poll condition raises its OWN
+      -- sqlstate (54000, program_limit_exceeded) — distinct from the
+      -- label-length guard's 22023 — so the action layer can map by
+      -- code alone, never message text.
+      if sqlstate <> '54000' then
+        raise exception 'CASE 7b FAILED: expected 54000 (poll full), got % (%)', sqlstate, sqlerrm;
       end if;
-      raise notice 'CASE 7b PASSED: 11th add_poll_option denied 22023 — poll is full (%)', sqlerrm;
+      raise notice 'CASE 7b PASSED: 11th add_poll_option denied 54000 — poll is full (%)', sqlerrm;
   end;
 end $$;
 

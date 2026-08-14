@@ -427,21 +427,26 @@ describe("addPollOptionAction", () => {
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
-  it("maps a 22023 'this poll is full' message to poll_option_full", async () => {
+  // #474 convention: map by error.code ONLY, never message text — the
+  // full-poll condition raises its own distinct sqlstate (54000), the
+  // label-length guard stays on 22023. Both cases below use an
+  // intentionally uninformative/misleading message to prove the
+  // mapping never inspects it.
+  it("maps RPC 54000 (program_limit_exceeded) to poll_option_full, by code alone", async () => {
     primeAuth(USER_ID);
     rpcMock.mockResolvedValue({
       data: null,
-      error: { code: "22023", message: "this poll is full" },
+      error: { code: "54000", message: "something unrelated" },
     });
     const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
     expect(result).toEqual({ ok: false, errorKey: "poll_option_full" });
   });
 
-  it("maps a 22023 bad-label message to validation_failed", async () => {
+  it("maps RPC 22023 (bad label) to validation_failed, by code alone", async () => {
     primeAuth(USER_ID);
     rpcMock.mockResolvedValue({
       data: null,
-      error: { code: "22023", message: "option labels must be 1-80 characters" },
+      error: { code: "22023", message: "this poll is full" },
     });
     const result = await addPollOptionAction(VALID_ADD, IDEM_KEY);
     expect(result).toEqual({ ok: false, errorKey: "validation_failed" });

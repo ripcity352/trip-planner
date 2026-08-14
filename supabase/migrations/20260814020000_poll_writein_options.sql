@@ -180,18 +180,22 @@ begin
   if v_option_id is not null then
     return v_option_id;
   end if;
-  -- Not a replay: v_option_id currently holds the pre-generated id
-  -- from the `declare` above (still fresh, never persisted) —
-  -- re-generate for clarity/defense-in-depth against any future
-  -- refactor that moves the replay check earlier.
+  -- Not a replay: the zero-row SELECT above set v_option_id to NULL
+  -- (a `select ... into` that matches no row always nulls the target,
+  -- it does NOT leave the prior value in place) — re-generate it here.
   v_option_id := gen_random_uuid();
 
   select coalesce(max(position) + 1, 0) into v_next_position
   from public.poll_options
   where poll_id = p_poll_id;
 
+  -- #474 convention: map by error.code, never message text. The
+  -- full-poll condition gets its OWN sqlstate (54000,
+  -- program_limit_exceeded) — distinct from the label-length guard's
+  -- 22023 above — so the action layer can distinguish them without
+  -- parsing the message string.
   if v_next_position > 9 then
-    raise exception 'this poll is full' using errcode = '22023';
+    raise exception 'this poll is full' using errcode = '54000';
   end if;
 
   begin

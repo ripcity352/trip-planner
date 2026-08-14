@@ -413,14 +413,15 @@ export async function castPollVoteAction(
  * seat). Idempotent on (poll_id, suggester, label) at the DB — a
  * same-label resubmit replays the ORIGINAL option id.
  *
- * Error mapping: 42501 -> rls_denied (not a member, poll invisible,
- * poll closed, or a bad seat bind — RLS collapses all of these to one
+ * Error mapping is by `error.code` ONLY — never message text (#474
+ * convention): 42501 -> rls_denied (not a member, poll invisible, poll
+ * closed, or a bad seat bind — RLS collapses all of these to one
  * code); 22004 -> validation_failed (missing idempotency key, should
- * never happen client-side); 22023 -> distinguished by message text
- * (mirrors the trips.ts slug-collision precedent) into the
- * deterministic `poll_option_full` (the 10-option cap) vs the generic
- * `validation_failed` (bad label — already caught by the zod schema,
- * so this is a defense-in-depth path).
+ * never happen client-side); 22023 -> validation_failed (bad label —
+ * already caught by the zod schema, so this is a defense-in-depth
+ * path); 54000 (program_limit_exceeded) -> the deterministic
+ * `poll_option_full` (the 10-option cap) — a DISTINCT sqlstate from
+ * 22023 specifically so this mapping never has to parse the message.
  */
 export async function addPollOptionAction(
   input: AddPollOptionInput,
@@ -459,13 +460,8 @@ export async function addPollOptionAction(
             code: error?.code,
             message: error?.message,
           });
-          if (error?.code === "22023") {
-            return {
-              ok: false as const,
-              errorKey: error.message?.includes("full")
-                ? ("poll_option_full" as const)
-                : ("validation_failed" as const),
-            };
+          if (error?.code === "54000") {
+            return { ok: false as const, errorKey: "poll_option_full" as const };
           }
           return {
             ok: false as const,
