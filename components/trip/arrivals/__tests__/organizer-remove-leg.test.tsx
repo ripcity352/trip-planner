@@ -8,7 +8,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { OrganizerRemoveLeg } from "../organizer-remove-leg";
 import { deleteTravelLeg } from "@/lib/actions/travel-legs";
 
@@ -79,5 +79,36 @@ describe("OrganizerRemoveLeg", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /couldn't delete that leg/i
     );
+  });
+
+  // Post-review fix: an inline armed control (no dropdown to close) must
+  // not stay armed forever — a later, unrelated tap would otherwise commit
+  // an accidental delete.
+  it("auto-disarms after the timeout and does not call deleteTravelLeg on a later tap", () => {
+    vi.useFakeTimers();
+    try {
+      deleteTravelLegMock.mockResolvedValue({ ok: true });
+      render(<OrganizerRemoveLeg legId="leg-1" />);
+
+      const button = screen.getByTestId("organizer-remove-leg");
+      fireEvent.click(button); // arm
+      expect(button).toHaveTextContent(/tap again/i);
+
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.getByTestId("organizer-remove-leg")).toHaveTextContent(
+        "Remove"
+      );
+
+      // A tap after the auto-disarm re-arms instead of committing.
+      fireEvent.click(screen.getByTestId("organizer-remove-leg"));
+      expect(deleteTravelLegMock).not.toHaveBeenCalled();
+      expect(screen.getByTestId("organizer-remove-leg")).toHaveTextContent(
+        /tap again/i
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
