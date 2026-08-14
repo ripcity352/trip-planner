@@ -25,6 +25,13 @@
  * or today ≤ closes_on. The count is computed from the server-fetched
  * `initialViews` — a static label, deliberately not realtime (the
  * expanded PollsSection stays fully live via PulsePoll).
+ *
+ * #622 — the row's *initial* expand/collapse state also reuses this
+ * open-count: ≥1 open poll defaults the panel open so a live vote isn't
+ * missed behind the collapsed row; zero open polls (all closed, or none)
+ * default collapsed. Purely an initial-render default — the user's own
+ * tap on the row still fully controls it afterward, and nothing else
+ * (badge, count callout, "you haven't voted") is added to the label.
  */
 
 import * as React from "react";
@@ -70,14 +77,17 @@ export function PollsDisclosure({
   viewerDisplayName,
   now,
 }: PollsDisclosureProps) {
-  const [open, setOpen] = React.useState(false);
-  const panelId = React.useId();
-
   // Date-only register (#211) — same "today" derivation as PollCard.
   const todayIso = format(new Date(), "yyyy-MM-dd");
   const openCount = initialViews.filter(
     (v) => !isPollClosed(v.poll.closes_on, todayIso)
   ).length;
+
+  // #622 — default-expand when a vote is live so members don't miss it;
+  // stays collapsed when there's nothing open. Initial state only — the
+  // user's own toggle still fully controls it afterward.
+  const [open, setOpen] = React.useState(() => openCount > 0);
+  const panelId = React.useId();
 
   // No polls at all and nothing to compose → no row. Organizers keep
   // the row (poll creation has no other surface — rule 11: the
