@@ -211,7 +211,13 @@ describe("ItemCard", () => {
 
   it("renders a MapsLink when address is present", () => {
     render(<ItemCard item={makeItem()} {...baseProps} />);
-    expect(screen.getByText("3131 Las Vegas Blvd S, Las Vegas, NV 89109")).toBeInTheDocument();
+    // #631: the address now also renders as its own muted text line above
+    // the MapsLink, so the address text appears twice — once as plain text,
+    // once as the (mocked) link's accessible text.
+    expect(
+      screen.getAllByText("3131 Las Vegas Blvd S, Las Vegas, NV 89109")
+    ).toHaveLength(2);
+    expect(screen.getByRole("link")).toBeInTheDocument();
   });
 
   it("does not render MapsLink when address is null", () => {
@@ -222,6 +228,37 @@ describe("ItemCard", () => {
   it("renders dress code when present", () => {
     render(<ItemCard item={makeItem()} {...baseProps} />);
     expect(screen.getByText(/smart casual/i)).toBeInTheDocument();
+  });
+
+  // #631/#632/#633: location + notes rendering
+  describe("location and notes", () => {
+    it("renders item.location text when set", () => {
+      render(
+        <ItemCard item={makeItem({ location: "The Airbnb" })} {...baseProps} />
+      );
+      expect(screen.getByText("The Airbnb")).toBeInTheDocument();
+    });
+
+    it("renders item.notes text when set", () => {
+      render(
+        <ItemCard
+          item={makeItem({ notes: "Bring cash for the door" })}
+          {...baseProps}
+        />
+      );
+      expect(screen.getByText("Bring cash for the door")).toBeInTheDocument();
+    });
+
+    it("renders nothing extra when both location and notes are null", () => {
+      render(
+        <ItemCard
+          item={makeItem({ location: null, notes: null, address: null })}
+          {...baseProps}
+        />
+      );
+      expect(screen.queryByText("The Airbnb")).not.toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    });
   });
 
   // #394: cost surface.

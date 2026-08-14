@@ -191,9 +191,19 @@ export function ItemCard({
         </span>
       ) : null}
 
-      {/* Address → Maps deep link */}
-      {item.address ? (
-        <MapsLink address={item.address} />
+      {/* #631/#633: location (venue name) + address text, then the Maps deep
+          link — location reads first since it's the human-readable venue
+          name, the address is the deep-linkable detail below it. */}
+      {item.location || item.address ? (
+        <div className="flex flex-col gap-0.5">
+          {item.location ? (
+            <p className="text-sm font-medium break-words">{item.location}</p>
+          ) : null}
+          {item.address ? (
+            <p className="text-muted-foreground text-xs break-words">{item.address}</p>
+          ) : null}
+          {item.address ? <MapsLink address={item.address} /> : null}
+        </div>
       ) : null}
 
       {/* Dress code */}
@@ -203,6 +213,13 @@ export function ItemCard({
             "{code}",
             item.dress_code
           )}
+        </p>
+      ) : null}
+
+      {/* #632: freeform notes */}
+      {item.notes ? (
+        <p className="text-muted-foreground text-xs whitespace-pre-wrap break-words">
+          {item.notes}
         </p>
       ) : null}
 
