@@ -433,6 +433,52 @@ describe("TravelLegCard — airport and origin (#477)", () => {
   });
 });
 
+// #615 — organizer remove affordance rendering.
+describe("TravelLegCard — organizer remove (#615)", () => {
+  it("renders the remove affordance when the viewer is an organizer and not the owner", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({ trip_member_id: "member-1" })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+        viewerIsOrganizer
+      />
+    );
+    expect(screen.getByTestId("organizer-remove-leg")).toBeInTheDocument();
+  });
+
+  it("does not render the remove affordance for the owner, even when the owner is an organizer", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({ trip_member_id: "member-1" })}
+        myTripMemberId="member-1"
+        ownerName="Dave"
+        tripTimezone="UTC"
+        viewerIsOrganizer
+      />
+    );
+    expect(
+      screen.queryByTestId("organizer-remove-leg")
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render the remove affordance for a non-organizer viewer", () => {
+    render(
+      <TravelLegCard
+        leg={makeLeg({ trip_member_id: "member-1" })}
+        myTripMemberId="member-99"
+        ownerName="Dave"
+        tripTimezone="UTC"
+        viewerIsOrganizer={false}
+      />
+    );
+    expect(
+      screen.queryByTestId("organizer-remove-leg")
+    ).not.toBeInTheDocument();
+  });
+});
+
 // #574 — pending co-traveler tag rendering.
 describe("TravelLegCard — pending co-traveler tag (#574)", () => {
   const pendingLeg = () =>
