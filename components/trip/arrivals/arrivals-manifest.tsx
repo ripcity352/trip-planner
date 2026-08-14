@@ -266,6 +266,7 @@ export function ArrivalsManifest({
       myDays={myDays}
       tripStartsAt={tripStartsAt}
       tripEndsAt={tripEndsAt}
+      viewerIsOrganizer={viewerIsOrganizer}
     />
   );
 

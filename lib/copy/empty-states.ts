@@ -495,6 +495,10 @@ export const M3_UI_STRINGS = {
   arrivals_tag_confirm_heading_template: "{name} says you're on this flight.",
   arrivals_tag_confirm_cta: "Yep, that's me",
   arrivals_tag_dismiss_cta: "Not me",
+  // #615 — organizer remove (Full card only, rule #11). Two-tap destructive
+  // confirm mirrors announcements_menu_delete / _delete_confirm's tone.
+  arrivals_organizer_remove: "Remove",
+  arrivals_organizer_remove_confirm: "Tap again to remove",
   // #574 follow-up — per-card "add who's on this flight". Any member adds
   // others onto an already-logged flight straight from its card (no re-entry
   // — the flight's own details are reused); each added person confirms.
