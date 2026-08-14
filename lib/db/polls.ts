@@ -27,6 +27,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import type {
   MyPollVote,
   Poll,
@@ -38,7 +39,10 @@ import type {
 
 const POLL_COLUMNS =
   "id, trip_id, question, visibility, closes_on, created_by, idempotency_key, created_at";
-const OPTION_COLUMNS = "id, poll_id, label, position";
+// #621 — suggested_by_trip_member_id rides along for write-in
+// attribution (resolved to a display name in buildPollViews).
+const OPTION_COLUMNS =
+  "id, poll_id, label, position, suggested_by_trip_member_id";
 // Own-vote read (#420): only the viewer's own poll → option pair. Never
 // selects trip_member_id of other members — the own-row RLS blocks it.
 const MY_VOTE_COLUMNS = "poll_id, option_id";
@@ -98,11 +102,18 @@ export async function countOpenPolls(
  * `viewerTripMemberId` may be undefined for a viewer without a member
  * row (shouldn't reach this surface, but defensive) — their views come
  * back with `my_option_id: null`.
+ *
+ * `memberMap` (#621) resolves write-in attribution — trip_members.id ->
+ * display_name, same contract as `enrichPollComments`'s memberMap.
+ * Optional/defaulted to an empty map so existing callers (and the
+ * client-side PulsePoll refetch, which may not have a fresh roster
+ * handy) don't break; a miss just falls back to "Someone".
  */
 export async function getPollsViewModel(
   supabase: SupabaseClient,
   tripId: string,
-  viewerTripMemberId: string | undefined
+  viewerTripMemberId: string | undefined,
+  memberMap: ReadonlyMap<string, string | null> = new Map()
 ): Promise<PollView[]> {
   const polls = await listPolls(supabase, tripId);
   if (polls.length === 0) return [];
@@ -148,7 +159,8 @@ export async function getPollsViewModel(
     polls,
     (optionsResult.data ?? []) as PollOption[],
     (countsResult.data ?? []) as PollVoteCount[],
-    (myVotesResult.data ?? []) as MyPollVote[]
+    (myVotesResult.data ?? []) as MyPollVote[],
+    memberMap
   );
 }
 
@@ -165,12 +177,20 @@ export async function getPollsViewModel(
  * `myVotes` is the viewer's OWN votes from the own-row read. The two
  * sources are kept separate at the DB so peers' votes never reach the
  * client — this function only maps them onto the view-model.
+ *
+ * `memberMap` (#621, defaults to empty) resolves each write-in
+ * option's `suggested_by_display_name`: a NULL suggester (organizer
+ * option) maps to `null` (no attribution line); a non-null suggester
+ * resolves via the map, falling back to the shared "Someone" author
+ * fallback on a miss (departed member) — same convention as
+ * `enrichPollComments`.
  */
 export function buildPollViews(
   polls: ReadonlyArray<Poll>,
   options: ReadonlyArray<PollOption>,
   counts: ReadonlyArray<PollVoteCount>,
-  myVotes: ReadonlyArray<MyPollVote>
+  myVotes: ReadonlyArray<MyPollVote>,
+  memberMap: ReadonlyMap<string, string | null> = new Map()
 ): PollView[] {
   const countsByOption = new Map<string, number>();
   for (const c of counts) {
@@ -193,6 +213,10 @@ export function buildPollViews(
       option,
       votes: countsByOption.get(option.id) ?? 0,
       is_my_vote: option.id === myOptionId,
+      suggested_by_display_name: option.suggested_by_trip_member_id
+        ? (memberMap.get(option.suggested_by_trip_member_id) ??
+          M3_UI_STRINGS.announcements_author_fallback)
+        : null,
     }));
 
     return {

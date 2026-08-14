@@ -665,8 +665,14 @@ export interface PollOption {
   id: string;
   poll_id: string;
   label: string;
-  /** Display order, 0–3 (the 2–4 option invariant caps at 4). */
+  /** Display order, 0–9 (#621 lifted the ceiling from 0–3 to fit
+   * write-ins; the organizer-composed 2–4 MINIMUM is unchanged). */
   position: number;
+  /** #621 — poll write-in options (part 2/3 of #616). NULL = original
+   * organizer option. Set = a member's write-in, attributed to their
+   * own trip_members row. ON DELETE SET NULL — a departed suggester's
+   * option survives, just loses its attribution line. */
+  suggested_by_trip_member_id: string | null;
 }
 
 export interface PollVote {
@@ -707,6 +713,12 @@ export interface PollOptionView {
   votes: number;
   /** True when this option is the viewer's own current choice. */
   is_my_vote: boolean;
+  /** #621 — resolved "suggested by" attribution. `null` for an
+   * organizer-composed option (suggested_by_trip_member_id is NULL) —
+   * renders NO attribution line. A non-null write-in resolves to the
+   * suggester's display name, or M3_UI_STRINGS.announcements_author_fallback
+   * ("Someone") if they've since left the trip. */
+  suggested_by_display_name: string | null;
 }
 
 /**

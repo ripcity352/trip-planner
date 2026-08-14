@@ -102,6 +102,9 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "poll_comment_save_failed",
   "poll_comment_save_rejected",
   "poll_comment_delete_failed",
+  // #621 — poll write-in options (part 2/3 of #616)
+  "poll_option_add_failed",
+  "poll_option_full",
   // #388 — day-scoped attendance chip save failure
   "member_day_save_failed",
   // #549 — organizer RSVP confirm-prompt send/confirm/dismiss failure

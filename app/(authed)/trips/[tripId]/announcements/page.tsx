@@ -89,10 +89,18 @@ export default async function AnnouncementsPage({ params }: PageProps) {
   // #390: the viewer's own member row (for vote attribution + own-choice
   // highlight). Undefined for a non-member viewer — read-only polls.
   const viewerTripMemberId = members.find((m) => m.user_id === user.id)?.id;
+  // #621 — trip_members.id -> display_name, built once and reused for
+  // BOTH poll comment attribution (below) and write-in option
+  // attribution. Built ahead of getPollsViewModel so the initial
+  // render already carries resolved "suggested by" names.
+  const memberMapById = new Map<string, string | null>(
+    members.map((m) => [m.id, m.display_name])
+  );
   const pollViews = await getPollsViewModel(
     supabase,
     trip.id,
-    viewerTripMemberId
+    viewerTripMemberId,
+    memberMapById
   );
 
   // Build user_id → display_name map for author attribution.
@@ -120,10 +128,8 @@ export default async function AnnouncementsPage({ params }: PageProps) {
 
   // #620 — poll comments. enrichPollComments expects a memberMap keyed
   // by trip_members.id (the author_trip_member_id FK target) — NOT
-  // user_id — same contract as the shopping-list comments precedent.
-  const memberMapById = new Map<string, string | null>(
-    members.map((m) => [m.id, m.display_name])
-  );
+  // user_id — same contract as the shopping-list comments precedent
+  // (memberMapById built above, ahead of getPollsViewModel).
   const enrichedPollComments = enrichPollComments(pollComments, memberMapById);
   // Single-pass O(n) group-by (the naive `reduce` + object-spread version
   // is O(n²) — it copies every key seen so far on every comment). The
@@ -168,6 +174,13 @@ export default async function AnnouncementsPage({ params }: PageProps) {
             viewerTripMemberId={viewerTripMemberId}
             initialViews={pollViews}
             commentsByPoll={commentsByPoll}
+            // #621 — plain object, not a Map: Server->Client props must
+            // be serializable (same reason commentsByPoll above is a
+            // Record, not a Map). PollsSection rebuilds a Map from this
+            // client-side for getPollsViewModel's refetch, so a
+            // realtime-refetched write-in still resolves its
+            // suggester's name instead of falling back to "Someone".
+            memberDisplayNameById={Object.fromEntries(memberMapById)}
             viewerDisplayName={viewerDisplayName}
             now={now}
           />

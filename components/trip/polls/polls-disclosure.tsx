@@ -51,6 +51,11 @@ interface PollsDisclosureProps {
   // to PollsSection — see its module comment for why comments bypass
   // PulsePoll's `fetchData`.
   commentsByPoll: Readonly<Record<string, readonly PollComment[]>>;
+  // #621 — trip_members.id -> display_name, plain object (serializable
+  // across the Server->Client boundary). Threaded through to
+  // PollsSection for write-in "suggested by" attribution on a
+  // client-side refetch.
+  memberDisplayNameById: Readonly<Record<string, string | null>>;
   viewerDisplayName: string | null;
   now: Date;
 }
@@ -61,6 +66,7 @@ export function PollsDisclosure({
   viewerTripMemberId,
   initialViews,
   commentsByPoll,
+  memberDisplayNameById,
   viewerDisplayName,
   now,
 }: PollsDisclosureProps) {
@@ -125,6 +131,7 @@ export function PollsDisclosure({
             viewerTripMemberId={viewerTripMemberId}
             initialViews={initialViews}
             commentsByPoll={commentsByPoll}
+            memberDisplayNameById={memberDisplayNameById}
             viewerDisplayName={viewerDisplayName}
             now={now}
           />

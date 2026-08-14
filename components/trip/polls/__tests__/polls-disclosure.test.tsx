@@ -33,6 +33,7 @@ vi.mock("@/lib/actions/polls", () => ({
   votePollAction: vi.fn(),
   postPollCommentAction: vi.fn(),
   deletePollCommentAction: vi.fn(),
+  addPollOptionAction: vi.fn(),
 }));
 
 // PollCommentThread calls router.refresh() after a successful delete (#349).
@@ -54,14 +55,28 @@ const makePollView = (overrides: Partial<PollView["poll"]> = {}): PollView => ({
   },
   options: [
     {
-      option: { id: "opt-1", poll_id: "poll-1", label: "Steakhouse", position: 0 },
+      option: {
+        id: "opt-1",
+        poll_id: "poll-1",
+        label: "Steakhouse",
+        position: 0,
+        suggested_by_trip_member_id: null,
+      },
       votes: 2,
       is_my_vote: false,
+      suggested_by_display_name: null,
     },
     {
-      option: { id: "opt-2", poll_id: "poll-1", label: "Omakase", position: 1 },
+      option: {
+        id: "opt-2",
+        poll_id: "poll-1",
+        label: "Omakase",
+        position: 1,
+        suggested_by_trip_member_id: null,
+      },
       votes: 1,
       is_my_vote: false,
+      suggested_by_display_name: null,
     },
   ],
   total_votes: 3,
@@ -75,6 +90,8 @@ describe("PollsDisclosure", () => {
     viewerTripMemberId: "member-1",
     // #620 — poll comments. Not under test here; empty/neutral defaults.
     commentsByPoll: {},
+    // #621 — write-in attribution. Not under test here; empty default.
+    memberDisplayNameById: {},
     viewerDisplayName: null,
     now: new Date("2026-08-13T12:00:00.000Z"),
   };

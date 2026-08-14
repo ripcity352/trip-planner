@@ -227,6 +227,10 @@ export const RATE_LIMIT_SCOPES = {
   // comment is content, not credential minting) — same posture as the
   // other authed trip-content mutations.
   MUTATE_POLL_COMMENT: "mutatePollComment",
+  // #621 — poll write-in options (part 2/3 of #616). Own bucket, same
+  // posture as MUTATE_POLL_COMMENT: a write-in add is low-tap content,
+  // not credential minting. Default 30/60s; fail-OPEN on shim.
+  ADD_POLL_OPTION: "addPollOption",
 } as const;
 
 export type RateLimitScope =

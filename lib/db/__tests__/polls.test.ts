@@ -92,12 +92,22 @@ const OPT_A: PollOption = {
   poll_id: "poll-1",
   label: "Steakhouse",
   position: 0,
+  suggested_by_trip_member_id: null,
 };
 const OPT_B: PollOption = {
   id: "opt-b",
   poll_id: "poll-1",
   label: "Omakase",
   position: 1,
+  suggested_by_trip_member_id: null,
+};
+// #621 — a member write-in, for the attribution tests below.
+const OPT_WRITEIN: PollOption = {
+  id: "opt-writein",
+  poll_id: "poll-1",
+  label: "Sunday brunch",
+  position: 2,
+  suggested_by_trip_member_id: "member-o",
 };
 
 function count(optionId: string, votes: number): PollVoteCount {
@@ -161,6 +171,48 @@ describe("buildPollViews (pure)", () => {
     buildPollViews([POLL], options, [], []);
     expect(options).toEqual([OPT_B, OPT_A]);
   });
+
+  // #621 — write-in attribution.
+  it("resolves suggested_by_display_name for a write-in via memberMap", () => {
+    const memberMap = new Map([["member-o", "Olivia"]]);
+    const views = buildPollViews(
+      [POLL],
+      [OPT_A, OPT_WRITEIN],
+      [],
+      [],
+      memberMap
+    );
+    const view = views[0] as PollView;
+    expect(
+      view.options.find((o) => o.option.id === "opt-writein")
+        ?.suggested_by_display_name
+    ).toBe("Olivia");
+  });
+
+  it("leaves organizer-composed options with no attribution (null)", () => {
+    const memberMap = new Map([["member-o", "Olivia"]]);
+    const views = buildPollViews([POLL], [OPT_A], [], [], memberMap);
+    const view = views[0] as PollView;
+    expect(view.options[0]?.suggested_by_display_name).toBeNull();
+  });
+
+  it("falls back to 'Someone' when the suggester has left the trip (map miss)", () => {
+    const views = buildPollViews(
+      [POLL],
+      [OPT_WRITEIN],
+      [],
+      [],
+      new Map() // empty — member-o not in the map
+    );
+    const view = views[0] as PollView;
+    expect(view.options[0]?.suggested_by_display_name).toBe("Someone");
+  });
+
+  it("defaults to an empty memberMap when omitted (no crash, 'Someone' fallback)", () => {
+    const views = buildPollViews([POLL], [OPT_WRITEIN], [], []);
+    const view = views[0] as PollView;
+    expect(view.options[0]?.suggested_by_display_name).toBe("Someone");
+  });
 });
 
 describe("isPollClosed (pure, date-only register)", () => {
@@ -179,8 +231,18 @@ describe("leadingOptions (pure)", () => {
   const withVotes = (votesA: number, votesB: number): PollView => ({
     poll: POLL,
     options: [
-      { option: OPT_A, votes: votesA, is_my_vote: false },
-      { option: OPT_B, votes: votesB, is_my_vote: false },
+      {
+        option: OPT_A,
+        votes: votesA,
+        is_my_vote: false,
+        suggested_by_display_name: null,
+      },
+      {
+        option: OPT_B,
+        votes: votesB,
+        is_my_vote: false,
+        suggested_by_display_name: null,
+      },
     ],
     total_votes: votesA + votesB,
     my_option_id: null,
@@ -264,6 +326,33 @@ describe("getPollsViewModel", () => {
     expect(views).toEqual([]);
     expect(optionsResolver).not.toHaveBeenCalled();
     expect(countsResolver).not.toHaveBeenCalled();
+  });
+
+  // #621 — memberMap threads through to write-in attribution.
+  it("threads the memberMap through to suggested_by_display_name", async () => {
+    const client = makeClient(
+      {
+        polls: () => ({ data: [POLL], error: null }),
+        poll_options: () => ({ data: [OPT_A, OPT_WRITEIN], error: null }),
+        poll_votes: () => ({ data: [], error: null }),
+      },
+      {
+        get_poll_vote_counts: () => ({
+          data: [count("opt-a", 0), count("opt-writein", 0)],
+          error: null,
+        }),
+      }
+    );
+    const views = await getPollsViewModel(
+      client,
+      "trip-1",
+      "m1",
+      new Map([["member-o", "Olivia"]])
+    );
+    expect(
+      views[0]?.options.find((o) => o.option.id === "opt-writein")
+        ?.suggested_by_display_name
+    ).toBe("Olivia");
   });
 
   it("throws a scoped error when the counts RPC fails", async () => {

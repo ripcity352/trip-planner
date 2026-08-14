@@ -83,6 +83,14 @@ const CAST_VOTE_SCHEMA = z.object({
   optionId: z.string().uuid(),
 });
 
+// #621 — poll write-in options (part 2/3 of #616). Same 1-80 label
+// bound as an organizer option (mirrored by the DB-side check in
+// add_poll_option).
+const ADD_POLL_OPTION_SCHEMA = z.object({
+  pollId: z.string().uuid(),
+  label: z.string().trim().min(1).max(80),
+});
+
 // #620 — poll comments (part 1/3 of #616).
 const POST_COMMENT_SCHEMA = z.object({
   pollId: z.string().uuid(),
@@ -120,6 +128,16 @@ export interface CastPollVoteInput {
 }
 
 export type CastPollVoteResult =
+  | { ok: true; optionId: string }
+  | { ok: false; errorKey: ErrorKey };
+
+// #621 — poll write-in options.
+export interface AddPollOptionInput {
+  pollId: string;
+  label: string;
+}
+
+export type AddPollOptionResult =
   | { ok: true; optionId: string }
   | { ok: false; errorKey: ErrorKey };
 
@@ -381,6 +399,89 @@ export async function castPollVoteAction(
     }
     console.error("[polls] castPollVote unexpected:", err);
     return { ok: false, errorKey: "poll_vote_failed" };
+  }
+}
+
+// =============================================================
+// addPollOptionAction (#621, part 2/3 of #616)
+// =============================================================
+
+/**
+ * Member action: add ONE write-in option to an open, visible poll via
+ * the `add_poll_option` RPC (SECURITY INVOKER — RLS's "options:
+ * members can suggest" policy gates it, H1-bound to the caller's own
+ * seat). Idempotent on (poll_id, suggester, label) at the DB — a
+ * same-label resubmit replays the ORIGINAL option id.
+ *
+ * Error mapping is by `error.code` ONLY — never message text (#474
+ * convention): 42501 -> rls_denied (not a member, poll invisible, poll
+ * closed, or a bad seat bind — RLS collapses all of these to one
+ * code); 22004 -> validation_failed (missing idempotency key, should
+ * never happen client-side); 22023 -> validation_failed (bad label —
+ * already caught by the zod schema, so this is a defense-in-depth
+ * path); 54000 (program_limit_exceeded) -> the deterministic
+ * `poll_option_full` (the 10-option cap) — a DISTINCT sqlstate from
+ * 22023 specifically so this mapping never has to parse the message.
+ */
+export async function addPollOptionAction(
+  input: AddPollOptionInput,
+  idempotencyKey: string
+): Promise<AddPollOptionResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const parsed = ADD_POLL_OPTION_SCHEMA.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { pollId, label } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) {
+    return { ok: false, errorKey: "auth_failed" };
+  }
+  const userId = authData.user.id;
+
+  try {
+    return await rateLimitedAction(
+      RATE_LIMIT_SCOPES.ADD_POLL_OPTION,
+      userId,
+      async () => {
+        const { data, error } = await supabase.rpc("add_poll_option", {
+          p_poll_id: pollId,
+          p_label: label,
+          p_idempotency_key: idempotencyKey,
+        });
+
+        if (error || !data) {
+          console.error("[polls] addPollOption failed:", {
+            code: error?.code,
+            message: error?.message,
+          });
+          if (error?.code === "54000") {
+            return { ok: false as const, errorKey: "poll_option_full" as const };
+          }
+          return {
+            ok: false as const,
+            errorKey: error
+              ? mapDbError(error)
+              : ("poll_option_add_failed" as const),
+          };
+        }
+
+        // F2 / #400: revalidate only on a genuine success.
+        revalidatePath("/trips", "layout");
+        return { ok: true as const, optionId: data as string };
+      }
+    );
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    console.error("[polls] addPollOption unexpected:", err);
+    return { ok: false, errorKey: "poll_option_add_failed" };
   }
 }
 
