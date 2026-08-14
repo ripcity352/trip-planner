@@ -159,26 +159,42 @@ describe("PollsDisclosure", () => {
     );
   });
 
-  it("stays collapsed by default — no voting UI until tapped", () => {
-    render(
-      <PollsDisclosure {...baseProps} initialViews={[makePollView()]} />
-    );
+  it("stays collapsed by default when every poll is closed — no voting UI until tapped (#622)", () => {
+    const closed = makePollView({ closes_on: "2020-01-01" });
+    render(<PollsDisclosure {...baseProps} initialViews={[closed]} />);
     expect(
       screen.queryByText("Steakhouse or omakase?")
     ).not.toBeInTheDocument();
   });
 
-  it("expands to the voting UI when the row is tapped", () => {
+  it("expands to the voting UI when a collapsed row is tapped", () => {
+    const closed = makePollView({ closes_on: "2020-01-01" });
+    render(<PollsDisclosure {...baseProps} initialViews={[closed]} />);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+
+    expect(screen.getByText("Steakhouse or omakase?")).toBeInTheDocument();
+  });
+
+  it("defaults to expanded when ≥1 open poll exists (#622 — surface a live vote)", () => {
     render(
       <PollsDisclosure {...baseProps} initialViews={[makePollView()]} />
     );
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
     expect(screen.getByText("Steakhouse or omakase?")).toBeInTheDocument();
     // The vote affordances are live (PollCard option buttons).
     expect(
       screen.getByRole("button", { name: /vote steakhouse/i })
     ).toBeInTheDocument();
+  });
+
+  it("can still be collapsed by the user even when a poll is open (#622 — toggle preserved)", () => {
+    render(
+      <PollsDisclosure {...baseProps} initialViews={[makePollView()]} />
+    );
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    expect(
+      screen.queryByText("Steakhouse or omakase?")
+    ).not.toBeInTheDocument();
   });
 
   it("shows the composer CTA row to an organizer even with zero open polls", () => {
