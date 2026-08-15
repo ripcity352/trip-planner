@@ -27,14 +27,23 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getTripBySlug, getViewerMember, getCelebrantName, getTripMembers } from "@/lib/db/trips";
-import { getItineraryByTrip, getMyItemRsvps, getLodgingAssignmentsByTrip, getItemFlagsForOrganizer } from "@/lib/db/itinerary";
+import {
+  getItineraryByTrip,
+  getMyItemRsvps,
+  getLodgingAssignmentsByTrip,
+  getItemFlagsForOrganizer,
+} from "@/lib/db/itinerary";
+import {
+  getCommentsForTrip,
+  enrichItemComments,
+} from "@/lib/db/itinerary-item-comments";
 import { getRsvpCountsForTrip } from "@/lib/db/rsvp";
 import { M3_UI_STRINGS, EMPTY_STATES } from "@/lib/copy/empty-states";
 import { DaySection } from "@/components/trip/itinerary/day-section";
 import { continuingItemsForDay } from "@/lib/itinerary/continuing-items";
 import { nowNextItemIds } from "@/lib/utils/whats-happening-now";
 import { AddItemFormSheet } from "./add-item-form-sheet";
-import type { ItineraryItemRsvpStatus } from "@/lib/db/types";
+import type { ItemComment, ItineraryItemRsvpStatus } from "@/lib/db/types";
 
 type PageProps = {
   params: Promise<{ tripId: string }>;
@@ -76,7 +85,7 @@ export default async function ItineraryPage({ params }: PageProps) {
   // read surface and members get exactly their own flags for rehydration.
   // #394: rsvpCounts.going feeds the per-item cost per-head estimate —
   // one trip-level query shared by every card, not a per-item fetch.
-  const [items, myRsvps, lodgingAssignmentsMap, tripMembers, allFlags, rsvpCounts] =
+  const [items, myRsvps, lodgingAssignmentsMap, tripMembers, allFlags, rsvpCounts, itemComments] =
     await Promise.all([
       getItineraryByTrip(supabase, trip.id),
       getMyItemRsvps(supabase, trip.id, viewer.id),
@@ -84,6 +93,7 @@ export default async function ItineraryPage({ params }: PageProps) {
       getTripMembers(supabase, trip.id),
       getItemFlagsForOrganizer(supabase, trip.id),
       getRsvpCountsForTrip(supabase, trip.id),
+      getCommentsForTrip(supabase, trip.id),
     ]);
 
   // Group flags by item for DaySection → ItemCard threading
@@ -92,6 +102,27 @@ export default async function ItineraryPage({ params }: PageProps) {
     const bucket = itemFlagsMap.get(flag.item_id) ?? [];
     itemFlagsMap.set(flag.item_id, [...bucket, flag]);
   }
+
+  // Comment enrichment + itemId → comments[] group-by (mirrors the
+  // announcements page's commentsByPollMap — single-pass O(n), not the
+  // naive reduce+spread O(n²) version).
+  const memberMapById = new Map<string, string | null>(
+    tripMembers.map((m) => [m.id, m.display_name])
+  );
+  const enrichedItemComments = enrichItemComments(itemComments, memberMapById);
+  const commentsByItemMap = new Map<string, ItemComment[]>();
+  for (const comment of enrichedItemComments) {
+    const bucket = commentsByItemMap.get(comment.item_id) ?? [];
+    bucket.push(comment);
+    commentsByItemMap.set(comment.item_id, bucket);
+  }
+
+  // #405-C: the viewer's own display name, so a freshly-posted comment
+  // renders their name immediately instead of flashing "Someone".
+  const viewerDisplayName =
+    tripMembers.find((m) => m.user_id === user.id)?.display_name ?? null;
+
+  const now = new Date();
 
   // Build a quick-lookup map of itemId → my RSVP status
   const myRsvpMap: Record<string, ItineraryItemRsvpStatus> = {};
@@ -148,6 +179,10 @@ export default async function ItineraryPage({ params }: PageProps) {
               continuingItems={continuingItemsForDay(items, day)}
               nowItemId={nowItemId}
               nextItemId={nextItemId}
+              commentsByItemMap={commentsByItemMap}
+              viewerTripMemberId={viewer.id}
+              viewerDisplayName={viewerDisplayName}
+              now={now}
             />
           ))}
         </div>

@@ -78,6 +78,11 @@ const sharedProps = {
   // #484: now/next cue ids (default: nothing flagged)
   nowItemId: null as string | null,
   nextItemId: null as string | null,
+  // Comment thread props threaded to every ItemCard
+  commentsByItemMap: new Map(),
+  viewerTripMemberId: "viewer-1",
+  viewerDisplayName: "Dave",
+  now: new Date("2026-08-15T12:00:00.000Z"),
 };
 
 describe("DaySection", () => {
