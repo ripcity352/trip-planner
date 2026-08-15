@@ -302,6 +302,21 @@ export const M3_UI_STRINGS = {
   // Maps links
   itinerary_maps_apple: "Apple Maps",
   itinerary_maps_google: "Google Maps",
+  // Itinerary item comments — flat thread per plan, same shape as
+  // polls_comment_* but item-scoped. Disclosure row is collapsed by
+  // default (item cards are already dense) — the label itself carries
+  // the count, no separate badge.
+  itinerary_item_comments_disclosure_zero: "Add a comment",
+  itinerary_item_comments_disclosure_one: "1 comment",
+  itinerary_item_comments_disclosure_other_template: "{count} comments",
+  itinerary_item_comments_heading: "Comments",
+  itinerary_item_comments_empty: "Nothing here yet. Say something.",
+  itinerary_item_comment_placeholder: "Add a comment…",
+  itinerary_item_comment_author_line_template: "{name} · {when}",
+  itinerary_item_comment_delete_cta: "Remove",
+  itinerary_item_comment_delete_aria: "Delete comment",
+  itinerary_item_comment_delete_confirm: "Remove this comment? Can't undo.",
+  itinerary_item_comment_composer_submit_aria: "Send comment",
   // Edit item sheet CTA (organizer affordance on ItemCard)
   itinerary_edit_item_cta: "Edit",
   // Add-item / edit-item forms
