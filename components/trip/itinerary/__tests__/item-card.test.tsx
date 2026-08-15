@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ItemCard } from "../item-card";
 import type {
+  ItemComment,
   ItineraryItemMemberFlag,
   ItineraryItem,
   ItineraryItemRsvpStatus,
@@ -73,6 +74,23 @@ vi.mock("../lodging-roster", () => ({
       data-assignment-count={assignments.length}
     >
       roster
+    </div>
+  ),
+}));
+vi.mock("../item-comment-section", () => ({
+  ItemCommentSection: ({
+    itemId,
+    comments,
+  }: {
+    itemId: string;
+    comments: ReadonlyArray<{ id: string }>;
+  }) => (
+    <div
+      data-testid="comment-section"
+      data-item-id={itemId}
+      data-comment-count={comments.length}
+    >
+      comments
     </div>
   ),
 }));
@@ -142,6 +160,10 @@ const baseProps = {
   itemFlags: [] as ItineraryItemMemberFlag[],
   // #394: trip-level "going" RSVP count — the per-head cost denominator.
   inCount: 0,
+  itemComments: [] as ItemComment[],
+  viewerTripMemberId: "viewer-member-1" as string | undefined,
+  viewerDisplayName: "Dave" as string | null,
+  now: new Date("2026-08-15T12:00:00.000Z"),
 };
 
 const makeFlag = (
@@ -585,5 +607,30 @@ describe("ItemCard — now/next cue chip (#484)", () => {
   it("renders no chip when neither flag is set (default)", () => {
     render(<ItemCard item={makeItem()} {...baseProps} />);
     expect(screen.queryByTestId("now-next-chip")).not.toBeInTheDocument();
+  });
+});
+
+describe("ItemCard — comment section", () => {
+  it("renders ItemCommentSection with this item's id and comment count", () => {
+    render(
+      <ItemCard
+        item={makeItem()}
+        {...baseProps}
+        itemComments={[
+          {
+            id: "c1",
+            item_id: "item-1",
+            trip_id: "trip-1",
+            author_trip_member_id: "member-1",
+            body: "hi",
+            idempotency_key: null,
+            created_at: "2026-08-15T10:00:00.000Z",
+          },
+        ]}
+      />
+    );
+    const section = screen.getByTestId("comment-section");
+    expect(section).toHaveAttribute("data-item-id", "item-1");
+    expect(section).toHaveAttribute("data-comment-count", "1");
   });
 });
