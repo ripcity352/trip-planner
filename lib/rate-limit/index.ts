@@ -231,6 +231,12 @@ export const RATE_LIMIT_SCOPES = {
   // posture as MUTATE_POLL_COMMENT: a write-in add is low-tap content,
   // not credential minting. Default 30/60s; fail-OPEN on shim.
   ADD_POLL_OPTION: "addPollOption",
+  // Itinerary item comments — flat thread per plan. One shared bucket
+  // for post + delete, mirroring MUTATE_POLL_COMMENT — a comment thread
+  // is not a high-tap surface, so a single 30/60s budget is plenty.
+  // Fail-OPEN on shim (a comment is content, not credential minting) —
+  // same posture as the other authed trip-content mutations.
+  MUTATE_ITEM_COMMENT: "mutateItemComment",
 } as const;
 
 export type RateLimitScope =
