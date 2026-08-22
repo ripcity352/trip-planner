@@ -31,6 +31,10 @@ const EXPECTED_KEYS: readonly ErrorKey[] = [
   "itinerary_save_rejected",
   "itinerary_delete_failed",
   "item_rsvp_save_failed",
+  // Itinerary item comments
+  "item_comment_delete_failed",
+  "item_comment_save_failed",
+  "item_comment_save_rejected",
   "item_flag_save_failed",
   "announcement_post_failed",
   // #474 — same deterministic/transient split
