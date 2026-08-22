@@ -24,6 +24,7 @@
  */
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   RATE_LIMIT_SCOPES,
@@ -31,9 +32,15 @@ import {
   rateLimitedAction,
 } from "@/lib/rate-limit";
 import type { ErrorKey } from "@/lib/copy/errors";
-import type { ItineraryItem } from "@/lib/db/types";
+import type { ItemComment, ItineraryItem } from "@/lib/db/types";
 import { getTripById, getViewerMember } from "@/lib/db/trips";
 import { getItineraryItem } from "@/lib/db/itinerary";
+import {
+  ITEM_COMMENT_COLUMNS,
+  ITEM_COMMENT_NO_ROW,
+  ItemCommentDbError,
+  deleteComment as deleteItemCommentRow,
+} from "@/lib/db/itinerary-item-comments";
 import { isoToDbDate, isoToDbTime } from "@/lib/utils/format-trip-tz";
 
 /**
@@ -532,5 +539,223 @@ function itineraryErrorKey(reason: ItineraryErrorReason): ErrorKey {
       return "itinerary_save_rejected";
     case "save_failed":
       return "itinerary_save_failed";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Itinerary item comments — flat thread per plan (mirrors poll_comments).
+// ---------------------------------------------------------------------------
+
+const POST_ITEM_COMMENT_SCHEMA = z.object({
+  itemId: z.string().uuid(),
+  body: z.string().trim().min(1).max(500),
+});
+
+const DELETE_ITEM_COMMENT_SCHEMA = z.object({
+  commentId: z.string().uuid(),
+});
+
+export interface PostItemCommentInput {
+  itemId: string;
+  body: string;
+}
+
+export type PostItemCommentResult =
+  | { ok: true; comment: ItemComment }
+  | { ok: false; errorKey: ErrorKey };
+
+export interface DeleteItemCommentInput {
+  commentId: string;
+}
+
+export type DeleteItemCommentResult =
+  | { ok: true }
+  | { ok: false; errorKey: ErrorKey };
+
+type ItemCommentErrorReason = "rls_denied" | "save_rejected" | "save_failed";
+
+class ItemCommentActionError extends Error {
+  readonly reason: ItemCommentErrorReason;
+  constructor(reason: ItemCommentErrorReason) {
+    super(`item_comment_action_error:${reason}`);
+    this.name = "ItemCommentActionError";
+    this.reason = reason;
+  }
+}
+
+function itemCommentErrorKey(reason: ItemCommentErrorReason): ErrorKey {
+  switch (reason) {
+    case "rls_denied":
+      return "rls_denied";
+    case "save_rejected":
+      return "item_comment_save_rejected";
+    case "save_failed":
+      return "item_comment_save_failed";
+  }
+}
+
+/**
+ * Resolve the parent item's trip and the caller's own member row. The
+ * item select runs under RLS — an item the caller can't see (wrong
+ * trip, non-member, or hidden by visibility) resolves to null. Mirrors
+ * `resolvePollCommentContext` in lib/actions/polls.ts.
+ */
+async function resolveItemCommentContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  itemId: string,
+  userId: string
+): Promise<{ tripId: string; tripMemberId: string } | null> {
+  const { data: item } = await supabase
+    .from("itinerary_items")
+    .select("trip_id")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (!item) return null;
+  const tripId = (item as { trip_id: string }).trip_id;
+
+  const { data: member } = await supabase
+    .from("trip_members")
+    .select("id")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!member) return null;
+
+  return { tripId, tripMemberId: (member as { id: string }).id };
+}
+
+/**
+ * Post a comment to an itinerary item's thread. Idempotent on
+ * (item_id, author_trip_member_id, idempotency_key) — a drunk
+ * double-tap replays the existing row instead of inserting a
+ * duplicate.
+ */
+export async function postItemCommentAction(
+  input: PostItemCommentInput,
+  idempotencyKey: string
+): Promise<PostItemCommentResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const parsed = POST_ITEM_COMMENT_SCHEMA.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { itemId, body } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  const context = await resolveItemCommentContext(supabase, itemId, userId);
+  if (!context) return { ok: false, errorKey: "rls_denied" };
+  const { tripId, tripMemberId } = context;
+
+  try {
+    const comment = await rateLimitedAction(
+      RATE_LIMIT_SCOPES.MUTATE_ITEM_COMMENT,
+      userId,
+      async () => {
+        const { data, error } = await supabase
+          .from("itinerary_item_comments")
+          .insert({
+            item_id: itemId,
+            trip_id: tripId,
+            author_trip_member_id: tripMemberId,
+            body,
+            idempotency_key: idempotencyKey,
+          })
+          .select(ITEM_COMMENT_COLUMNS)
+          .single();
+
+        if (error) {
+          if (error.code === "23505") {
+            const { data: existing, error: fetchErr } = await supabase
+              .from("itinerary_item_comments")
+              .select(ITEM_COMMENT_COLUMNS)
+              .eq("item_id", itemId)
+              .eq("author_trip_member_id", tripMemberId)
+              .eq("idempotency_key", idempotencyKey)
+              .single();
+            if (fetchErr || !existing) {
+              throw new ItemCommentActionError("save_failed");
+            }
+            return existing as ItemComment;
+          }
+          if (error.code === "42501") {
+            throw new ItemCommentActionError("rls_denied");
+          }
+          throw new ItemCommentActionError(
+            error.code ? "save_rejected" : "save_failed"
+          );
+        }
+        return data as ItemComment;
+      }
+    );
+    revalidatePath("/trips", "layout");
+    return { ok: true, comment };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    if (err instanceof ItemCommentActionError) {
+      return { ok: false, errorKey: itemCommentErrorKey(err.reason) };
+    }
+    console.error("[itinerary] postItemComment unexpected:", err);
+    return { ok: false, errorKey: "item_comment_save_failed" };
+  }
+}
+
+/**
+ * Delete a comment. RLS (DELETE policy) restricts this to the comment's
+ * author or an organizer. A no-row match (already gone) converges to
+ * `{ ok: true }` — the desired end state (gone) already holds.
+ */
+export async function deleteItemCommentAction(
+  input: DeleteItemCommentInput,
+  idempotencyKey: string
+): Promise<DeleteItemCommentResult> {
+  const keyParse = IDEMPOTENCY_KEY_SCHEMA.safeParse(idempotencyKey);
+  if (!keyParse.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const parsed = DELETE_ITEM_COMMENT_SCHEMA.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, errorKey: "validation_failed" };
+  }
+  const { commentId } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return { ok: false, errorKey: "rls_denied" };
+  const userId = authData.user.id;
+
+  try {
+    await rateLimitedAction(
+      RATE_LIMIT_SCOPES.MUTATE_ITEM_COMMENT,
+      userId,
+      () => deleteItemCommentRow(supabase, commentId)
+    );
+    revalidatePath("/trips", "layout");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      return { ok: false, errorKey: "rate_limit" };
+    }
+    if (
+      err instanceof ItemCommentDbError &&
+      err.code === ITEM_COMMENT_NO_ROW
+    ) {
+      return { ok: true };
+    }
+    if (err instanceof ItemCommentDbError && err.code === "42501") {
+      return { ok: false, errorKey: "rls_denied" };
+    }
+    console.error("[itinerary] deleteItemComment unexpected:", err);
+    return { ok: false, errorKey: "item_comment_delete_failed" };
   }
 }

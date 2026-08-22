@@ -256,7 +256,12 @@ export type ErrorKey =
   // transient-retry voice; `poll_option_full` is a DETERMINISTIC
   // rejection (the 10-option cap) — no retry framing.
   | "poll_option_add_failed"
-  | "poll_option_full";
+  | "poll_option_full"
+  // Itinerary item comments. Same transient/deterministic split as the
+  // poll-comment keys above.
+  | "item_comment_save_failed"
+  | "item_comment_save_rejected"
+  | "item_comment_delete_failed";
 
 export const ERRORS: Record<ErrorKey, string> = {
   network: "Couldn't reach the server. Pull to retry.",
@@ -477,4 +482,11 @@ export const ERRORS: Record<ErrorKey, string> = {
   poll_option_add_failed:
     "That option didn't save. Give it another shot in a sec.",
   poll_option_full: "This poll's full up. No more options fit.",
+  // Itinerary item comments. Same transient/deterministic split as the
+  // poll-comment strings above.
+  item_comment_save_failed:
+    "That comment didn't save — you might be offline. Try again in a sec.",
+  item_comment_save_rejected:
+    "That comment didn't go through. Give it another shot.",
+  item_comment_delete_failed: "Couldn't remove that comment. Try again in a sec.",
 };

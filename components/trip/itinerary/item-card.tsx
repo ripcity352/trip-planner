@@ -25,7 +25,9 @@ import { OrganizerFlagOnBehalf } from "./organizer-flag-on-behalf";
 import { resolveMemberName } from "@/lib/utils/member-display";
 import { EditItemFormSheet } from "./edit-item-form-sheet";
 import { LodgingRoster } from "./lodging-roster";
+import { ItemCommentSection } from "./item-comment-section";
 import type {
+  ItemComment,
   ItineraryItemMemberFlag,
   ItineraryItem,
   ItineraryItemRsvpStatus,
@@ -76,6 +78,17 @@ export interface ItemCardProps {
   isNow?: boolean;
   /** #484: this item is the next upcoming item (per whatsHappeningNow). */
   isNext?: boolean;
+  /** This item's comments, pre-enriched (authorDisplayName always set). */
+  itemComments: ItemComment[];
+  /** The viewer's trip_members.id — undefined hides the comment composer. */
+  viewerTripMemberId: string | undefined;
+  /** The viewer's own display name — threaded to ItemCommentSection for
+   * the #405-C optimistic-post-name pattern. */
+  viewerDisplayName: string | null;
+  /** Server-provided reference clock — threaded to ItemCommentSection
+   * for relative-time rendering (formatDistance pinned to server now,
+   * not each render's wall clock). */
+  now: Date;
 }
 
 export function ItemCard({
@@ -93,6 +106,10 @@ export function ItemCard({
   inCount,
   isNow = false,
   isNext = false,
+  itemComments,
+  viewerTripMemberId,
+  viewerDisplayName,
+  now,
 }: ItemCardProps) {
   const isOwnItem = item.created_by === viewerUserId;
   const isHiddenFromCelebrant = item.visibility === "hide_from_celebrant";
@@ -296,6 +313,16 @@ export function ItemCard({
           }))}
         />
       ) : null}
+
+      {/* Comment thread — collapsed disclosure, last section on the card. */}
+      <ItemCommentSection
+        itemId={item.id}
+        comments={itemComments}
+        viewerTripMemberId={viewerTripMemberId}
+        isViewerOrganizer={isOrganizer}
+        viewerDisplayName={viewerDisplayName}
+        now={now}
+      />
     </article>
   );
 }

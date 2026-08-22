@@ -760,3 +760,23 @@ export interface PollComment {
   created_at: string;
   authorDisplayName?: string;
 }
+
+/**
+ * A flat comment on an itinerary item ("plan"). Mirrors `PollComment`
+ * exactly — `author_trip_member_id` FKs `trip_members(id) ON DELETE SET
+ * NULL` directly, so enrichment (`enrichItemComments`,
+ * lib/db/itinerary-item-comments.ts) resolves it against a
+ * trip_member_id-keyed map. null/missing resolves to
+ * M3_UI_STRINGS.announcements_author_fallback ("Someone") at the UI
+ * boundary, not "Guest" (resolveMemberName's roster fallback).
+ */
+export interface ItemComment {
+  id: string;
+  item_id: string;
+  trip_id: string;
+  author_trip_member_id: string | null;
+  body: string;
+  idempotency_key: string | null;
+  created_at: string;
+  authorDisplayName?: string;
+}

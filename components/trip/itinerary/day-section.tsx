@@ -14,7 +14,7 @@ import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { isCelebrantGapDay } from "@/lib/itinerary/celebrant-day-gap";
 import { celebrantGapDayNote } from "@/lib/utils/celebrant-badge";
 import { ItemCard } from "./item-card";
-import type { ItineraryItem, ItineraryItemMemberFlag, ItineraryItemRsvpStatus, LodgingAssignment, TripMember } from "@/lib/db/types";
+import type { ItemComment, ItineraryItem, ItineraryItemMemberFlag, ItineraryItemRsvpStatus, LodgingAssignment, TripMember } from "@/lib/db/types";
 
 export interface DaySectionProps {
   day: string; // ISO YYYY-MM-DD
@@ -50,6 +50,17 @@ export interface DaySectionProps {
   /** #484: id of the next upcoming item (or null) — flags the matching
    * card's "Up next" chip. */
   nextItemId: string | null;
+  /** itemId → this item's comments, pre-enriched. */
+  commentsByItemMap: Map<string, ItemComment[]>;
+  /** The viewer's trip_members.id — undefined hides every card's
+   * comment composer. */
+  viewerTripMemberId: string | undefined;
+  /** The viewer's own display name — forwarded to every ItemCard's
+   * ItemCommentSection (#405-C optimistic-post-name pattern). */
+  viewerDisplayName: string | null;
+  /** Server-provided reference clock — forwarded to every ItemCard's
+   * ItemCommentSection for relative-time rendering. */
+  now: Date;
 }
 
 export function DaySection({
@@ -69,6 +80,10 @@ export function DaySection({
   continuingItems,
   nowItemId,
   nextItemId,
+  commentsByItemMap,
+  viewerTripMemberId,
+  viewerDisplayName,
+  now,
 }: DaySectionProps) {
   // parseISO treats the string as local midnight — keeps the weekday
   // consistent with what you'd expect for the trip date.
@@ -149,6 +164,10 @@ export function DaySection({
               inCount={inCount}
               isNow={item.id === nowItemId}
               isNext={item.id === nextItemId}
+              itemComments={commentsByItemMap.get(item.id) ?? []}
+              viewerTripMemberId={viewerTripMemberId}
+              viewerDisplayName={viewerDisplayName}
+              now={now}
             />
           </li>
         ))}
