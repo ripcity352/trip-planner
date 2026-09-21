@@ -198,11 +198,16 @@ test.describe("authenticated itinerary flows", () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/trips");
 
+    // #644 fix-round-1: this regression test must NOT pass vacuously when
+    // the fixture trip is missing — unlike the other tests in this file,
+    // it asserts on the fix itself, so a silent early-return here would
+    // hide a real regression as green. `ensureFixtureTrip` (auth.setup.ts)
+    // guarantees a trip exists for the fixture user.
     const tripLink = firstRealTripLink(page);
-    if (!(await tripLink.isVisible())) return;
+    await expect(tripLink).toBeVisible();
 
     const tripHref = await tripLink.getAttribute("href");
-    if (!tripHref) return;
+    expect(tripHref).toBeTruthy();
 
     await page.goto(`${tripHref}/itinerary`);
 
