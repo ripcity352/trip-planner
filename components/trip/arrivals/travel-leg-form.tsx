@@ -68,14 +68,22 @@ const formSchema = z.object({
   carrier: z.string().trim().max(100).optional(),
   confirmationCode: z.string().trim().max(100).optional(),
   notes: z.string().trim().max(1000).optional(),
-  // M4 W2c additions — airline picker
+  // M4 W2c additions — airline picker. The pickers emit "" (not undefined)
+  // on clear (#543 — an RHF Controller.onChange(undefined) reverts the
+  // field to defaultValues instead of clearing it). Accept "" alongside a
+  // regex-valid code (#640 — an un-widened schema silently rejected the
+  // pickers' own clear sentinel and made "Save it" permanently inert).
   airlineIata: z
-    .string()
-    .regex(/^[A-Z0-9]{2}$/)
+    .union([
+      z.literal(""),
+      z.string().regex(/^[A-Z0-9]{2}$/, ERRORS.validation_failed),
+    ])
     .optional(),
   flightNumber: z
-    .string()
-    .regex(/^[A-Z0-9]{1,8}$/)
+    .union([
+      z.literal(""),
+      z.string().regex(/^[A-Z0-9]{1,8}$/, ERRORS.validation_failed),
+    ])
     .optional(),
 });
 
@@ -525,7 +533,20 @@ export function TravelLegForm({
             />
           )}
         />
-      ) : (
+      ) : null}
+      {/* #640: error renderers bound to both picker fields so any future
+          schema rejection is visible, not a silent dead form. */}
+      {kind === "flight" && errors.airlineIata?.message ? (
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "-mt-2 text-sm")}>
+          {errors.airlineIata.message}
+        </p>
+      ) : null}
+      {kind === "flight" && errors.flightNumber?.message ? (
+        <p role="alert" className={cn(ERROR_LINE_CLASS, "-mt-2 text-sm")}>
+          {errors.flightNumber.message}
+        </p>
+      ) : null}
+      {kind !== "flight" ? (
         <div>
           <label htmlFor="leg-carrier" className={labelClass}>
             {M3_UI_STRINGS.arrivals_leg_form_carrier_label}
@@ -538,7 +559,7 @@ export function TravelLegForm({
             className={inputClass}
           />
         </div>
-      )}
+      ) : null}
 
       {/* Coming from — inbound only (#477) */}
       {isInbound ? (

@@ -294,3 +294,45 @@ describe("AirlinePicker — injection vectors", () => {
     }
   });
 });
+
+// ─── 7. Every-keystroke commit to carrier (#641) ─────────────────────────────
+
+describe("AirlinePicker — commits typed text to carrier on every keystroke (#641)", () => {
+  it("commits sanitized typed text to carrier on every keystroke, not only via the freeform-select row", () => {
+    const onChange = vi.fn();
+    renderPicker({}, onChange);
+    const input = screen.getByRole("combobox", { name: /airline/i });
+    fireEvent.change(input, { target: { value: "S" } });
+    fireEvent.change(input, { target: { value: "Sp" } });
+    fireEvent.change(input, { target: { value: "Spi" } });
+
+    expect(onChange.mock.calls.length).toBeGreaterThanOrEqual(3);
+    // Every keystroke's onChange call — not just the last — must carry the
+    // typed text into carrier (mirrors AirportPicker's every-keystroke commit).
+    expect(
+      onChange.mock.calls.every(
+        ([arg]) => (arg as PickerValue).carrier !== undefined
+      )
+    ).toBe(true);
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ carrier: "Spi" })
+    );
+  });
+
+  it("strips NUL/CRLF from carrier on every keystroke commit, not only the freeform-select action", () => {
+    const onChange = vi.fn();
+    renderPicker({}, onChange);
+    const input = screen.getByRole("combobox", { name: /airline/i });
+    fireEvent.change(input, { target: { value: "Air\0Null" } });
+    fireEvent.change(input, { target: { value: "Air\r\nInject" } });
+
+    expect(onChange.mock.calls.length).toBeGreaterThan(0);
+    for (const [arg] of onChange.mock.calls) {
+      const carrier = (arg as PickerValue).carrier;
+      if (carrier !== undefined) {
+        expect(carrier).not.toContain("\0");
+        expect(carrier).not.toMatch(/[\r\n]/);
+      }
+    }
+  });
+});
