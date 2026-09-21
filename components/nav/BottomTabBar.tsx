@@ -144,6 +144,11 @@ export function BottomTabBar({ tripId }: BottomTabBarProps) {
             <li key={tab.label} className="flex flex-1">
               <Link
                 href={tab.href}
+                // #644: never prefetch the tab that IS the current route —
+                // it's a no-op navigation and its background RSC fetch can
+                // land AFTER (and overwrite with stale data) an explicit
+                // router.refresh() issued by a mutation on this same page.
+                prefetch={active ? false : undefined}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex flex-1 flex-col items-center justify-center gap-0.5 px-2 py-2",

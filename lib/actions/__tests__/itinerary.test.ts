@@ -31,6 +31,15 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => buildClient()),
 }));
 
+// #644: addItineraryItem/updateItineraryItem/deleteItineraryItem now call
+// revalidatePath for parity with the comment actions (see
+// itinerary-item-comments-actions.test.ts, which mocks it the same way) —
+// unmocked, next/cache throws outside a request scope.
+const revalidatePathMock = vi.fn();
+vi.mock("next/cache", () => ({
+  revalidatePath: (...args: unknown[]) => revalidatePathMock(...args),
+}));
+
 const rateLimitedActionMock = vi.fn(
   async (_scope: string, _key: string, fn: () => Promise<unknown>) => fn()
 );
