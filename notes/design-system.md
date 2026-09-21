@@ -282,6 +282,21 @@ separator *switch* is the signal: en dash = within the day, arrow =
 motion across days (same semantics as the Range tier). Never repeat the
 start date, never add the year.
 
+### Open-ended item expiry (#646)
+
+The register was also silent on *how long an item without an end time
+stays "now"* — `lib/utils/whats-happening-now.ts` treated a null
+`end_time` as ongoing forever, which pinned "RIGHT NOW" on weeks-old
+items and made the post-trip dashboard state unreachable. The axis:
+
+> An open-ended timed item (`start_time` set, `end_time` null) is
+> considered live through the end of its own day — `end_day` if set,
+> else `day` — then expires. It does not stay "now" indefinitely.
+
+This mirrors the Cross-day range rule above: the item's real end
+instant is always anchored to a concrete day (`end_day ?? day`), never
+left unbounded.
+
 ### Anti-tells (these fail the voice/visual bar)
 
 - Uppercase day headers (`FRIDAY · AUG 14`) — AI-tracked-eyebrow tell.
