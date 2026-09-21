@@ -27,6 +27,31 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
+// #644: real next/link doesn't forward `prefetch` to the DOM (it's consumed
+// internally), so the "prefetch on the active tab" tests below need a
+// minimal mock that surfaces it as `data-prefetch` for assertions. Mocking
+// `useLinkStatus` alongside it (real next/link exports both from the same
+// module) — TabContent calls it and a bare-anchor default here would
+// otherwise leave it undefined.
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    prefetch,
+    children,
+    ...rest
+  }: {
+    href: string;
+    prefetch?: boolean;
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} data-prefetch={String(prefetch)} {...rest}>
+      {children}
+    </a>
+  ),
+  useLinkStatus: () => ({ pending: false }),
+}));
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -154,6 +179,34 @@ describe("BottomTabBar", () => {
 
       const plansLink = screen.getByRole("link", { name: tabRegex("plans") });
       expect(plansLink).toHaveAttribute("aria-current", "page");
+    });
+  });
+
+  describe("#644 prefetch on the active tab", () => {
+    it("disables prefetch only on the tab that IS the exact current route", () => {
+      renderBar(`/trips/${TRIP_ID}/itinerary`);
+
+      const plansLink = screen.getByRole("link", { name: tabRegex("plans") });
+      expect(plansLink).toHaveAttribute("data-prefetch", "false");
+
+      // Every other tab is a real navigation target — must keep prefetching
+      // (prefetch left at Link's default, i.e. not explicitly `false`).
+      for (const { label } of EXPECTED_TABS) {
+        if (label === "plans") continue;
+        const link = screen.getByRole("link", { name: tabRegex(label) });
+        expect(link).not.toHaveAttribute("data-prefetch", "false");
+      }
+    });
+
+    it("keeps prefetch enabled for a prefix-active tab on a sub-route (not the exact URL)", () => {
+      // "plans" is prefix-active here (isTabActive matches startsWith) but
+      // its href (`/trips/<id>/itinerary`) is NOT the current URL — it's a
+      // real navigation target, so disabling prefetch would be wrong.
+      renderBar(`/trips/${TRIP_ID}/itinerary/some-sub-route`);
+
+      const plansLink = screen.getByRole("link", { name: tabRegex("plans") });
+      expect(plansLink).toHaveAttribute("aria-current", "page"); // prefix-active
+      expect(plansLink).not.toHaveAttribute("data-prefetch", "false"); // still prefetches
     });
   });
 

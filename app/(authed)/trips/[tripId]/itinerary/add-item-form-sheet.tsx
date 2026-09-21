@@ -10,13 +10,23 @@
  *
  * The page Server Component passes tripId from the server; the form itself
  * handles the mutation + optimistic state.
+ *
+ * #644: `setOpen(false)` fired before `router.refresh()` — the sheet
+ * unmounted first and the refresh looked like a silent failure until a
+ * manual reload. Fix: reorder to `refresh()` then `setOpen(false)`, plus
+ * retry the refresh via `useRefreshWithRetries` — see that hook for the
+ * full root-cause writeup (a second, unrelated RSC fetch for this same
+ * route can land after the explicit refresh and overwrite it with stale
+ * data) and why a bundled `startTransition` was tried and rejected
+ * (reproduced an intermittent *permanent* hang, worse than the original
+ * bug).
  */
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { AddItemForm } from "@/components/trip/itinerary/add-item-form";
+import { useRefreshWithRetries } from "@/lib/hooks/use-refresh-with-retries";
 
 export interface AddItemFormSheetProps {
   tripId: string;
@@ -37,14 +47,13 @@ export function AddItemFormSheet({
   tripEndsAt,
   isOrganizer,
 }: AddItemFormSheetProps) {
-  const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  const refreshWithRetries = useRefreshWithRetries();
 
   const handleSuccess = () => {
+    // #644: refresh (+ retries) before close — see file header.
+    refreshWithRetries();
     setOpen(false);
-    // Trigger a route refresh so the new item appears in the server-rendered
-    // DaySection list without a full page reload.
-    router.refresh();
   };
 
   return (

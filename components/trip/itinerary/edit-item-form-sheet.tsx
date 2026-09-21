@@ -11,15 +11,25 @@
  * router.refresh() in the parent ItemCardShell so the server-rendered
  * list stays in sync.
  *
+ * #644: `setOpen(false)` fired before `router.refresh()` — the sheet
+ * unmounted first and the refresh looked like a silent failure (row was
+ * saved, list didn't update) until a manual reload. Fix: reorder to
+ * `refresh()` then `setOpen(false)`, plus retry the refresh via
+ * `useRefreshWithRetries` — see that hook for the full root-cause
+ * writeup (a second, unrelated RSC fetch for this same route can land
+ * after the explicit refresh and overwrite it with stale data) and why a
+ * bundled `startTransition` was tried and rejected (reproduced an
+ * intermittent *permanent* hang, worse than the original bug).
+ *
  * No animation library needed — simple show/hide, matches AddItemFormSheet.
  */
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { EditItemForm } from "./edit-item-form";
 import type { ItineraryItem } from "@/lib/db/types";
+import { useRefreshWithRetries } from "@/lib/hooks/use-refresh-with-retries";
 
 export interface EditItemFormSheetProps {
   item: ItineraryItem;
@@ -36,17 +46,18 @@ export function EditItemFormSheet({
   isOrganizer = false,
   className,
 }: EditItemFormSheetProps) {
-  const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  const refreshWithRetries = useRefreshWithRetries();
 
   const handleSuccess = (_item: ItineraryItem) => {
+    // #644: refresh (+ retries) before close — see file header.
+    refreshWithRetries();
     setOpen(false);
-    router.refresh();
   };
 
   const handleDeleted = () => {
+    refreshWithRetries();
     setOpen(false);
-    router.refresh();
   };
 
   if (open) {

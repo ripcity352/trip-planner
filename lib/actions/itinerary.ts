@@ -285,6 +285,10 @@ export async function addItineraryItem(
       }
     );
 
+    // #644: parity with postItemCommentAction/deleteItemCommentAction —
+    // revalidate the trip layout so a client that skips (or races)
+    // router.refresh() still gets fresh server data on next navigation.
+    revalidatePath("/trips", "layout");
     return { ok: true, item };
   } catch (err) {
     if (err instanceof RateLimitError) {
@@ -453,6 +457,8 @@ export async function updateItineraryItem(
       }
     );
 
+    // #644: parity with postItemCommentAction/deleteItemCommentAction.
+    revalidatePath("/trips", "layout");
     return { ok: true, item };
   } catch (err) {
     if (err instanceof RateLimitError) {
@@ -504,6 +510,8 @@ export async function deleteItineraryItem(
       return { ok: false, errorKey: "itinerary_delete_failed" };
     }
 
+    // #644: parity with postItemCommentAction/deleteItemCommentAction.
+    revalidatePath("/trips", "layout");
     return { ok: true };
   } catch (err) {
     console.error("[itinerary] deleteItineraryItem unexpected:", err);

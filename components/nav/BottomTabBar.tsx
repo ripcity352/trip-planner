@@ -92,6 +92,19 @@ function isTabActive(pathname: string, tab: TabDef): boolean {
 }
 
 /**
+ * #644: exact-URL match, independent of `isTabActive`'s prefix rule. A
+ * prefix-active tab (e.g. "plans" while on `/itinerary/some-sub-route`)
+ * still points at a REAL navigation target and must keep prefetching —
+ * only the tab that IS the current URL gains nothing from prefetching
+ * itself (and, per `useRefreshWithRetries`, that self-prefetch is exactly
+ * what can race and overwrite an explicit `router.refresh()` on this page
+ * with stale data).
+ */
+function isExactCurrentRoute(pathname: string, tab: TabDef): boolean {
+  return pathname.split("?")[0] === tab.href;
+}
+
+/**
  * Rendered as a `<Link>` child so `useLinkStatus()` resolves against the
  * nearest ancestor `<Link>`'s in-flight navigation state. `active` is the
  * committed-route match; `pending` is "this tab was just tapped and the
@@ -144,6 +157,15 @@ export function BottomTabBar({ tripId }: BottomTabBarProps) {
             <li key={tab.label} className="flex flex-1">
               <Link
                 href={tab.href}
+                // #644: never prefetch the tab that IS the current route —
+                // it's a no-op navigation and its background RSC fetch can
+                // land AFTER (and overwrite with stale data) an explicit
+                // router.refresh() issued by a mutation on this same page.
+                // Exact-match only (not `active`, which is prefix-matched
+                // for "plans"/"updates"/"crew"/"me") — a prefix-active tab
+                // on a sub-route is still a real navigation target and
+                // must keep prefetching.
+                prefetch={isExactCurrentRoute(pathname, tab) ? false : undefined}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex flex-1 flex-col items-center justify-center gap-0.5 px-2 py-2",
