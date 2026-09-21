@@ -31,6 +31,22 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => buildClient()),
 }));
 
+// #644: addItineraryItem/updateItineraryItem/deleteItineraryItem now call
+// revalidatePath for parity with the comment actions (see
+// itinerary-item-comments-actions.test.ts, which mocks it the same way) —
+// unmocked, next/cache throws outside a request scope.
+const revalidatePathMock = vi.fn();
+vi.mock("next/cache", () => ({
+  revalidatePath: (...args: unknown[]) => revalidatePathMock(...args),
+}));
+
+// File-level (applies to every test regardless of nesting) so each test's
+// revalidatePathMock assertions see only its own call, not accumulation
+// from earlier tests.
+beforeEach(() => {
+  revalidatePathMock.mockClear();
+});
+
 const rateLimitedActionMock = vi.fn(
   async (_scope: string, _key: string, fn: () => Promise<unknown>) => fn()
 );
@@ -190,6 +206,8 @@ describe("addItineraryItem", () => {
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    // #644: no cache invalidation on a failed/denied write.
+    expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
   it("returns rate_limit when limiter throws", async () => {
@@ -218,6 +236,10 @@ describe("addItineraryItem", () => {
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: true, item: mockItem });
+    // #644: revalidates the trip layout so a client that skips (or races)
+    // router.refresh() still gets fresh data on next navigation.
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
   });
 
   it("returns existing item on idempotency replay (23505)", async () => {
@@ -452,6 +474,10 @@ describe("updateItineraryItem — any-member-can-edit-own visibility forcing", (
     expect(
       (updateCalls[0].payload as Record<string, unknown>).visibility
     ).toBeUndefined();
+    // #644: revalidates the trip layout so a client that skips (or races)
+    // router.refresh() still gets fresh data on next navigation.
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
   });
 });
 
@@ -475,6 +501,10 @@ describe("deleteItineraryItem — any-member-can-delete-own", () => {
     const result = await deleteItineraryItem(VALID_ITEM_ID);
     expect(result).toEqual({ ok: true });
     expect(deleteCalls).toHaveLength(1);
+    // #644: revalidates the trip layout so a client that skips (or races)
+    // router.refresh() still gets fresh data on next navigation.
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
   });
 });
 
@@ -876,6 +906,8 @@ describe("updateItineraryItem — datetime fields (W2b)", () => {
       VALID_IDEMPOTENCY_KEY
     );
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    // #644: no cache invalidation on a failed/denied write.
+    expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
   it("returns validation_failed for malformed startTime (datetime_invalid path)", async () => {
@@ -931,6 +963,8 @@ describe("deleteItineraryItem", () => {
     const { deleteItineraryItem } = await import("@/lib/actions/itinerary");
     const result = await deleteItineraryItem(VALID_ITEM_ID);
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    // #644: no cache invalidation on a failed/denied write.
+    expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
   it("returns ok: true on successful delete", async () => {
@@ -939,6 +973,10 @@ describe("deleteItineraryItem", () => {
     const { deleteItineraryItem } = await import("@/lib/actions/itinerary");
     const result = await deleteItineraryItem(VALID_ITEM_ID);
     expect(result).toEqual({ ok: true });
+    // #644: revalidates the trip layout so a client that skips (or races)
+    // router.refresh() still gets fresh data on next navigation.
+    expect(revalidatePathMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/trips", "layout");
   });
 
   it("returns rls_denied on 42501", async () => {
@@ -950,5 +988,7 @@ describe("deleteItineraryItem", () => {
     const { deleteItineraryItem } = await import("@/lib/actions/itinerary");
     const result = await deleteItineraryItem(VALID_ITEM_ID);
     expect(result).toEqual({ ok: false, errorKey: "rls_denied" });
+    // #644: no cache invalidation on a failed/denied write.
+    expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 });
