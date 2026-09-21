@@ -37,15 +37,26 @@ function findAirport(iata: string | undefined) {
   return AIRPORTS.find((a) => a.iata.toLowerCase() === q);
 }
 
+// Nearly every catalog entry's name ends in the generic word "Airport"
+// (#642) — matching it makes substrings like "port" or "air" return
+// almost the entire catalog. Strip the standalone word before matching
+// name, so "port"/"air" only surface real IATA/city/name hits (Portland
+// still matches via its city).
+const GENERIC_AIRPORT_WORD_REGEX = /\bairport\b/gi;
+
 function filterAirports(query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  return AIRPORTS.filter(
-    (a) =>
+  return AIRPORTS.filter((a) => {
+    const nameWithoutGenericWord = a.name
+      .replace(GENERIC_AIRPORT_WORD_REGEX, "")
+      .toLowerCase();
+    return (
       a.iata.toLowerCase().includes(q) ||
-      a.name.toLowerCase().includes(q) ||
+      nameWithoutGenericWord.includes(q) ||
       a.city.toLowerCase().includes(q)
-  );
+    );
+  });
 }
 
 function sanitizeFreeform(raw: string): string {
@@ -66,6 +77,12 @@ export function AirportPicker({
     return value ?? "";
   });
   const [open, setOpen] = React.useState(false);
+  // #642 — while the input is focused, the visible text must stay exactly
+  // what the user typed. Resolving to "IATA / City" mid-keystroke (the
+  // instant an exact match forms) yanks the controlled value out from
+  // under the typist, corrupting later keystrokes ("SEA / Seattlettle").
+  // Only resolve the canonical display once focus leaves the field.
+  const [isFocused, setIsFocused] = React.useState(false);
 
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listboxId = React.useId();
@@ -75,7 +92,7 @@ export function AirportPicker({
   const hasQuery = query.trim().length > 0;
   const showFreeform = hasQuery && !knownAirport && !hasSuggestions;
 
-  const displayValue = knownAirport
+  const displayValue = !isFocused && knownAirport
     ? `${knownAirport.iata} / ${knownAirport.city}`
     : query;
 
@@ -117,7 +134,13 @@ export function AirportPicker({
     inputRef.current?.focus();
   };
 
+  const handleFocus = () => {
+    setIsFocused(true);
+    if (query.trim()) setOpen(true);
+  };
+
   const handleBlur = () => {
+    setIsFocused(false);
     setTimeout(() => setOpen(false), 150);
   };
 
@@ -149,9 +172,7 @@ export function AirportPicker({
           type="text"
           value={displayValue}
           onChange={handleInputChange}
-          onFocus={() => {
-            if (query.trim()) setOpen(true);
-          }}
+          onFocus={handleFocus}
           onBlur={handleBlur}
           disabled={disabled}
           placeholder={M4_UI_STRINGS.travelLeg_airport_placeholder}

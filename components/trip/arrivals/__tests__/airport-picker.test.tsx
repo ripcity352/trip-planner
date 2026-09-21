@@ -13,9 +13,29 @@
  */
 
 import "@testing-library/jest-dom/vitest";
+import * as React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AirportPicker } from "../airport-picker";
+
+// Controlled harness — feeds onChange back into value, mirroring real
+// usage via an RHF Controller. Needed to test #642's focused-blur
+// resolution, which depends on the `value` prop tracking selections.
+function ControlledAirportPicker({
+  initialValue,
+}: {
+  initialValue?: string;
+}) {
+  const [value, setValue] = React.useState<string | undefined>(initialValue);
+  return (
+    <AirportPicker
+      id="airport-picker-test"
+      label="Airport"
+      value={value}
+      onChange={setValue}
+    />
+  );
+}
 
 function renderPicker(
   value: string | undefined = undefined,
@@ -183,5 +203,62 @@ describe("AirportPicker — disabled", () => {
   it("disables the input when disabled prop is true", () => {
     renderPicker(undefined, vi.fn(), true);
     expect(screen.getByRole("combobox", { name: /airport/i })).toBeDisabled();
+  });
+});
+
+// ─── #642: no displayValue rewrite while focused ───────────────────────────
+
+describe("AirportPicker — no display rewrite while focused (#642)", () => {
+  it("keeps the visible text exactly as typed while focused, even once an exact IATA match resolves underneath", () => {
+    render(<ControlledAirportPicker />);
+    const input = screen.getByRole("combobox", {
+      name: /airport/i,
+    }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "S" } });
+    fireEvent.change(input, { target: { value: "Se" } });
+    // "SEA" is an exact catalog match — pre-fix, this immediately swapped
+    // the visible text to "SEA / Seattle" out from under the typist.
+    fireEvent.change(input, { target: { value: "SEA" } });
+    expect(input.value).toBe("SEA");
+    fireEvent.change(input, { target: { value: "SEAt" } });
+    expect(input.value).toBe("SEAt");
+    fireEvent.change(input, { target: { value: "SEAtt" } });
+    expect(input.value).toBe("SEAtt");
+  });
+
+  it("resolves the visible text to the canonical 'IATA / City' string on blur when an exact match exists", () => {
+    render(<ControlledAirportPicker />);
+    const input = screen.getByRole("combobox", {
+      name: /airport/i,
+    }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "SEA" } });
+    fireEvent.blur(input);
+    expect(input.value).toBe("SEA / Seattle");
+  });
+});
+
+// ─── #642 secondary: filter ignores the generic "Airport" token ───────────
+
+describe("AirportPicker — filter ignores the generic 'Airport' token (#642)", () => {
+  it("does not match every catalog entry on the generic substring 'air' — only the freeform fallback shows", async () => {
+    renderPicker();
+    const input = screen.getByRole("combobox", { name: /airport/i });
+    typeIntoInput(input, "air");
+    await waitFor(() => {
+      const options = screen.getAllByRole("option");
+      expect(options).toHaveLength(1);
+      expect(options[0]).toHaveTextContent("Type your own");
+    });
+  });
+
+  it("still matches Portland via the city field on the substring 'port'", async () => {
+    renderPicker();
+    const input = screen.getByRole("combobox", { name: /airport/i });
+    typeIntoInput(input, "port");
+    await waitFor(() => {
+      expect(screen.getByText(/PDX.*Portland/i)).toBeInTheDocument();
+    });
   });
 });
