@@ -1324,3 +1324,40 @@ describe("TravelLegForm — clearing airline/flight fields doesn't block submit 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+// ─── Invalid flight number renders exactly ONE alert (#663 item 1) ─────────
+
+describe("TravelLegForm — flightNumber error renders once, owned by AirlinePicker (#663)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    // Call history leaks across tests in this file (vi.mock module fns are
+    // not spies, so restoreAllMocks doesn't clear them) — clear explicitly.
+    mockUpsert.mockClear();
+  });
+
+  it("blocked submit with an invalid flight number shows a single alert, not a duplicated form-level one", async () => {
+    // Only edit mode can seed an invalid flight number (the picker sanitizes
+    // every keystroke) — e.g. bad legacy DB data, 9 chars > the 8-char max.
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        leg={makeLeg({ flight_number: "123456789" })}
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    // AirlinePicker's own external-invalid alert is visible pre-submit.
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    // Flush RHF's async validation cycle, then assert zod blocked the submit…
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(mockUpsert).not.toHaveBeenCalled();
+    // …and the error surface stays a single alert (AirlinePicker owns it —
+    // the form-level errors.flightNumber block was a duplicate).
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+});

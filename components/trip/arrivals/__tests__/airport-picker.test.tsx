@@ -237,6 +237,24 @@ describe("AirportPicker — no display rewrite while focused (#642)", () => {
     fireEvent.blur(input);
     expect(input.value).toBe("SEA / Seattle");
   });
+
+  it("keeps the canonical 'IATA / City' string across refocus after blur resolved an exact typed match (#663)", () => {
+    render(<ControlledAirportPicker />);
+    const input = screen.getByRole("combobox", {
+      name: /airport/i,
+    }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "SEA" } });
+    fireEvent.blur(input);
+    expect(input.value).toBe("SEA / Seattle");
+    // Pre-fix: blur only changed the unfocused displayValue — the query
+    // state stayed "SEA", so refocusing flipped the field back to the raw
+    // typed text and the display kept flip-flopping on every focus cycle.
+    fireEvent.focus(input);
+    expect(input.value).toBe("SEA / Seattle");
+    fireEvent.blur(input);
+    expect(input.value).toBe("SEA / Seattle");
+  });
 });
 
 // ─── #642 secondary: filter ignores the generic "Airport" token ───────────

@@ -11,7 +11,10 @@
  * Item time semantics:
  *   - `day` is YYYY-MM-DD (required).
  *   - `start_time` is HH:MM (nullable). If null, the item is a whole-day
- *     item that is "now" for the entire local calendar day.
+ *     item that is "now" for every local calendar day from `day` through
+ *     `end_day ?? day` (#662). Precedence: a timed in-progress item always
+ *     wins over a whole-day one — whole-day items are the backdrop, not
+ *     the headline.
  *   - `end_time` is HH:MM (nullable). If null on a timed item (start_time
  *     present), the item is treated as ongoing past its start through the
  *     end of its own day (#646) — `end_day` if set, else `day`. It does
@@ -79,8 +82,11 @@ function isInProgress(item: ItineraryItem, now: Date): boolean {
   const todayStr = toLocalDateString(now);
 
   if (item.start_time === null) {
-    // Whole-day item: in progress iff the local date matches
-    return item.day === todayStr;
+    // Whole-day item: in progress for every local date in [day, end_day]
+    // (#662). The end instant is always anchored to end_day ?? day (date/
+    // time register), so a multi-day whole-day item stays "now" through
+    // its whole range. Lexicographic compare is safe on YYYY-MM-DD.
+    return item.day <= todayStr && todayStr <= (item.end_day ?? item.day);
   }
 
   const start = toLocalDateTime(item.day, item.start_time);
@@ -138,7 +144,14 @@ export function whatsHappeningNow(
     return { now: null, next: null };
   }
 
-  const inProgress = items.find((i) => isInProgress(i, now)) ?? null;
+  // #662: timed in-progress items take precedence over whole-day ones. A
+  // multi-day whole-day item sorts under its earlier start day, so a plain
+  // first-match scan would let it shadow today's timed event — inverting
+  // the pre-existing "nulls last" precedence for the cross-day case.
+  const timedInProgress =
+    items.find((i) => i.start_time !== null && isInProgress(i, now)) ?? null;
+  const inProgress =
+    timedInProgress ?? items.find((i) => isInProgress(i, now)) ?? null;
   const next = items.find((i) => isUpcoming(i, now)) ?? null;
 
   return { now: inProgress, next };

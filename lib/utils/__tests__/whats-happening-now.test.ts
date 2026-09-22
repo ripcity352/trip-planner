@@ -271,6 +271,102 @@ describe("whatsHappeningNow", () => {
     );
     expect(result.now).toBeNull();
   });
+
+  // #662: whole-day (start_time null) multi-day items — the end instant is
+  // always anchored to end_day ?? day (date/time register), so a whole-day
+  // item spanning several days is "now" for every day in [day, end_day].
+  it("#662: whole-day multi-day item is 'now' on a middle day of its range", () => {
+    const wholeDayMulti = {
+      ...item("a", "2026-06-14", null, null),
+      end_day: "2026-06-16",
+    };
+    const result = whatsHappeningNow(
+      [wholeDayMulti],
+      new Date("2026-06-15T13:00:00")
+    );
+    expect(result.now?.id).toBe("a");
+  });
+
+  it("#662: whole-day multi-day item is still 'now' on its end_day", () => {
+    const wholeDayMulti = {
+      ...item("a", "2026-06-14", null, null),
+      end_day: "2026-06-16",
+    };
+    const result = whatsHappeningNow(
+      [wholeDayMulti],
+      new Date("2026-06-16T23:00:00")
+    );
+    expect(result.now?.id).toBe("a");
+  });
+
+  it("#662: whole-day multi-day item is not 'now' the day after end_day", () => {
+    const wholeDayMulti = {
+      ...item("a", "2026-06-14", null, null),
+      end_day: "2026-06-16",
+    };
+    const result = whatsHappeningNow(
+      [wholeDayMulti],
+      new Date("2026-06-17T09:00:00")
+    );
+    expect(result.now).toBeNull();
+  });
+
+  it("#662: whole-day multi-day item whose range covers today is not 'next' (its day is in the past)", () => {
+    const wholeDayMulti = {
+      ...item("a", "2026-06-14", null, null),
+      end_day: "2026-06-16",
+    };
+    const result = whatsHappeningNow(
+      [wholeDayMulti],
+      new Date("2026-06-15T13:00:00")
+    );
+    expect(result.next).toBeNull();
+  });
+
+  // #662 audit: a spanning whole-day item sorts under its earlier start day,
+  // so a plain first-match scan would let it shadow today's timed event —
+  // inverting the pre-existing "nulls last" precedence. A timed in-progress
+  // item always wins over a whole-day one.
+  it("#662: today's timed in-progress item wins over a spanning whole-day item sorted before it", () => {
+    const items = [
+      { ...item("bg", "2026-06-14", null, null), end_day: "2026-06-16" },
+      item("timed", "2026-06-15", "12:00", "14:00"),
+    ];
+    const result = whatsHappeningNow(items, new Date("2026-06-15T13:00:00"));
+    expect(result.now?.id).toBe("timed");
+  });
+
+  it("#662: spanning whole-day item is 'now' once today's timed item is over", () => {
+    const items = [
+      { ...item("bg", "2026-06-14", null, null), end_day: "2026-06-16" },
+      item("timed", "2026-06-15", "12:00", "14:00"),
+    ];
+    const result = whatsHappeningNow(items, new Date("2026-06-15T15:00:00"));
+    expect(result.now?.id).toBe("bg");
+  });
+
+  it("#662: pre-existing precedence — today-only whole-day still loses to a timed in-progress item", () => {
+    // Sorted (day ASC, start_time ASC nulls last): timed first, whole-day last
+    const items = [
+      item("timed", "2026-06-15", "12:00", "14:00"),
+      item("bg", "2026-06-15", null, null),
+    ];
+    const result = whatsHappeningNow(items, new Date("2026-06-15T13:00:00"));
+    expect(result.now?.id).toBe("timed");
+  });
+
+  it("#662: single whole-day item (end_day null) is unchanged — 'now' only on its own day", () => {
+    const single = item("a", "2026-06-15", null, null);
+    expect(
+      whatsHappeningNow([single], new Date("2026-06-15T13:00:00")).now?.id
+    ).toBe("a");
+    expect(
+      whatsHappeningNow([single], new Date("2026-06-16T09:00:00")).now
+    ).toBeNull();
+    expect(
+      whatsHappeningNow([single], new Date("2026-06-14T09:00:00")).now
+    ).toBeNull();
+  });
 });
 
 describe("nowNextItemIds (#484)", () => {

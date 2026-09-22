@@ -1942,3 +1942,12 @@ but becomes actionable ("start a ride"); once a ride covers that airport the
 nudge suppresses (its job is done). A persistent, low-emphasis "start a ride"
 affordance also sits near each section's add-CTA so a manual ride (no cluster —
 the free-text-airport miss, the un-logged flight) always has an entry point.
+
+## Travel-leg picker keystroke commit — known behavior (#641/#663)
+
+The airline/airport pickers commit on **every keystroke** (#641) so freeform
+text survives a plain "type and hit Save" without a suggestion-row click.
+Known tradeoff: tapping the airline field of a saved leg and typing one
+character, then cancelling out of the suggestion list, has already emitted
+`airline_iata: null, carrier: "<char>"` — the saved carrier is overwritten
+by the first keystroke. Intended; revisit only if it bites real users.
