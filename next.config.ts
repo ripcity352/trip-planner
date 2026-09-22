@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
     // change can't silently reintroduce the stale-list race.
     staleTimes: {
       dynamic: 0,
+      // The nested object replaces Next's default wholesale (experimental
+      // is merged only one level deep) — `static` must be restated or the
+      // default 300s cap on static-route stale time is silently dropped.
+      static: 300,
     },
   },
 };
