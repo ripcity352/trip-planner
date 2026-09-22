@@ -14,10 +14,9 @@
  * #644: `setOpen(false)` fired before `router.refresh()` — the sheet
  * unmounted first and the refresh looked like a silent failure (row was
  * saved, list didn't update) until a manual reload. Fix: reorder to
- * `refresh()` then `setOpen(false)`, plus retry the refresh via
- * `useRefreshWithRetries` — see that hook for the full root-cause
- * writeup (a second, unrelated RSC fetch for this same route can land
- * after the explicit refresh and overwrite it with stale data) and why a
+ * `refresh()` then `setOpen(false)` via `useRefreshWithRetries` (a
+ * single refresh since Next 16.3 — see that hook for the history of the
+ * retry hedge and the full root-cause writeup) and why a
  * bundled `startTransition` was tried and rejected (reproduced an
  * intermittent *permanent* hang, worse than the original bug).
  *
@@ -50,7 +49,7 @@ export function EditItemFormSheet({
   const refreshWithRetries = useRefreshWithRetries();
 
   const handleSuccess = (_item: ItineraryItem) => {
-    // #644: refresh (+ retries) before close — see file header.
+    // #644: refresh before close — see file header.
     refreshWithRetries();
     setOpen(false);
   };
