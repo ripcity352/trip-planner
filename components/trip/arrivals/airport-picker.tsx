@@ -151,6 +151,15 @@ export function AirportPicker({
 
   const handleBlur = () => {
     setIsFocused(false);
+    // #663 — an exact typed match ("SEA") resolves the unfocused display to
+    // "SEA / Seattle" via displayValue, but the query state kept the raw
+    // text, so refocusing flipped the field back to "SEA". Sync query to
+    // the canonical string on blur; while focused the visible text still
+    // stays exactly what the user typed (#642 invariant).
+    const exactMatch = findAirport(query);
+    if (exactMatch) {
+      setQuery(`${exactMatch.iata} / ${exactMatch.city}`);
+    }
     setTimeout(() => setOpen(false), 150);
   };
 
