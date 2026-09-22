@@ -44,16 +44,26 @@ function findAirport(iata: string | undefined) {
 // still matches via its city).
 const GENERIC_AIRPORT_WORD_REGEX = /\bairport\b/gi;
 
+// Strip the generic word and collapse the whitespace it leaves behind, so
+// "Amsterdam Airport Schiphol" normalizes to "amsterdam schiphol" rather
+// than "amsterdam  schiphol" (double space breaks substring matching).
+function stripGenericWord(s: string): string {
+  return s.replace(GENERIC_AIRPORT_WORD_REGEX, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 function filterAirports(query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return [];
+  // The query goes through the same generic-word strip as catalog names —
+  // otherwise "Heathrow Airport" fails to match a name that's already had
+  // "Airport" stripped out of it (regression fixed alongside #642).
+  const qWithoutGenericWord = stripGenericWord(q);
   return AIRPORTS.filter((a) => {
-    const nameWithoutGenericWord = a.name
-      .replace(GENERIC_AIRPORT_WORD_REGEX, "")
-      .toLowerCase();
+    const nameWithoutGenericWord = stripGenericWord(a.name);
     return (
       a.iata.toLowerCase().includes(q) ||
-      nameWithoutGenericWord.includes(q) ||
+      (qWithoutGenericWord.length > 0 &&
+        nameWithoutGenericWord.includes(qWithoutGenericWord)) ||
       a.city.toLowerCase().includes(q)
     );
   });

@@ -262,3 +262,34 @@ describe("AirportPicker — filter ignores the generic 'Airport' token (#642)", 
     });
   });
 });
+
+// ─── regression: query containing "airport" must still match (#642 follow-up) ──
+
+describe("AirportPicker — query containing the word 'airport' still matches (regression)", () => {
+  it("matches LHR when the query is 'Heathrow Airport'", async () => {
+    renderPicker();
+    const input = screen.getByRole("combobox", { name: /airport/i });
+    typeIntoInput(input, "Heathrow Airport");
+    await waitFor(() => {
+      expect(screen.getByText(/LHR.*London/i)).toBeInTheDocument();
+    });
+  });
+
+  it("matches AMS when the query is 'amsterdam airport' (lowercase)", async () => {
+    renderPicker();
+    const input = screen.getByRole("combobox", { name: /airport/i });
+    typeIntoInput(input, "amsterdam airport");
+    await waitFor(() => {
+      expect(screen.getByText(/AMS.*Amsterdam/i)).toBeInTheDocument();
+    });
+  });
+
+  it("matches AMS when the query is 'Amsterdam Schiphol' (name has 'Airport' in the middle, not the query)", async () => {
+    renderPicker();
+    const input = screen.getByRole("combobox", { name: /airport/i });
+    typeIntoInput(input, "Amsterdam Schiphol");
+    await waitFor(() => {
+      expect(screen.getByText(/AMS.*Amsterdam/i)).toBeInTheDocument();
+    });
+  });
+});
