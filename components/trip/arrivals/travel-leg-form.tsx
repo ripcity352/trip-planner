@@ -534,16 +534,12 @@ export function TravelLegForm({
           )}
         />
       ) : null}
-      {/* #640: error renderers bound to both picker fields so any future
-          schema rejection is visible, not a silent dead form. */}
+      {/* #640: error renderer bound to the airline field so any future
+          schema rejection is visible, not a silent dead form. flightNumber
+          errors render inside AirlinePicker itself (#663 — no duplicate). */}
       {kind === "flight" && errors.airlineIata?.message ? (
         <p role="alert" className={cn(ERROR_LINE_CLASS, "-mt-2 text-sm")}>
           {errors.airlineIata.message}
-        </p>
-      ) : null}
-      {kind === "flight" && errors.flightNumber?.message ? (
-        <p role="alert" className={cn(ERROR_LINE_CLASS, "-mt-2 text-sm")}>
-          {errors.flightNumber.message}
         </p>
       ) : null}
       {kind !== "flight" ? (

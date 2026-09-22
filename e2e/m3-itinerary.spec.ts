@@ -17,6 +17,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { M3_UI_STRINGS } from "@/lib/copy/empty-states";
 import { STORAGE_STATE_PATH } from "../tests/fixtures/auth";
 import { firstRealTripLink } from "./_setup/fixture-trip";
 import path from "node:path";
@@ -241,6 +242,13 @@ test.describe("authenticated itinerary flows", () => {
     await card.getByRole("button", { name: /^edit$/i }).click();
     const deleteButton = page.getByRole("button", { name: /^delete$/i });
     await deleteButton.click();
+    // #663: wait for the armed/confirm state before the second tap — the
+    // two-step delete only commits once `deleteConfirm` is set, which
+    // renders the confirmation line ("Delete this item? Can't undo.").
+    // Without this the second click can land pre-arm and be swallowed.
+    await expect(
+      page.getByText(M3_UI_STRINGS.itineraryForm_delete_confirm)
+    ).toBeVisible();
     await deleteButton.click(); // confirm
 
     await expect(newItemHeading).not.toBeVisible({ timeout: 8000 });
