@@ -152,13 +152,72 @@ describe("whatsHappeningNow", () => {
     expect(result.next?.id).toBe("c");
   });
 
-  it("end_time null on a timed item means the item has no defined end — treated as ongoing past its start", () => {
-    // Item has start_time but no end_time — treated as ongoing indefinitely once started
+  it("end_time null on a timed item means the item has no defined end — treated as ongoing for the rest of its own day", () => {
+    // Item has start_time but no end_time — ongoing once started, through the
+    // rest of its own calendar day.
     const items = [item("a", "2026-07-01", "10:00", null)];
     const now = new Date("2026-07-01T15:00:00");
     const result = whatsHappeningNow(items, now);
     expect(result.now?.id).toBe("a");
     expect(result.next).toBeNull();
+  });
+
+  // #646: an end-time-less timed item is bounded at the end of its own day
+  // (end_day if set, else day) — it must not stay "now" forever.
+  it("#646: open-ended timed item is NOT 'now' once its own day has ended (post-trip reachable)", () => {
+    const items = [item("a", "2026-06-01", "10:00", null)];
+    // Weeks after the item's day — it should have expired at 2026-06-02T00:00
+    const now = new Date("2026-07-21T12:00:00");
+    const result = whatsHappeningNow(items, now);
+    expect(result.now).toBeNull();
+    expect(result.next).toBeNull();
+  });
+
+  it("#646: open-ended timed item is still 'now' right up until the end of its own day", () => {
+    const items = [item("a", "2026-07-01", "10:00", null)];
+    // 23:59 on the same day — still within the item's day
+    const now = new Date("2026-07-01T23:59:00");
+    const result = whatsHappeningNow(items, now);
+    expect(result.now?.id).toBe("a");
+  });
+
+  it("#646: open-ended timed item expires at local midnight after its day (exclusive)", () => {
+    const items = [item("a", "2026-07-01", "10:00", null)];
+    // Midnight the next day — the item's day has ended
+    const now = new Date("2026-07-02T00:00:00");
+    const result = whatsHappeningNow(items, now);
+    expect(result.now).toBeNull();
+  });
+
+  it("#646: end_day-spanning open-ended item stays 'now' through the end of end_day", () => {
+    const multi = {
+      ...item("a", "2026-06-14", "08:00", null),
+      end_day: "2026-06-16",
+    };
+    // Still within end_day, though well past the start day
+    const result = whatsHappeningNow([multi], new Date("2026-06-16T23:00:00"));
+    expect(result.now?.id).toBe("a");
+  });
+
+  it("#646: end_day-spanning open-ended item expires after end_day ends", () => {
+    const multi = {
+      ...item("a", "2026-06-14", "08:00", null),
+      end_day: "2026-06-16",
+    };
+    const result = whatsHappeningNow([multi], new Date("2026-06-17T00:00:00"));
+    expect(result.now).toBeNull();
+  });
+
+  it("#646: a stale open-ended item does not shadow a genuinely-current item in ordering", () => {
+    // "a" is a stale open-ended item from weeks ago (pre-sorted first, per
+    // (day ASC, start_time ASC) ordering); "b" is today's real item.
+    const items = [
+      item("a", "2026-06-01", "10:00", null),
+      item("b", "2026-07-21", "09:00", null),
+    ];
+    const now = new Date("2026-07-21T12:00:00");
+    const result = whatsHappeningNow(items, now);
+    expect(result.now?.id).toBe("b");
   });
 
   it("item is not 'now' before its start_time", () => {

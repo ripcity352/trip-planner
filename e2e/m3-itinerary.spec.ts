@@ -184,6 +184,67 @@ test.describe("authenticated itinerary flows", () => {
       await expect(placeholder).toBeVisible();
     }
   });
+
+  // ---------------------------------------------------------------------
+  // #644 regression: add/delete must re-render the list WITHOUT a manual
+  // reload. Root cause was `setOpen(false)` racing `router.refresh()` on
+  // sheet unmount — reproduces on a prod build (dev HMR can mask it).
+  // No `page.reload()` anywhere below: the assertions rely entirely on
+  // the sheet's own refresh to update the DOM.
+  // ---------------------------------------------------------------------
+  test("add then delete an item updates the list without a page reload — #644", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/trips");
+
+    // #644 fix-round-1: this regression test must NOT pass vacuously when
+    // the fixture trip is missing — unlike the other tests in this file,
+    // it asserts on the fix itself, so a silent early-return here would
+    // hide a real regression as green. `ensureFixtureTrip` (auth.setup.ts)
+    // guarantees a trip exists for the fixture user.
+    const tripLink = firstRealTripLink(page);
+    await expect(tripLink).toBeVisible();
+
+    const tripHref = await tripLink.getAttribute("href");
+    expect(tripHref).toBeTruthy();
+
+    await page.goto(`${tripHref}/itinerary`);
+
+    const addButton = page.getByRole("button", { name: /add an item/i });
+    await expect(addButton).toBeVisible();
+    await addButton.click();
+
+    const uniqueTitle = `E2E Refresh Check ${Date.now()}`;
+    await page.getByLabel(/what is it\?/i).fill(uniqueTitle);
+
+    const today = new Date().toISOString().slice(0, 10);
+    await page.locator("#add-day").fill(today);
+
+    await page.getByRole("button", { name: /^add it$/i }).click();
+
+    // The sheet closes back to the CTA and the new item renders in the
+    // list — both without a page.reload(). This is the #644 regression:
+    // pre-fix, the row was saved server-side but the DOM stayed stale.
+    // 8s timeout gives the RSC refresh headroom under CI/system load
+    // without weakening the assertion — pre-fix, the DOM never updates
+    // at all (not merely slowly), so a longer timeout can't mask a
+    // regression, only absorb load jitter.
+    await expect(addButton).toBeVisible({ timeout: 8000 });
+    const newItemHeading = page.getByRole("heading", { name: uniqueTitle });
+    await expect(newItemHeading).toBeVisible({ timeout: 8000 });
+
+    // Delete it back out via the item's own Edit sheet (own-item affordance
+    // — any member can delete their own plan). Confirms the same
+    // refresh-race fix applies to the delete path.
+    const card = page.locator("article", { has: newItemHeading });
+    await card.getByRole("button", { name: /^edit$/i }).click();
+    const deleteButton = page.getByRole("button", { name: /^delete$/i });
+    await deleteButton.click();
+    await deleteButton.click(); // confirm
+
+    await expect(newItemHeading).not.toBeVisible({ timeout: 8000 });
+  });
 });
 
 // ---------------------------------------------------------------------------

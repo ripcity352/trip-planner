@@ -1221,3 +1221,106 @@ describe("TravelLegForm — whose flight (#574 on-behalf)", () => {
     expect(mockTag).not.toHaveBeenCalled();
   });
 });
+
+// ─── Empty airline/flight fields don't block submit (#640) ─────────────────
+
+describe("TravelLegForm — clearing airline/flight fields doesn't block submit (#640)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("submits when an airline is selected then cleared via the × button — clear emits '' (#543), which used to fail the schema silently", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:30" },
+    });
+
+    const airlineInput = screen.getByRole("combobox", { name: /airline/i });
+    fireEvent.change(airlineInput, { target: { value: "alas" } });
+    await waitFor(() => screen.getByText(/alaska airlines/i));
+    fireEvent.mouseDown(screen.getByText(/alaska airlines/i));
+    fireEvent.click(screen.getByRole("button", { name: /clear airline/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalled();
+    });
+    // Pre-fix: zodResolver blocked submit silently — no alert, no POST.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("submits when a typed flight number is cleared back to ''", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:30" },
+    });
+
+    const flightInput = screen.getByRole("textbox", {
+      name: /flight number/i,
+    });
+    fireEvent.change(flightInput, { target: { value: "1234" } });
+    fireEvent.change(flightInput, { target: { value: "" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("submits when typing over a selected airline ('my flight changed') without ever clicking clear", async () => {
+    mockUpsert.mockResolvedValue({ ok: true, leg: makeLeg() });
+
+    render(
+      <TravelLegForm
+        tripId="trip-1"
+        direction="inbound"
+        tripTimezone="UTC"
+        onSuccess={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Arrive"), {
+      target: { value: "2026-08-14T10:30" },
+    });
+
+    const airlineInput = screen.getByRole("combobox", { name: /airline/i });
+    fireEvent.change(airlineInput, { target: { value: "alas" } });
+    await waitFor(() => screen.getByText(/alaska airlines/i));
+    fireEvent.mouseDown(screen.getByText(/alaska airlines/i));
+    // Type over the selection — this used to emit airlineIata: "" too.
+    fireEvent.change(airlineInput, { target: { value: "Delta 202" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save it" }));
+
+    await waitFor(() => {
+      expect(mockUpsert).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});

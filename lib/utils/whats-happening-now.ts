@@ -13,7 +13,9 @@
  *   - `start_time` is HH:MM (nullable). If null, the item is a whole-day
  *     item that is "now" for the entire local calendar day.
  *   - `end_time` is HH:MM (nullable). If null on a timed item (start_time
- *     present), the item is treated as ongoing indefinitely past its start.
+ *     present), the item is treated as ongoing past its start through the
+ *     end of its own day (#646) — `end_day` if set, else `day`. It does
+ *     NOT stay "now" forever; that shadows the post-trip dashboard state.
  *   - `end_day` is YYYY-MM-DD (nullable, #504). The end instant is
  *     `(end_day ?? day) + end_time` — multi-day items stay "now" until
  *     their real end day.
@@ -54,13 +56,24 @@ function toLocalDateTime(day: string, time: string): Date {
 }
 
 /**
+ * Local midnight at the start of the day *after* the given YYYY-MM-DD day
+ * string — the exclusive upper bound for "still within this day".
+ */
+function startOfNextLocalDay(day: string): Date {
+  const [year, month, dayOfMonth] = day.split("-").map(Number);
+  return new Date(year, month - 1, dayOfMonth + 1, 0, 0, 0, 0);
+}
+
+/**
  * Determine whether a given item is in progress at `now`.
  *
  * Whole-day items (start_time === null) are active for the entire local
  * calendar day.
  *
  * Timed items:
- *   - Active if now >= start && (end_time is null OR now < end)
+ *   - Active if now >= start && now < end, where `end` is `end_time` when
+ *     set, else (#646) the start of the day after the item's own day
+ *     (`end_day` if set, else `day`).
  */
 function isInProgress(item: ItineraryItem, now: Date): boolean {
   const todayStr = toLocalDateString(now);
@@ -74,8 +87,12 @@ function isInProgress(item: ItineraryItem, now: Date): boolean {
   if (now < start) return false;
 
   if (item.end_time === null) {
-    // No defined end — treat as ongoing once started
-    return true;
+    // #646: no defined end — bounded at the end of the item's own day
+    // (end_day if set, else day), not ongoing forever. Otherwise a past
+    // open-ended item pins "RIGHT NOW" indefinitely and the post-trip
+    // dashboard state is never reached.
+    const boundedEnd = startOfNextLocalDay(item.end_day ?? item.day);
+    return now < boundedEnd;
   }
 
   // #504: a multi-day item ends on end_day, not day — same-day items have

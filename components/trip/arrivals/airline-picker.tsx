@@ -108,16 +108,19 @@ export function AirlinePicker({
   // ── handlers ──────────────────────────────────────────────────────────────
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const next = e.target.value;
+    // Sanitize on every keystroke, not just the freeform-select action —
+    // mirrors AirportPicker's pattern (sanitize-every-keystroke lesson).
+    const next = sanitizeCarrier(e.target.value);
     setQuery(next);
-    // Any manual typing deselects the previously-picked known airline.
+    // Any manual typing deselects the previously-picked known airline AND
+    // commits the typed text into carrier (#641 — previously only
+    // handleSelectFreeform committed carrier, so typed-then-saved text
+    // without an explicit freeform-row click was silently discarded).
     // Emit "" (not undefined, #543) — an RHF Controller.onChange(undefined)
     // reverts the field to defaultValues instead of clearing it, which
     // would otherwise freeze this field on the original airline the
     // instant the user starts typing over a pre-populated selection.
-    if (airlineIata) {
-      onChange({ ...value, airlineIata: "" });
-    }
+    onChange({ ...value, airlineIata: "", carrier: next });
     setOpen(true);
   };
 
