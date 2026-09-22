@@ -2,7 +2,19 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    // #644: the itinerary add/delete refresh fix depends on the client
+    // Router Cache never re-serving a stale dynamic page snapshot. 0 is
+    // the Next 16 default — pinned explicitly so a future Next default
+    // change can't silently reintroduce the stale-list race.
+    staleTimes: {
+      dynamic: 0,
+      // The nested object replaces Next's default wholesale (experimental
+      // is merged only one level deep) — `static` must be restated or the
+      // default 300s cap on static-route stale time is silently dropped.
+      static: 300,
+    },
+  },
 };
 
 // Sourcemap upload is a no-op when SENTRY_AUTH_TOKEN is unset, so local
